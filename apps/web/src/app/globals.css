@@ -1,0 +1,91 @@
+:root {
+  --ink: #eef3ec;
+  --muted: #93a198;
+  --line: rgba(238, 243, 236, 0.14);
+  --surface: #101a17;
+  --panel: #14221e;
+  --acid: #b8f04a;
+  --warm: #d9c8a1;
+}
+
+.accountPanel { margin: 0 0 40px; padding: 28px; border: 1px solid var(--line); background: var(--panel); }
+.accountPanel form { display: grid; gap: 12px; max-width: 420px; }
+.knowledgePanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 16px; }
+.knowledgePanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; padding: 16px; background: var(--surface); }
+.knowledgePanel li { margin: 12px 0; overflow-wrap: anywhere; }
+.pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.accountPanel input { min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); border-radius: 4px; }
+.accountPanel button { padding: 12px 24px; color: var(--surface); background: var(--acid); border: none; border-radius: 4px; cursor: pointer; }
+.accountPanel button:disabled { opacity: .6; cursor: wait; }
+.accountPanel small, .accountPanel p { color: var(--muted); }
+.accountPanel [role="alert"] { color: #ffb4a8; }
+.accountPanel input:focus-visible, .accountPanel button:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 78% 12%, rgba(80, 126, 91, 0.2), transparent 32rem),
+    var(--surface);
+  font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  opacity: 0.16;
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+
+nav {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--line);
+  font: 700 12px/1 monospace;
+  letter-spacing: .15em;
+}
+
+.brand { display: flex; align-items: center; gap: 12px; color: inherit; text-decoration: none; }
+.brandMark { display: grid; place-items: center; width: 30px; height: 30px; color: var(--surface); background: var(--acid); }
+.environment { color: var(--muted); }
+
+.hero { min-height: 600px; padding: 108px 0 92px; position: relative; }
+.kicker, article > p:first-of-type { color: var(--acid); font: 700 11px/1.4 monospace; letter-spacing: .19em; }
+h1 { max-width: 850px; margin: 24px 0; font: 400 clamp(52px, 8vw, 104px)/.96 Georgia, "Songti SC", serif; letter-spacing: -.055em; }
+.intro { width: min(580px, 100%); color: var(--muted); font-size: 18px; line-height: 1.8; }
+
+.prompt { width: min(650px, 100%); margin-top: 54px; }
+.prompt label { display: block; margin-bottom: 10px; color: var(--warm); font: 700 10px/1 monospace; letter-spacing: .16em; }
+.prompt div { display: flex; border-bottom: 1px solid var(--muted); }
+.prompt input { flex: 1; padding: 16px 0; border: 0; color: var(--ink); background: transparent; font-size: 17px; outline: none; }
+.prompt button { width: 50px; border: 0; color: var(--muted); background: transparent; font-size: 26px; }
+.prompt small { display: block; margin-top: 10px; color: #657169; }
+
+.moduleGrid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+article { min-height: 330px; padding: 30px; position: relative; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(20,34,30,.62); }
+.cardNumber { position: absolute; right: 26px; top: 25px; color: #516158; font: 13px monospace; }
+article h2 { margin: 52px 0 18px; font: 400 30px/1.2 Georgia, "Songti SC", serif; }
+.cardCopy { max-width: 270px; color: var(--muted); line-height: 1.7; }
+.status { position: absolute; left: 30px; bottom: 30px; color: var(--warm); font: 11px monospace; text-transform: uppercase; }
+.status i { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--acid); }
+
+footer { display: flex; justify-content: space-between; padding: 35px 0 50px; color: #657169; font: 10px monospace; letter-spacing: .12em; }
+
+@media (max-width: 760px) {
+  main { width: min(100% - 30px, 1180px); }
+  .environment { display: none; }
+  .hero { padding-top: 70px; }
+  .moduleGrid { grid-template-columns: 1fr; }
+  footer { gap: 20px; flex-direction: column; }
+}

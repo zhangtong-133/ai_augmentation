@@ -1,0 +1,15 @@
+[package]
+name = "personal-ai-knowledge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pulldown-cmark = { version = "0.13", default-features = false }
+personal-ai-domain.workspace = true
+personal-ai-llm.workspace = true
+personal-ai-storage.workspace = true
+
+[lints]
+workspace = true

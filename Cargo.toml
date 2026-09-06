@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/storage-postgres",
+  "apps/api-server",
+  "apps/worker",
+  "apps/scheduler",
+  "crates/domain",
+  "crates/agent-core",
+  "crates/knowledge",
+  "crates/learning",
+  "crates/storage",
+  "crates/llm",
+  "crates/tools",
+  "crates/mcp",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.96"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+
+[workspace.dependencies]
+argon2 = { version = "0.5", features = ["std"] }
+sha2 = "0.10"
+axum = "0.8"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "migrate", "macros"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tower = { version = "0.5", features = ["util"] }
+subtle = "2"
+personal-ai-storage-postgres = { path = "crates/storage-postgres" }
+personal-ai-domain = { path = "crates/domain" }
+personal-ai-agent-core = { path = "crates/agent-core" }
+personal-ai-knowledge = { path = "crates/knowledge" }
+personal-ai-learning = { path = "crates/learning" }
+personal-ai-storage = { path = "crates/storage" }
+personal-ai-llm = { path = "crates/llm" }
+personal-ai-tools = { path = "crates/tools" }
+personal-ai-mcp = { path = "crates/mcp" }

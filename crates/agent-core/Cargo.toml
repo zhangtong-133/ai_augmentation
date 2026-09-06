@@ -1,0 +1,15 @@
+[package]
+name = "personal-ai-agent-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+personal-ai-domain.workspace = true
+personal-ai-llm.workspace = true
+personal-ai-storage.workspace = true
+personal-ai-tools.workspace = true
+
+[lints]
+workspace = true

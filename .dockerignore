@@ -1,0 +1,9 @@
+.git
+.github
+.next
+**/.next
+node_modules
+**/node_modules
+target
+.env
+.data

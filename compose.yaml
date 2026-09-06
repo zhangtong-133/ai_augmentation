@@ -1,0 +1,179 @@
+x-backend-service: &backend-service
+  build:
+    context: .
+    dockerfile: apps/Dockerfile
+  restart: unless-stopped
+  networks:
+    - personal-ai
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - web
+      - api-server
+    networks:
+      - personal-ai
+
+  web:
+    build:
+      context: ./apps/web
+    restart: unless-stopped
+    environment:
+      PORT: 3000
+      API_INTERNAL_URL: http://api-server:8080
+    expose:
+      - "3000"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    networks:
+      - personal-ai
+
+  api-server:
+    <<: *backend-service
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+      args:
+        APP: api-server
+    environment:
+      API_PORT: 8080
+      API_HOST: 0.0.0.0
+      API_AUTH_TOKEN: ${API_AUTH_TOKEN:-}
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-true}
+      APP_ENV: ${APP_ENV:-development}
+      RUST_LOG: ${RUST_LOG:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      QDRANT_URL: ${QDRANT_URL}
+      OBJECT_STORE_ENDPOINT: ${OBJECT_STORE_ENDPOINT}
+    expose:
+      - "8080"
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  worker:
+    <<: *backend-service
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+      args:
+        APP: worker
+    environment:
+      RUN_FOREVER: "1"
+      APP_ENV: ${APP_ENV:-development}
+      RUST_LOG: ${RUST_LOG:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      QDRANT_URL: ${QDRANT_URL}
+      OBJECT_STORE_ENDPOINT: ${OBJECT_STORE_ENDPOINT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    <<: *backend-service
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+      args:
+        APP: scheduler
+    environment:
+      RUN_FOREVER: "1"
+      APP_ENV: ${APP_ENV:-development}
+      RUST_LOG: ${RUST_LOG:-info}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - personal-ai
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    restart: unless-stopped
+    ports:
+      - "${QDRANT_HTTP_PORT:-6333}:6333"
+      - "${QDRANT_GRPC_PORT:-6334}:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - personal-ai
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - personal-ai
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - personal-ai
+
+networks:
+  personal-ai:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  qdrant-data:
+  redis-data:
+  minio-data:

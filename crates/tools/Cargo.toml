@@ -1,0 +1,12 @@
+[package]
+name = "personal-ai-tools"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+personal-ai-domain.workspace = true
+
+[lints]
+workspace = true

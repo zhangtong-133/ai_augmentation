@@ -1,0 +1,17 @@
+FROM rust:1.96-bookworm AS builder
+
+WORKDIR /workspace
+COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+COPY apps ./apps
+COPY crates ./crates
+
+ARG APP
+RUN cargo build --locked --release --package "$APP"
+
+FROM debian:bookworm-slim AS runtime
+ARG APP
+ENV APP_BINARY="$APP"
+RUN useradd --create-home --uid 10001 app
+COPY --from=builder "/workspace/target/release/$APP" "/usr/local/bin/$APP"
+USER app
+ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/$APP_BINARY"]

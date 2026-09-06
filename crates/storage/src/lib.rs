@@ -1,0 +1,138 @@
+#![forbid(unsafe_code)]
+pub mod documents;
+
+use personal_ai_domain::{ConversationId, User, UserId};
+use std::error::Error;
+use std::fmt::{self, Display};
+use std::future::Future;
+use std::pin::Pin;
+
+pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type StorageResult<T> = Result<T, StorageError>;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum StorageError {
+    NotFound,
+    Conflict(String),
+    Unavailable(String),
+    InvalidData(String),
+}
+
+impl Display for StorageError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotFound => formatter.write_str("record not found"),
+            Self::Conflict(message) => write!(formatter, "storage conflict: {message}"),
+            Self::Unavailable(message) => write!(formatter, "storage unavailable: {message}"),
+            Self::InvalidData(message) => write!(formatter, "invalid stored data: {message}"),
+        }
+    }
+}
+
+impl Error for StorageError {}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EmbeddingRecord {
+    pub id: String,
+    pub vector: Vec<f32>,
+    pub source: String,
+    pub content_type: String,
+    pub created_at_unix_ms: u64,
+    pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct VectorMatch {
+    pub record: EmbeddingRecord,
+    pub score: f32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MemoryEntry {
+    pub key: String,
+    pub value: String,
+    pub created_at_unix_ms: u64,
+}
+
+pub trait MetadataStore: Send + Sync {
+    fn password_hash(&self, _email: &str) -> BoxFuture<'_, StorageResult<(UserId, String)>> {
+        Box::pin(async { Err(StorageError::NotFound) })
+    }
+    fn set_password(&self, _id: &UserId, _hash: &str) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "authentication not supported".into(),
+            ))
+        })
+    }
+    fn create_session(
+        &self,
+        _id: &UserId,
+        _digest: &str,
+        _credential_hash: &str,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "authentication not supported".into(),
+            ))
+        })
+    }
+    fn session_user(&self, _digest: &str) -> BoxFuture<'_, StorageResult<User>> {
+        Box::pin(async { Err(StorageError::NotFound) })
+    }
+    fn delete_session(&self, _digest: &str) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "authentication not supported".into(),
+            ))
+        })
+    }
+    fn health(&self) -> BoxFuture<'_, StorageResult<()>>;
+    fn get_user(&self, id: &UserId) -> BoxFuture<'_, StorageResult<User>>;
+    fn save_user(&self, user: &User) -> BoxFuture<'_, StorageResult<()>>;
+}
+
+pub trait VectorStore: Send + Sync {
+    fn insert_embeddings(
+        &self,
+        collection: &str,
+        records: &[EmbeddingRecord],
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
+    fn similar_search(
+        &self,
+        collection: &str,
+        query: &[f32],
+        limit: usize,
+    ) -> BoxFuture<'_, StorageResult<Vec<VectorMatch>>>;
+
+    fn remove(&self, collection: &str, ids: &[String]) -> BoxFuture<'_, StorageResult<()>>;
+}
+
+pub trait ObjectStorage: Send + Sync {
+    fn put(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        content_type: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
+    fn get(&self, key: &str) -> BoxFuture<'_, StorageResult<Vec<u8>>>;
+    fn delete(&self, key: &str) -> BoxFuture<'_, StorageResult<()>>;
+}
+
+pub trait MemoryStore: Send + Sync {
+    fn append(
+        &self,
+        user_id: &UserId,
+        conversation_id: &ConversationId,
+        entry: &MemoryEntry,
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
+    fn recent(
+        &self,
+        user_id: &UserId,
+        conversation_id: &ConversationId,
+        limit: usize,
+    ) -> BoxFuture<'_, StorageResult<Vec<MemoryEntry>>>;
+}
