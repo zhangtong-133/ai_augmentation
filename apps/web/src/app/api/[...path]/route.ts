@@ -6,7 +6,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const { path } = await context.params;
   const endpoint = path.join("/");
   const allowed = request.method === "GET"
-    ? ["healthz", "readyz", "auth/me", "documents"]
+    ? ["healthz", "readyz", "auth/me", "documents", "overview"]
     : ["auth/login", "auth/logout", "documents"];
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   if (!allowed.includes(endpoint) && !documentDetail) {

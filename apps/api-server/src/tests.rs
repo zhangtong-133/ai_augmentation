@@ -476,6 +476,34 @@ async fn login_attempt_budget_is_enforced() {
     );
 }
 impl DocumentStore for MemoryStore {
+    fn document_stats(
+        &self,
+        owner: &UserId,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::documents::DocumentStats>> {
+        let mut stats = personal_ai_storage::documents::DocumentStats::default();
+        for (user, _, document) in self.documents.lock().unwrap().values() {
+            if user != owner.as_str() {
+                continue;
+            }
+            stats.total_documents += 1;
+            stats.total_chunks += i64::from(document.summary.chunk_count);
+            if (start_ms..end_ms).contains(&document.summary.created_at_unix_ms) {
+                stats.imported_today += 1;
+            }
+        }
+        let unavailable = self.unavailable;
+        Box::pin(async move {
+            if unavailable {
+                Err(StorageError::Unavailable(
+                    "secret connection details".into(),
+                ))
+            } else {
+                Ok(stats)
+            }
+        })
+    }
     fn insert_document(
         &self,
         owner: &UserId,
@@ -569,6 +597,17 @@ async fn documents_are_private_deduplicated_and_validated() {
     });
     let cookie = format!("personal_ai_session_v2={token}");
     let other_cookie = format!("personal_ai_session_v2={second}");
+    assert_eq!(
+        request(app.clone(), "GET", "/api/overview", Some(TOKEN), "")
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    let empty = read_overview(app.clone(), &cookie).await;
+    assert_eq!(
+        empty["knowledge"],
+        json!({"total_documents":0,"total_chunks":0,"imported_today":0})
+    );
     let content = "# 标题\n\n".to_owned() + &"个人知识".repeat(3000);
     let body = json!({"title":"笔记","markdown":content,"source":"note.md","tags":["Rust","Rust"]})
         .to_string();
@@ -605,6 +644,18 @@ async fn documents_are_private_deduplicated_and_validated() {
         serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
     assert!(summary["chunk_count"].as_i64().unwrap() > 1);
     assert_eq!(summary["tags"], json!(["Rust"]));
+    let overview = read_overview(app.clone(), &cookie).await;
+    assert_eq!(overview["timezone"], "UTC");
+    assert_eq!(overview["knowledge"]["total_documents"], 1);
+    assert_eq!(
+        overview["knowledge"]["total_chunks"],
+        summary["chunk_count"]
+    );
+    assert_eq!(overview["knowledge"]["imported_today"], 1);
+    assert_eq!(
+        read_overview(app.clone(), &other_cookie).await["knowledge"]["total_documents"],
+        0
+    );
     let path = format!("/api/documents/{}", summary["id"].as_str().unwrap());
     assert_eq!(
         auth_request(app.clone(), "GET", &path, Some(&other_cookie), "", false)
@@ -705,4 +756,49 @@ async fn documents_are_private_deduplicated_and_validated() {
     )
     .await;
     assert_eq!(to_bytes(response.into_body(), 1024).await.unwrap(), "[]");
+}
+
+async fn read_overview(app: Router, cookie: &str) -> serde_json::Value {
+    let response = auth_request(app, "GET", "/api/overview", Some(cookie), "", false).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn overview_storage_failure_is_not_an_empty_library() {
+    let store = Arc::new(MemoryStore::default());
+    let user = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: "stats@example.com".into(),
+        display_name: "Stats".into(),
+    };
+    store.save_user(&user).await.unwrap();
+    let token = "c".repeat(64);
+    store.sessions.lock().unwrap().insert(
+        format!("{:x}", Sha256::digest(token.as_bytes())),
+        user.id.to_string(),
+    );
+    let app = router(AppState {
+        documents: Arc::new(MemoryStore {
+            unavailable: true,
+            ..MemoryStore::default()
+        }),
+        store,
+        api_token: Arc::from(TOKEN),
+        auth: Arc::new(AuthConfig::new(false)),
+    });
+    let response = auth_request(
+        app,
+        "GET",
+        "/api/overview",
+        Some(&format!("personal_ai_session_v2={token}")),
+        "",
+        false,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
+    assert_eq!(body, json!({"error":{"code":"storage_unavailable"}}));
 }

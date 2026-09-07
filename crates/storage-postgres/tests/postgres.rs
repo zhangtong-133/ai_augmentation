@@ -78,6 +78,7 @@ async fn migrations_persistence_and_case_insensitive_uniqueness() {
 }
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
+#[allow(clippy::too_many_lines)] // One persistence/isolation lifecycle including aggregate boundaries.
 async fn documents_persist_and_are_owner_scoped() {
     use personal_ai_storage::documents::{DocumentStore, DocumentSummary, StoredDocument};
     let url = std::env::var("TEST_DATABASE_URL").expect("TEST_DATABASE_URL required");
@@ -111,6 +112,33 @@ async fn documents_persist_and_are_owner_scoped() {
         .await
         .unwrap();
     let reopened = PostgresStore::connect(&url).await.unwrap();
+    let stats = reopened
+        .document_stats(&owner.id, 1234, 1235)
+        .await
+        .unwrap();
+    assert_eq!(stats.total_documents, 1);
+    assert_eq!(stats.total_chunks, 1);
+    assert_eq!(stats.imported_today, 1);
+    assert_eq!(
+        reopened
+            .document_stats(&owner.id, 0, 1234)
+            .await
+            .unwrap()
+            .imported_today,
+        0
+    );
+    assert_eq!(
+        reopened
+            .document_stats(&owner.id, 1235, 9999)
+            .await
+            .unwrap()
+            .imported_today,
+        0
+    );
+    assert_eq!(
+        reopened.document_stats(&other.id, 0, 9999).await.unwrap(),
+        personal_ai_storage::documents::DocumentStats::default()
+    );
     assert_eq!(
         reopened
             .get_document(&owner.id, &document.summary.id)

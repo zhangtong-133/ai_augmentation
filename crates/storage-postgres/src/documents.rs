@@ -2,7 +2,7 @@ use crate::{PostgresStore, map_error};
 use personal_ai_domain::UserId;
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
-    documents::{DocumentStore, DocumentSummary, StoredDocument},
+    documents::{DocumentStats, DocumentStore, DocumentSummary, StoredDocument},
 };
 use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
@@ -23,6 +23,29 @@ fn parse_id(id: &str) -> StorageResult<Uuid> {
 }
 
 impl DocumentStore for PostgresStore {
+    fn document_stats(
+        &self,
+        owner: &UserId,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> BoxFuture<'_, StorageResult<DocumentStats>> {
+        let owner = parse_id(owner.as_str());
+        Box::pin(async move {
+            let row = sqlx::query(
+                "SELECT COUNT(*) AS total_documents, \
+                 COALESCE(SUM(cardinality(chunks)), 0)::bigint AS total_chunks, \
+                 COUNT(*) FILTER (WHERE created_at_unix_ms >= $2 AND created_at_unix_ms < $3) AS imported_today \
+                 FROM documents WHERE user_id=$1",
+            )
+            .bind(owner?).bind(start_ms).bind(end_ms)
+            .fetch_one(&self.pool).await.map_err(map_error)?;
+            Ok(DocumentStats {
+                total_documents: row.get("total_documents"),
+                total_chunks: row.get("total_chunks"),
+                imported_today: row.get("imported_today"),
+            })
+        })
+    }
     fn insert_document(
         &self,
         owner: &UserId,

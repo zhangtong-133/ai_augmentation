@@ -1,5 +1,7 @@
 # 文档索引
 
+- [服务状态与今日概览](design/sprint-1-overview.md)：用户隔离统计、UTC 日界线、状态刷新及验证边界。
+
 - [Markdown 导入与文档管理](design/sprint-2-markdown.md)：最新迭代，包含接口、分块、去重、用户隔离及存储阶段性差异。
 
 - [登录会话与 Dashboard 设计](design/sprint-1-sessions-dashboard.md)：最新迭代，包含首个账户初始化、登录/退出、会话过期和前端代理配置。

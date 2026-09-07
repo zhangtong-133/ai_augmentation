@@ -1,5 +1,15 @@
 # Local environment baseline
 
+## 2026-09-07 复查（替代下方历史 Docker 结论）
+
+经授权在沙箱外检查，Docker Engine 27.5.1 可连接，`docker ps` 成功；当前用户有效组包含 docker，宿主 WSL 的 PID 1 为 systemd。沙箱内 socket 访问返回 operation not permitted，不能据此判断本地服务停止。后续 Docker 操作需在普通终端或获准的沙箱外环境执行，无需修改 socket 权限或重装引擎。
+
+`./scripts/compose.sh --env-file .env.example ps` 成功连接引擎，项目当前没有容器。Compose v2 插件是指向 `/mnt/wsl/docker-desktop/cli-tools/` 的失效历史链接；项目包装脚本已回退至可用的 docker-compose 1.29.2。v2 尚未安装，升级仍为独立待办；未删除旧链接或修改系统包。
+
+环境检查脚本已将“不可达即服务未启动”的提示改为进程访问受限提示。以下为 2026-09-06 历史记录，不代表当前引擎状态。
+
+验证：沙箱外 `make env-check` 报告 daemon reachable，`make compose-config` 通过；`docker run --rm hello-world` 成功拉取镜像并启动容器。测试容器退出后自动清理，镜像保留在本地缓存。该测试不代表项目数据库集成测试或完整应用 smoke test 已执行。
+
 采集日期：2026-09-06（Asia/Shanghai）
 
 本轮补充验证：在沙箱外执行 docker info / docker ps，同样返回 Cannot connect to the Docker daemon。确认当前 Docker 不可用，但仅凭这个结果不能判断宿主机是否安装或启用了 Docker Desktop。PostgreSQL 实例尚未就绪，数据库集成测试尚未在本机执行。

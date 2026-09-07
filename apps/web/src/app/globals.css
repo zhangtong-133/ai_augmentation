@@ -11,6 +11,11 @@
 .accountPanel { margin: 0 0 40px; padding: 28px; border: 1px solid var(--line); background: var(--panel); }
 .accountPanel form { display: grid; gap: 12px; max-width: 420px; }
 .knowledgePanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 16px; }
+.overviewPanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 16px; }
+.overviewMetrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 16px; }
+.overviewMetrics div { padding: 20px; background: var(--surface); }
+.overviewMetrics dt { color: var(--muted); }
+.overviewMetrics dd { margin: 12px 0 0; font-size: 32px; color: var(--acid); }
 .knowledgePanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; padding: 16px; background: var(--surface); }
 .knowledgePanel li { margin: 12px 0; overflow-wrap: anywhere; }
 .pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }

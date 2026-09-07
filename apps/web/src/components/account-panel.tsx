@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { KnowledgePanel } from "./knowledge-panel";
+import { OverviewPanel } from "./overview-panel";
+import { ServiceStatus } from "./service-status";
 
 type User = { id: string; email: string; display_name: string };
 
@@ -9,22 +11,18 @@ export function AccountPanel() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("正在检查服务…");
+  const [revision, setRevision] = useState(0);
   const [error, setError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       try {
-        const [ready, identity] = await Promise.all([
-          fetch("/api/readyz", { cache: "no-store", signal: controller.signal }),
-          fetch("/api/auth/me", { cache: "no-store", signal: controller.signal }),
-        ]);
-        setStatus(ready.ok ? "服务已连接" : "服务暂不可用");
+        const identity = await fetch("/api/auth/me", { cache: "no-store", signal: controller.signal });
         if (identity.ok) setUser(await identity.json());
         else if (identity.status !== 401) setError("暂时无法读取账户，请稍后刷新。");
       } catch {
-        if (!controller.signal.aborted) setStatus("无法连接服务");
+        if (!controller.signal.aborted) setError("无法读取账户，请检查服务后刷新页面。");
       } finally {
         if (!controller.signal.aborted) setLoading(false);
       }
@@ -54,7 +52,6 @@ export function AccountPanel() {
       const identity = await fetch("/api/auth/me", { cache: "no-store" });
       if (!identity.ok) { setError("无法保持登录，请检查浏览器 Cookie 设置与服务配置。"); return; }
       setUser(await identity.json());
-      setStatus("服务已连接");
     } catch { setError("网络连接失败，请稍后重试。"); }
     finally { setBusy(false); }
   }
@@ -74,7 +71,7 @@ export function AccountPanel() {
 
   return (
     <section className="accountPanel" aria-label="个人账户">
-      <p role="status">{status}</p>
+      <ServiceStatus />
       {loading ? <p>正在读取账户…</p> : user ? (
         <div>
           <h2>欢迎回来，{user.display_name}</h2>
@@ -93,7 +90,8 @@ export function AccountPanel() {
         </form>
       )}
       {error && <p role="alert">{error}</p>}
-      {user && <KnowledgePanel key={user.id} />}
+      {user && <OverviewPanel key={`overview-${user.id}`} revision={revision} />}
+      {user && <KnowledgePanel key={user.id} onImported={() => setRevision(value => value + 1)} />}
     </section>
   );
 }

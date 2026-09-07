@@ -2,6 +2,13 @@ use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
 use serde::Serialize;
 
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct DocumentStats {
+    pub total_documents: i64,
+    pub total_chunks: i64,
+    pub imported_today: i64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct DocumentSummary {
     pub id: String,
@@ -22,6 +29,13 @@ pub struct StoredDocument {
 
 /// Every operation requires the authenticated owner; no global lookup is exposed.
 pub trait DocumentStore: Send + Sync {
+    /// Count this owner's documents, with today's imports in `[start_ms, end_ms)`.
+    fn document_stats(
+        &self,
+        owner: &UserId,
+        start_ms: i64,
+        end_ms: i64,
+    ) -> BoxFuture<'_, StorageResult<DocumentStats>>;
     fn insert_document(
         &self,
         owner: &UserId,

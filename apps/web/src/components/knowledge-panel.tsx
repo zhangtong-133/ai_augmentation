@@ -12,7 +12,7 @@ function message(status: number) {
   return "暂时无法访问知识库，请稍后重试。";
 }
 
-export function KnowledgePanel() {
+export function KnowledgePanel({ onImported }: { onImported: () => void }) {
   const [items, setItems] = useState<Summary[]>([]);
   const [selected, setSelected] = useState<Document | null>(null);
   const [offset, setOffset] = useState(0);
@@ -61,6 +61,7 @@ export function KnowledgePanel() {
       const result: Summary = await response.json();
       setNotice("已导入「" + result.title + "」，生成 " + result.chunk_count + " 个文本块。");
       form.reset(); setOffset(0); setRevision(value => value + 1);
+      onImported();
     } catch (e) { setError(e instanceof Error ? e.message : "导入失败"); }
     finally { setBusy(false); }
   }

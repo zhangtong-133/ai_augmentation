@@ -15,6 +15,7 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 mod auth;
 mod documents;
+mod overview;
 pub use auth::AuthConfig;
 
 pub struct Config {
@@ -71,6 +72,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
+        .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))
         .route("/readyz", get(ready))

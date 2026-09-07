@@ -18,7 +18,7 @@
 - [x] HTTP 路由测试与 PostgreSQL 集成测试/CI 入口
 - [x] 最小身份认证：管理员配置密码，邮箱登录、持久化会话、退出
 - [x] Dashboard 账户面板及真实服务状态
-- [ ] Dashboard 对接 `/api/healthz` 与今日概览
+- [x] Dashboard 对接 `/api/healthz`、`/api/readyz` 与用户知识库今日概览（UTC）
 - [ ] 集成测试和 Compose smoke test
 
 ## Sprint 2

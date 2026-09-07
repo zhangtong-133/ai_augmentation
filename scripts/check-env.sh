@@ -37,7 +37,8 @@ optional protoc protoc
 if docker info >/dev/null 2>&1; then
   printf '[ok]   %-16s reachable\n' 'Docker daemon'
 else
-  printf '[warn] %-16s unreachable; Compose services cannot start yet\n' 'Docker daemon'
+  printf '[warn] %-16s inaccessible from this process; check sandbox restrictions, socket permissions, context, and service status\n' 'Docker daemon'
+  printf '       Recheck docker info in a normal terminal or an approved unsandboxed check before diagnosing a host failure.\n'
 fi
 
 if docker compose version >/dev/null 2>&1; then
