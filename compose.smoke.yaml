@@ -1,0 +1,62 @@
+# Isolated Sprint 1 acceptance stack. Only scripts/smoke.mjs supplies credentials.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: smoke
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: ${SMOKE_PASSWORD:?run make smoke}
+    ports:
+      - "127.0.0.1::5432"
+    volumes:
+      - smoke-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U smoke -d smoke"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  api-server:
+    build:
+      context: .
+      dockerfile: apps/Dockerfile
+      args:
+        APP: api-server
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8080
+      API_AUTH_TOKEN: ${SMOKE_TOKEN:?run make smoke}
+      DATABASE_URL: postgres://smoke:${SMOKE_PASSWORD}@postgres:5432/smoke
+      SESSION_COOKIE_SECURE: "false"
+    ports:
+      - "127.0.0.1::8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  web:
+    build:
+      context: ./apps/web
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    environment:
+      API_INTERNAL_URL: http://api-server:8080
+    ports:
+      - "127.0.0.1::3000"
+    depends_on:
+      - api-server
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1::80"
+    depends_on:
+      - api-server
+      - web
+volumes:
+  smoke-data:

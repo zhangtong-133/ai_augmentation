@@ -19,6 +19,7 @@ Use Rust 1.96+ and Node.js 20.9+ with npm.
 - `make web-install` / `make web-dev`: install locked dependencies / start Next.js.
 - `npm --prefix apps/web run lint`, `run typecheck`, and `run build`: validate frontend code and production output.
 - `make compose-config` / `make infra-up`: validate Compose / start data services.
+- `make smoke`: build an isolated core Compose stack, run real PostgreSQL/HTTP acceptance, then remove only its test resources. Requires local Docker access.
 
 ## Coding Style & Naming Conventions
 
@@ -30,7 +31,7 @@ Use Rust's test harness, Tokio async tests, and Tower route tests. Name tests af
 
 ## Commit & Pull Request Guidelines
 
-No commits exist yet. Use imperative subjects, optionally scoped, such as `feat(knowledge): add Markdown import`. PRs should explain behavior, link issues/designs, report validation and skipped checks, describe migrations/configuration changes, and include screenshots for UI changes.
+History uses imperative subjects, with optional scopes, such as `feat(knowledge): add Markdown import`. PRs should explain behavior, link issues/designs, report validation and skipped checks, describe migrations/configuration changes, and include screenshots for UI changes.
 
 ## Security & Configuration
 

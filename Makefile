@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help env-check check fmt test test-postgres web-install web-dev compose-config infra-up infra-down stack-up stack-down
+.PHONY: help env-check check fmt test test-postgres smoke web-install web-dev compose-config infra-up infra-down stack-up stack-down
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -21,6 +21,9 @@ test: ## Run Rust workspace tests
 
 test-postgres: ## Run PostgreSQL integration tests using TEST_DATABASE_URL
 	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
+
+smoke: ## Build isolated Compose stack, test real persistence/HTTP flows, and clean test data
+	node scripts/smoke.mjs
 
 web-install: ## Install pinned web dependencies
 	npm --prefix apps/web ci

@@ -9,7 +9,7 @@
 - [x] 用户表初始迁移
 - [x] 环境检查、CI 与统一开发命令
 
-## Sprint 1（进行中）
+## Sprint 1（核心 HTTP 验收已完成）
 
 - [x] Axum API、配置加载、结构化日志与错误响应
 - [x] PostgreSQL 用户仓储适配器及迁移执行器
@@ -19,7 +19,8 @@
 - [x] 最小身份认证：管理员配置密码，邮箱登录、持久化会话、退出
 - [x] Dashboard 账户面板及真实服务状态
 - [x] Dashboard 对接 `/api/healthz`、`/api/readyz` 与用户知识库今日概览（UTC）
-- [ ] 集成测试和 Compose smoke test
+- [x] 真实 PostgreSQL 集成测试和核心 Compose HTTP smoke test（API/Web/Nginx，含重启持久化）
+- [ ] 浏览器交互验收（文件选择、面板刷新与退出清理；不属于 HTTP smoke 覆盖）
 
 ## Sprint 2
 

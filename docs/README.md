@@ -1,5 +1,7 @@
 # 文档索引
 
+- [真实数据库与部署验收](design/sprint-1-acceptance.md)：隔离 Compose、持久化集成测试、双入口 HTTP smoke test 与清理边界。
+
 - [服务状态与今日概览](design/sprint-1-overview.md)：用户隔离统计、UTC 日界线、状态刷新及验证边界。
 
 - [Markdown 导入与文档管理](design/sprint-2-markdown.md)：最新迭代，包含接口、分块、去重、用户隔离及存储阶段性差异。

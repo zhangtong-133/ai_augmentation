@@ -39,3 +39,5 @@ Rust 路由测试覆盖会话要求、管理员 Token 不可替代、空库、�
 前端验证执行 lint、typecheck、build；这些检查不能替代真实登录、导入及退出的浏览器联调。Compose smoke test 仍属未完成项。
 
 2026-09-07 本地结果：`make check` 通过（14 个测试通过，2 个 PostgreSQL 测试跳过）；前端 lint/typecheck/build、Compose 配置校验通过。环境检查仍报告 Docker daemon 不可达，未执行真实 PostgreSQL、Compose smoke test 或浏览器联调。
+
+后续状态：2026-09-12 已通过真实 PostgreSQL 和核心 Compose HTTP smoke test（含概览及重启持久化），详见 [验收记录](sprint-1-acceptance.md)。上段是历史记录；浏览器交互验证仍待完成。

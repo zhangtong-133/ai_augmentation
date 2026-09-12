@@ -1,5 +1,11 @@
 # Local environment baseline
 
+## 2026-09-12 核心部署验收
+
+已在获准的沙箱外运行 `make smoke`，真实 PostgreSQL 两个集成测试均通过；生产 API/Web Docker 镜像、Nginx 与 Next.js 双入口、登录/导入/用户隔离/概览/重启持久化/退出流程通过。参见 [验收记录](design/sprint-1-acceptance.md)。这取代下方“数据库测试尚未执行”的历史状态，不代表浏览器交互或后续向量/对象存储已验收。
+
+本机仍使用 Compose 1.29.2 和 Docker legacy builder。测试发现旧 Desktop 凭据助手不可用，验收脚本改用独立临时匿名 Docker 配置；构建显式接收宿主标准代理变量，避免依赖下载超时。无需修改用户凭据或 socket 权限。后端 Dockerfile 已避免开发 stable 覆盖触发额外工具链下载。
+
 ## 2026-09-07 复查（替代下方历史 Docker 结论）
 
 经授权在沙箱外检查，Docker Engine 27.5.1 可连接，`docker ps` 成功；当前用户有效组包含 docker，宿主 WSL 的 PID 1 为 systemd。沙箱内 socket 访问返回 operation not permitted，不能据此判断本地服务停止。后续 Docker 操作需在普通终端或获准的沙箱外环境执行，无需修改 socket 权限或重装引擎。

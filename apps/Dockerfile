@@ -1,7 +1,9 @@
 FROM rust:1.96-bookworm AS builder
 
 WORKDIR /workspace
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+# Use the toolchain bundled with the versioned image. Copying the developer's
+# "stable" override would download a second, drifting toolchain during builds.
+COPY Cargo.toml Cargo.lock ./
 COPY apps ./apps
 COPY crates ./crates
 

@@ -2,6 +2,8 @@
 
 个人长期 AI 基础设施的 v1 工程。当前已支持账户会话、Markdown 导入及知识库概览；包含可编译的 Rust Workspace、Next.js Dashboard、清晰的外部依赖边界，以及本地服务编排。
 
+核心部署验收运行 `make smoke`：构建独立 Compose 测试环境，执行真实数据库与双入口 HTTP 测试，结束后自动清理该次测试数据。前置条件和范围见 [验收设计](docs/design/sprint-1-acceptance.md)。
+
 Dashboard 显示 API 存活/数据库就绪状态，以及当前用户的文档总数、文本块总数和今日导入量（UTC）；导入后自动刷新。接口与统计口径见 [今日概览设计](docs/design/sprint-1-overview.md)。
 
 ## 当前包含
