@@ -94,3 +94,5 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
   .moduleGrid { grid-template-columns: 1fr; }
   footer { gap: 20px; flex-direction: column; }
 }
+
+.knowledgePanel a { overflow-wrap: anywhere; }

@@ -107,6 +107,7 @@ async fn documents_persist_and_are_owner_scoped() {
         },
         markdown: "# 中文".into(),
         original_pdf: None,
+        original_html: None,
         chunks: vec!["中文".into()],
     };
     store
@@ -197,6 +198,7 @@ async fn documents_persist_and_are_owner_scoped() {
         markdown: "Extracted text **literal**".into(),
         chunks: vec!["Extracted text **literal**".into()],
         original_pdf: Some(b"%PDF-test-original".to_vec()),
+        original_html: None,
     };
     reopened
         .insert_document(&owner.id, "pdf:test-digest", &pdf)
@@ -212,6 +214,34 @@ async fn documents_persist_and_are_owner_scoped() {
     );
     assert!(matches!(
         again.get_document(&other.id, &pdf.summary.id).await,
+        Err(StorageError::NotFound)
+    ));
+    let web = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            source_type: "web_page".into(),
+            source: "https://public.example/article".into(),
+            ..pdf.summary.clone()
+        },
+        markdown: "网页正文".into(),
+        chunks: vec!["网页正文".into()],
+        original_pdf: None,
+        original_html: Some("<article>网页正文<script>untrusted()</script></article>".into()),
+    };
+    again
+        .insert_document(&owner.id, "web:test-digest", &web)
+        .await
+        .unwrap();
+    let reopened_web = PostgresStore::connect(&url).await.unwrap();
+    assert_eq!(
+        reopened_web
+            .get_document(&owner.id, &web.summary.id)
+            .await
+            .unwrap(),
+        web
+    );
+    assert!(matches!(
+        reopened_web.get_document(&other.id, &web.summary.id).await,
         Err(StorageError::NotFound)
     ));
 }

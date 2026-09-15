@@ -1,5 +1,7 @@
 # 文档索引
 
+- [网页 URL 导入](design/sprint-2-web-import.md)：公开静态网页抓取、正文提取、DNS/重定向限制及持久化。
+
 - [PDF 导入](design/sprint-2-pdf.md)：文本提取、原文件持久化、解析限制与部署依赖。
 
 - [WSL 无头浏览器验收](design/sprint-1-browser-acceptance.md)：独立 Playwright、双入口页面交互、测试隔离及报告。

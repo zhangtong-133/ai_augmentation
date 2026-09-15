@@ -55,6 +55,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,
     pub documents: Arc<dyn personal_ai_storage::documents::DocumentStore>,
     pub store: Arc<dyn MetadataStore>,
     pub api_token: Arc<str>,

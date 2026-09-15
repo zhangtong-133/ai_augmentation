@@ -176,3 +176,19 @@ test("PDF import extracts literal text, deduplicates and isolates; invalid PDFs 
   await upload(page, "knowledge.pdf", pdf);
   await expect(page.getByText(/已导入「knowledge.pdf」/)).toBeVisible();
 });
+
+test("web import rejects private URLs without adding documents", async ({ page }, testInfo) => {
+  await page.goto("/");
+  await login(page, await createAccount());
+  const region = page.getByRole("region", { name: "个人知识库", exact: true });
+  await page.getByLabel("网页地址", { exact: true }).fill("http://127.0.0.1/private");
+  await page.getByRole("button", { name: "导入网页", exact: true }).click();
+  await expect(region.getByRole("alert")).toHaveText("仅支持公开网页，不能导入本机或内网地址。");
+  await page.getByLabel("网页地址", { exact: true }).fill("https://example.com:8080/");
+  await page.getByRole("button", { name: "导入网页", exact: true }).click();
+  await expect(region.getByRole("alert")).toHaveText("请输入不含登录信息的 HTTP 或 HTTPS 网页地址（使用默认端口）。");
+  await region.screenshot({ path: testInfo.outputPath("web-import.png") });
+  await page.reload();
+  await expect(metric(page, "文档总数")).toHaveText("0");
+  await expect(page.getByRole("button", { name: "导入网页", exact: true })).toBeEnabled();
+});

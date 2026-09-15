@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod web;
+
 use personal_ai_domain::DocumentId;
 use pulldown_cmark::{Event, Parser, TagEnd};
 

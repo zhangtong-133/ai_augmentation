@@ -24,10 +24,12 @@ pub struct DocumentSummary {
 pub struct StoredDocument {
     #[serde(flatten)]
     pub summary: DocumentSummary,
-    /// Markdown source or extracted PDF text, depending on `source_type`.
+    /// Markdown source or extracted PDF/web text, depending on `source_type`.
     pub markdown: String,
     #[serde(skip_serializing)]
     pub original_pdf: Option<Vec<u8>>,
+    #[serde(skip_serializing)]
+    pub original_html: Option<String>,
     pub chunks: Vec<String>,
 }
 

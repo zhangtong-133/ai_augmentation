@@ -16,6 +16,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
             store: store.clone(),
             documents: store,
             api_token: Arc::from(config.api_token),

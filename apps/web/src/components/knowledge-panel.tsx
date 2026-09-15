@@ -1,10 +1,19 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
 
-type Summary = { source_type: "markdown" | "pdf"; id: string; title: string; source: string; tags: string[]; chunk_count: number; created_at_unix_ms: number };
+type Summary = { source_type: "markdown" | "pdf" | "web_page"; id: string; title: string; source: string; tags: string[]; chunk_count: number; created_at_unix_ms: number };
 type Document = Summary & { markdown: string; chunks: string[] };
 
 function message(status: number, code?: string) {
+  if (code === "invalid_url") return "请输入不含登录信息的 HTTP 或 HTTPS 网页地址（使用默认端口）。";
+  if (code === "url_blocked") return "仅支持公开网页，不能导入本机或内网地址。";
+  if (code === "web_too_large") return "网页过大，请选择不超过 1 MiB 的 HTML 页面。";
+  if (code === "web_unsupported") return "暂仅支持 UTF-8 HTML 网页，请将其他格式另存为文件后导入。";
+  if (code === "web_empty") return "网页没有可提取正文；需要登录或运行脚本的页面暂不支持。";
+  if (code === "web_timeout") return "网页抓取超时，请稍后重试。";
+  if (code === "web_busy") return "网页导入繁忙，请稍后重试。";
+  if (code === "web_redirect") return "网页重定向过多或无效，请使用最终页面地址。";
+  if (code === "web_unavailable") return "无法获取网页，请检查地址或稍后重试。";
   if (code === "invalid_pdf") return "PDF 无法读取，请检查文件是否损坏或需要密码。";
   if (code === "pdf_no_text") return "PDF 中没有可提取文字；扫描件请先进行 OCR。";
   if (code === "pdf_timeout") return "PDF 解析超时，请拆分文件后重试。";
@@ -88,6 +97,29 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
     finally { setBusy(false); }
   }
 
+  async function importUrl(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" },
+        body: JSON.stringify({ url: String(data.get("url") ?? "").trim(), title: String(data.get("title") ?? "").trim(),
+          tags: String(data.get("tags") ?? "").split(",").map(tag => tag.trim()).filter(Boolean) }),
+      });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        throw new Error(message(response.status, failure?.error?.code));
+      }
+      const result: Summary = await response.json();
+      setNotice("已导入「" + result.title + "」，生成 " + result.chunk_count + " 个文本块。");
+      form.reset(); setOffset(0); setRevision(value => value + 1); onImported();
+    } catch (e) { setError(e instanceof Error ? e.message : "导入失败"); }
+    finally { setBusy(false); }
+  }
+
   async function open(id: string) {
     setBusy(true); setError(""); setSelected(null);
     try {
@@ -110,6 +142,17 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
       <input id="document-tags" name="tags" disabled={busy} />
       <button disabled={busy}>{busy ? "处理中…" : "导入文档"}</button>
     </form>
+    <h3>导入网页</h3>
+    <p>支持公开的 UTF-8 静态网页（HTML 最多 1 MiB）。登录页面和需要运行脚本的内容暂不支持。</p>
+    <form onSubmit={event => void importUrl(event)}>
+      <label htmlFor="document-url">网页地址</label>
+      <input id="document-url" name="url" type="url" maxLength={2048} placeholder="https://example.com/article" required disabled={busy} />
+      <label htmlFor="web-title">网页标题（可选，默认页面标题）</label>
+      <input id="web-title" name="title" maxLength={200} disabled={busy} />
+      <label htmlFor="web-tags">网页标签（英文逗号分隔，最多 20 个）</label>
+      <input id="web-tags" name="tags" disabled={busy} />
+      <button disabled={busy}>{busy ? "处理中…" : "导入网页"}</button>
+    </form>
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     {loading ? <p role="status">正在加载文档…</p> : items.length === 0 ? <p>暂无文档。</p> :
@@ -126,7 +169,8 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
     {selected && <section aria-label="文档详情">
       <h3>{selected.title}</h3>
       <button onClick={() => setSelected(null)}>关闭详情</button>
-      <h4>{selected.source_type === "pdf" ? "PDF 提取文本" : "原文"}</h4><pre>{selected.markdown}</pre>
+      {selected.source_type === "web_page" && <p>来源：<a href={selected.source} target="_blank" rel="noopener noreferrer">{selected.source}</a></p>}
+      <h4>{selected.source_type === "pdf" ? "PDF 提取文本" : selected.source_type === "web_page" ? "网页提取文本" : "原文"}</h4><pre>{selected.markdown}</pre>
       <details><summary>查看 {selected.chunk_count} 个文本块</summary>
         {selected.chunks.map((text, index) => <pre key={index}>{text}</pre>)}
       </details>

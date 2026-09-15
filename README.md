@@ -1,6 +1,6 @@
 # Personal AI Augmentation System
 
-个人长期 AI 基础设施的 v1 工程。当前已支持账户会话、Markdown/PDF 导入及知识库概览；包含可编译的 Rust Workspace、Next.js Dashboard、清晰的外部依赖边界，以及本地服务编排。
+个人长期 AI 基础设施的 v1 工程。当前已支持账户会话、Markdown/PDF/网页 URL 导入及知识库概览；包含可编译的 Rust Workspace、Next.js Dashboard、清晰的外部依赖边界，以及本地服务编排。
 
 核心部署验收运行 `make smoke`：构建独立 Compose 测试环境，执行真实数据库与双入口 HTTP 测试，结束后自动清理该次测试数据。前置条件和范围见 [验收设计](docs/design/sprint-1-acceptance.md)。
 
@@ -10,9 +10,11 @@ Dashboard 显示 API 存活/数据库就绪状态，以及当前用户的文档�
 
 PDF 支持可提取文字的文件（最多 5 MiB），原文件暂存 PostgreSQL；扫描件需先 OCR。本机 API 需安装 `poppler-utils`、`util-linux`，Compose 镜像已包含。详见 [PDF 导入设计](docs/design/sprint-2-pdf.md)。
 
+网页 URL 导入支持公开 UTF-8 静态 HTML（最多 1 MiB），保留原 HTML 和最终来源，拒绝内网地址；详见 [网页导入设计](docs/design/sprint-2-web-import.md)。
+
 ## 当前包含
 
-知识库已支持登录后导入 Markdown/PDF、分页列表、原文与分块预览；设计与限制见 [Markdown 导入设计](docs/design/sprint-2-markdown.md)。本轮升级会话 Cookie 后需重新登录一次。
+知识库已支持登录后导入 Markdown/PDF/网页 URL、分页列表、原文与分块预览；设计与限制见 [Markdown 导入设计](docs/design/sprint-2-markdown.md)。本轮升级会话 Cookie 后需重新登录一次。
 
 最新迭代已支持邮箱密码登录、持久化 Cookie 会话和 Dashboard 账户面板。首次使用需管理员为已有用户设置密码；操作步骤见 [登录会话与 Dashboard 设计](docs/design/sprint-1-sessions-dashboard.md)。本地 HTTP 启动 API 时设置 SESSION_COOKIE_SECURE=false（默认只允许 HTTPS Cookie）。
 

@@ -137,6 +137,7 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
         api_token: Arc::from(TOKEN),
@@ -243,6 +244,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
         store: Arc::new(MemoryStore {
             unavailable: true,
@@ -590,6 +592,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
         api_token: Arc::from(TOKEN),
@@ -784,6 +787,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
             unavailable: true,
             ..MemoryStore::default()
@@ -805,4 +809,168 @@ async fn overview_storage_failure_is_not_an_empty_library() {
     let body: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
     assert_eq!(body, json!({"error":{"code":"storage_unavailable"}}));
+}
+
+#[derive(Default)]
+struct FixtureWebImporter(std::sync::atomic::AtomicUsize);
+impl personal_ai_knowledge::web::WebImporter for FixtureWebImporter {
+    fn import(
+        &self,
+        url: &str,
+    ) -> BoxFuture<
+        '_,
+        Result<personal_ai_knowledge::web::WebPage, personal_ai_knowledge::web::WebImportError>,
+    > {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let result = match url {
+            "https://public.example/article" => Ok(personal_ai_knowledge::web::WebPage {
+                title: "网页标题".into(),
+                source: "https://public.example/final".into(),
+                text: "中文正文 **literal**".into(),
+                html: "<article>中文正文 **literal**</article>".into(),
+            }),
+            _ => Err(personal_ai_knowledge::web::WebImportError::Timeout),
+        };
+        Box::pin(async { result })
+    }
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // One complete authenticated import/isolation lifecycle.
+async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
+    let store = Arc::new(MemoryStore::default());
+    let mut cookies = Vec::new();
+    for token in ["a".repeat(64), "b".repeat(64)] {
+        let user = User {
+            id: UserId::new(Uuid::new_v4().to_string()),
+            email: format!("{}@example.com", Uuid::new_v4()),
+            display_name: "Web Owner".into(),
+        };
+        store.save_user(&user).await.unwrap();
+        store.sessions.lock().unwrap().insert(
+            format!("{:x}", Sha256::digest(token.as_bytes())),
+            user.id.to_string(),
+        );
+        cookies.push(format!("personal_ai_session_v2={token}"));
+    }
+    let importer = Arc::new(FixtureWebImporter::default());
+    let app = router(AppState {
+        web_importer: importer.clone(),
+        documents: store.clone(),
+        store,
+        api_token: Arc::from(TOKEN),
+        auth: Arc::new(AuthConfig::new(false)),
+    });
+    let body = json!({"url":"https://public.example/article","tags":["学习"]}).to_string();
+    assert_eq!(
+        auth_request(app.clone(), "POST", "/api/documents", None, &body, true)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            "/api/documents",
+            Some(&cookies[0]),
+            &body,
+            false
+        )
+        .await
+        .status(),
+        StatusCode::FORBIDDEN
+    );
+    for bad in [
+        json!({"url":"https://public.example/article","markdown":"mixed"}),
+        json!({"url":"https://public.example/article","pdf_base64":"JVBERg=="}),
+        json!({"url":"https://public.example/article","source":"fake-source"}),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                "/api/documents",
+                Some(&cookies[0]),
+                &bad.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(importer.0.load(std::sync::atomic::Ordering::SeqCst), 0);
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        "/api/documents",
+        Some(&cookies[0]),
+        &body,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let summary: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(summary["title"], "网页标题");
+    assert_eq!(summary["source_type"], "web_page");
+    assert_eq!(summary["source"], "https://public.example/final");
+    let path = format!("/api/documents/{}", summary["id"].as_str().unwrap());
+    let response = auth_request(app.clone(), "GET", &path, Some(&cookies[0]), "", true).await;
+    let document: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(document["markdown"], "中文正文 **literal**");
+    assert_eq!(document["chunks"], json!(["中文正文 **literal**"]));
+    assert!(document.get("original_html").is_none());
+    assert_eq!(
+        auth_request(app.clone(), "GET", &path, Some(&cookies[1]), "", true)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            "/api/documents",
+            Some(&cookies[0]),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            "/api/documents",
+            Some(&cookies[1]),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::CREATED
+    );
+    let failing = json!({"url":"https://public.example/timeout"}).to_string();
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            "/api/documents",
+            Some(&cookies[0]),
+            &failing,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::GATEWAY_TIMEOUT
+    );
+    assert_eq!(
+        read_overview(app, &cookies[0]).await["knowledge"]["total_documents"],
+        1
+    );
 }

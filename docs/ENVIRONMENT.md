@@ -52,3 +52,9 @@ Docker 诊断：当前 WSL 没有启用 systemd Docker 服务，也看不到 `/v
 ## PDF 导入运行依赖
 
 Linux API 进程需要 `poppler-utils`（pdftotext）和 `util-linux`（prlimit）；Compose 运行镜像自动安装。本机缺少 Poppler 时使用 Compose 验收 PDF；普通 Rust 检查和 Markdown 导入不依赖该可执行文件。
+
+## 网页抓取依赖
+
+网页导入使用 Rust reqwest/rustls 和 scraper，不新增系统包。API 需直接访问公网 DNS 与 HTTP/HTTPS；抓取禁用系统代理。适配器 HTTP 单元测试需允许监听本机回环端口，受限沙箱内运行 `make check` 时需要授予该权限。
+
+2026-09-15：本机直接 DNS 查询无法解析 `example.com`（独立 curl 返回 `Could not resolve host`）；真实公网网页导入补充验收未通过。需恢复公网 DNS/直连网络后运行 `cargo test -p personal-ai-web-import live_public_html_import -- --ignored`，再执行浏览器成功导入验收。

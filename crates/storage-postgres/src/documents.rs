@@ -58,10 +58,10 @@ impl DocumentStore for PostgresStore {
         let document = document.clone();
         Box::pin(async move {
             // One INSERT atomically persists the original, metadata and all chunks.
-            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf,original_html) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")
                 .bind(parse_id(&document.summary.id)?).bind(owner?)
                 .bind(document.summary.title).bind(document.summary.source).bind(document.summary.tags)
-                .bind(digest).bind(document.markdown).bind(document.chunks).bind(document.summary.created_at_unix_ms).bind(document.summary.source_type).bind(document.original_pdf)
+                .bind(digest).bind(document.markdown).bind(document.chunks).bind(document.summary.created_at_unix_ms).bind(document.summary.source_type).bind(document.original_pdf).bind(document.original_html)
                 .execute(&self.pool).await.map_err(|error| {
                     if error.as_database_error().is_some_and(sqlx::error::DatabaseError::is_unique_violation) {
                         StorageError::Conflict("document already exists".into())
@@ -90,12 +90,13 @@ impl DocumentStore for PostgresStore {
         let owner = parse_id(owner.as_str());
         let id = parse_id(id);
         Box::pin(async move {
-            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf FROM documents WHERE user_id=$1 AND id=$2")
+            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf,original_html FROM documents WHERE user_id=$1 AND id=$2")
                 .bind(owner?).bind(id?).fetch_one(&self.pool).await.map_err(map_error)?;
             Ok(StoredDocument {
                 summary: summary(&row),
                 markdown: row.get("markdown"),
                 original_pdf: row.get("original_pdf"),
+                original_html: row.get("original_html"),
                 chunks: row.get("chunks"),
             })
         })
