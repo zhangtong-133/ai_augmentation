@@ -1,5 +1,11 @@
 # Local environment baseline
 
+## 2026-09-12 WSL 浏览器验收
+
+已安装独立 Playwright 1.63.0 与 Chromium 153.0.8010.12，`make browser-install` 成功；`make browser-test` 的 4 项桌面/窄屏交互测试、2 项 PostgreSQL 测试和 HTTP smoke 全部通过。无需连接 Windows Chrome 或使用前台鼠标键盘；CI 已接入，远程运行尚未验证。详见 [浏览器验收设计](design/sprint-1-browser-acceptance.md)。
+
+本机没有可用中文字体，且 sudo 需要密码；已将现有 Windows `msyh.ttc` 链接到 `/home/zt/.local/share/fonts/personal-ai-msyh.ttc` 并刷新字体缓存，未复制或修改 Windows 字体。CI 使用 `fonts-noto-cjk`。Docker legacy builder 缺少 buildx 的警告仍存在，但不阻塞此次测试。
+
 ## 2026-09-12 核心部署验收
 
 已在获准的沙箱外运行 `make smoke`，真实 PostgreSQL 两个集成测试均通过；生产 API/Web Docker 镜像、Nginx 与 Next.js 双入口、登录/导入/用户隔离/概览/重启持久化/退出流程通过。参见 [验收记录](design/sprint-1-acceptance.md)。这取代下方“数据库测试尚未执行”的历史状态，不代表浏览器交互或后续向量/对象存储已验收。

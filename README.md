@@ -4,6 +4,8 @@
 
 核心部署验收运行 `make smoke`：构建独立 Compose 测试环境，执行真实数据库与双入口 HTTP 测试，结束后自动清理该次测试数据。前置条件和范围见 [验收设计](docs/design/sprint-1-acceptance.md)。
 
+浏览器交互验收：先运行 `make browser-install`，再运行 `make browser-test`。使用 WSL 无头 Chromium，不依赖 Windows 浏览器扩展、不抢键鼠；详见 [浏览器验收设计](docs/design/sprint-1-browser-acceptance.md)。
+
 Dashboard 显示 API 存活/数据库就绪状态，以及当前用户的文档总数、文本块总数和今日导入量（UTC）；导入后自动刷新。接口与统计口径见 [今日概览设计](docs/design/sprint-1-overview.md)。
 
 ## 当前包含

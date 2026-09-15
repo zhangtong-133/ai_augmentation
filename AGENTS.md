@@ -20,6 +20,7 @@ Use Rust 1.96+ and Node.js 20.9+ with npm.
 - `npm --prefix apps/web run lint`, `run typecheck`, and `run build`: validate frontend code and production output.
 - `make compose-config` / `make infra-up`: validate Compose / start data services.
 - `make smoke`: build an isolated core Compose stack, run real PostgreSQL/HTTP acceptance, then remove only its test resources. Requires local Docker access.
+- `make browser-install` / `make browser-test`: install isolated Playwright/Chromium dependencies / run headless UI acceptance with the disposable Compose stack.
 
 ## Coding Style & Naming Conventions
 
@@ -27,7 +28,7 @@ Follow `.editorconfig`: UTF-8, LF, two-space indentation except four spaces for 
 
 ## Testing Guidelines
 
-Use Rust's test harness, Tokio async tests, and Tower route tests. Name tests after observable behavior, covering authorization, user isolation, validation, and persistence. Run `TEST_DATABASE_URL=… make test-postgres` against a disposable database; these tests write data and are otherwise ignored. Report skipped checks explicitly. No coverage percentage or frontend test runner is configured; run frontend lint, typecheck, and build.
+Use Rust's test harness, Tokio async tests, and Tower route tests. Name tests after observable behavior, covering authorization, user isolation, validation, and persistence. Run `TEST_DATABASE_URL=… make test-postgres` against a disposable database; these tests write data and are otherwise ignored. Playwright UI tests live in `tests/browser/*.spec.mjs`; run `make browser-test`. Report skipped checks explicitly. No coverage percentage is configured; also run frontend lint, typecheck, and build.
 
 ## Commit & Pull Request Guidelines
 

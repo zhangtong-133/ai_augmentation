@@ -1,5 +1,7 @@
 # 文档索引
 
+- [WSL 无头浏览器验收](design/sprint-1-browser-acceptance.md)：独立 Playwright、双入口页面交互、测试隔离及报告。
+
 - [真实数据库与部署验收](design/sprint-1-acceptance.md)：隔离 Compose、持久化集成测试、双入口 HTTP smoke test 与清理边界。
 
 - [服务状态与今日概览](design/sprint-1-overview.md)：用户隔离统计、UTC 日界线、状态刷新及验证边界。

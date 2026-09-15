@@ -171,6 +171,15 @@ try {
   const renewed = await login(web, owner);
   assert.equal((await request(web, path, 200, { cookie: renewed })).data.id, document.id);
   console.log("PASS: database/API restart persistence, logout revocation and re-login");
+  if (process.argv.includes("--browser")) {
+    // Docker may assign a new ephemeral host port when the API restarts.
+    const browserApi = await endpoint("api-server", 8080);
+    await ready(browserApi + "/api/readyz");
+    await command("npm", ["--prefix", "tests/browser", "test"], {
+      E2E_API_URL: browserApi, E2E_WEB_URL: web, E2E_GATEWAY_URL: gateway,
+      E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
+    });
+  }
 } catch (error) {
   // Do not dump request bodies, environment, cookies or Docker inspect data.
   console.error(`FAIL: ${error.message}`);

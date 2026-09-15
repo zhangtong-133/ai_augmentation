@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help env-check check fmt test test-postgres smoke web-install web-dev compose-config infra-up infra-down stack-up stack-down
+.PHONY: help env-check check fmt test test-postgres smoke browser-install browser-test web-install web-dev compose-config infra-up infra-down stack-up stack-down
 
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -24,6 +24,13 @@ test-postgres: ## Run PostgreSQL integration tests using TEST_DATABASE_URL
 
 smoke: ## Build isolated Compose stack, test real persistence/HTTP flows, and clean test data
 	node scripts/smoke.mjs
+
+browser-install: ## Install locked Playwright dependencies and WSL headless Chromium
+	npm --prefix tests/browser ci
+	npm --prefix tests/browser run install-browser
+
+browser-test: ## Run HTTP acceptance plus headless UI tests in an isolated Compose stack
+	node scripts/smoke.mjs --browser
 
 web-install: ## Install pinned web dependencies
 	npm --prefix apps/web ci
