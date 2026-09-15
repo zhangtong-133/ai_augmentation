@@ -14,6 +14,7 @@ pub struct DocumentSummary {
     pub id: String,
     pub title: String,
     pub source: String,
+    pub source_type: String,
     pub tags: Vec<String>,
     pub created_at_unix_ms: i64,
     pub chunk_count: i32,
@@ -23,7 +24,10 @@ pub struct DocumentSummary {
 pub struct StoredDocument {
     #[serde(flatten)]
     pub summary: DocumentSummary,
+    /// Markdown source or extracted PDF text, depending on `source_type`.
     pub markdown: String,
+    #[serde(skip_serializing)]
+    pub original_pdf: Option<Vec<u8>>,
     pub chunks: Vec<String>,
 }
 

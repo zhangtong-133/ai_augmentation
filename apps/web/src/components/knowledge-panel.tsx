@@ -1,10 +1,15 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
 
-type Summary = { id: string; title: string; source: string; tags: string[]; chunk_count: number; created_at_unix_ms: number };
+type Summary = { source_type: "markdown" | "pdf"; id: string; title: string; source: string; tags: string[]; chunk_count: number; created_at_unix_ms: number };
 type Document = Summary & { markdown: string; chunks: string[] };
 
-function message(status: number) {
+function message(status: number, code?: string) {
+  if (code === "invalid_pdf") return "PDF 无法读取，请检查文件是否损坏或需要密码。";
+  if (code === "pdf_no_text") return "PDF 中没有可提取文字；扫描件请先进行 OCR。";
+  if (code === "pdf_timeout") return "PDF 解析超时，请拆分文件后重试。";
+  if (code === "pdf_busy") return "PDF 导入繁忙，请稍后重试。";
+  if (code === "pdf_unavailable") return "PDF 解析服务暂不可用，请稍后重试。";
   if (status === 401) return "登录已失效，请退出后重新登录。";
   if (status === 409) return "这份内容已经导入，无需重复上传。";
   if (status === 413) return "文件太大，请选择不超过 256 KiB 的 Markdown。";
@@ -45,19 +50,36 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
     setBusy(true); setError(""); setNotice("");
     try {
       const file = data.get("file");
-      if (!(file instanceof File) || !/\.(md|markdown)$/i.test(file.name)) throw new Error("请选择 .md 或 .markdown 文件。");
-      if (file.size > 256 * 1024) throw new Error(message(413));
-      let markdown: string;
-      try { markdown = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer()); }
-      catch { throw new Error("请将文件保存为 UTF-8 编码后重新上传。"); }
+      if (!(file instanceof File) || !/\.(md|markdown|pdf)$/i.test(file.name)) throw new Error("请选择 .md、.markdown 或 .pdf 文件。");
+      const isPdf = /\.pdf$/i.test(file.name);
+      if (file.size > (isPdf ? 5 * 1024 * 1024 : 256 * 1024)) {
+        throw new Error(isPdf ? "PDF 太大，请选择不超过 5 MiB 的文件。" : message(413));
+      }
+      const buffer = await file.arrayBuffer();
+      let content: { markdown: string } | { pdf_base64: string };
+      if (isPdf) {
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let index = 0; index < bytes.length; index += 8192) {
+          binary += String.fromCharCode(...bytes.subarray(index, index + 8192));
+        }
+        content = { pdf_base64: btoa(binary) };
+      } else {
+        try { content = { markdown: new TextDecoder("utf-8", { fatal: true }).decode(buffer) }; }
+        catch { throw new Error("请将文件保存为 UTF-8 编码后重新上传。"); }
+      }
       const tags = String(data.get("tags") ?? "").split(",").map(t => t.trim()).filter(Boolean);
       const title = String(data.get("title") ?? "").trim() || file.name;
       const response = await fetch("/api/documents", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" },
-        body: JSON.stringify({ title, markdown, source: file.name, tags }),
+        body: JSON.stringify({ title, ...content, source: file.name, tags }),
       });
-      if (!response.ok) throw new Error(message(response.status));
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null);
+        if (isPdf && response.status === 413) throw new Error("PDF 或提取文本过大，请拆分文件后重试。");
+        throw new Error(message(response.status, failure?.error?.code));
+      }
       const result: Summary = await response.json();
       setNotice("已导入「" + result.title + "」，生成 " + result.chunk_count + " 个文本块。");
       form.reset(); setOffset(0); setRevision(value => value + 1);
@@ -78,10 +100,10 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
 
   return <section className="knowledgePanel" aria-label="个人知识库">
     <h2>个人知识库</h2>
-    <p>导入 Markdown 笔记，保存原文并提取文本。知识问答尚未启用。</p>
+    <p>导入 Markdown 或 PDF，保存原文件并提取文本。扫描 PDF 请先进行 OCR；知识问答尚未启用。</p>
     <form onSubmit={event => void upload(event)}>
-      <label htmlFor="document-file">Markdown 文件（UTF-8，最多 256 KiB）</label>
-      <input id="document-file" name="file" type="file" accept=".md,.markdown,text/markdown" required disabled={busy} />
+      <label htmlFor="document-file">Markdown / PDF 文件（Markdown 为 UTF-8，最多 256 KiB；PDF 最多 5 MiB）</label>
+      <input id="document-file" name="file" type="file" accept=".md,.markdown,.pdf,text/markdown,application/pdf" required disabled={busy} />
       <label htmlFor="document-title">标题（可选，默认文件名）</label>
       <input id="document-title" name="title" maxLength={200} disabled={busy} />
       <label htmlFor="document-tags">标签（英文逗号分隔，最多 20 个）</label>
@@ -104,7 +126,7 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
     {selected && <section aria-label="文档详情">
       <h3>{selected.title}</h3>
       <button onClick={() => setSelected(null)}>关闭详情</button>
-      <h4>原文</h4><pre>{selected.markdown}</pre>
+      <h4>{selected.source_type === "pdf" ? "PDF 提取文本" : "原文"}</h4><pre>{selected.markdown}</pre>
       <details><summary>查看 {selected.chunk_count} 个文本块</summary>
         {selected.chunks.map((text, index) => <pre key={index}>{text}</pre>)}
       </details>

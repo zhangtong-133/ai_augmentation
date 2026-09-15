@@ -22,7 +22,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (value) headers.set(name, value);
   }
   try {
-    const limit = endpoint === "documents" ? 2 * 1024 * 1024 : 16384;
+    const limit = endpoint === "documents" ? 8 * 1024 * 1024 : 16384;
     let body: string | undefined;
     if (request.method === "POST" && request.body) {
       const reader = request.body.getReader();

@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+base64 = "0.22"
+personal-ai-pdf-poppler = { path = "../../crates/pdf-poppler" }
 argon2.workspace = true
 sha2.workspace = true
 axum.workspace = true

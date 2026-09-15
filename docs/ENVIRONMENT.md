@@ -48,3 +48,7 @@
 Docker 诊断：当前 WSL 没有启用 systemd Docker 服务，也看不到 `/var/run/docker.sock`。`/etc/group` 的 `docker` 组包含用户 `zt`，但当前登录会话的有效组列表尚未包含该组。建议先确认 Docker Desktop 正在运行并为本 WSL distribution 开启 integration，然后重启 WSL/终端会话再执行 `docker info`。
 
 前端固定使用 Next.js 16.3.4 / React 19.2.8 / TypeScript 5.9.3。Next.js 本身要求 Node.js 20.9+，当前版本满足；`typescript-eslint` 暂时固定为 8.46.0，以避免其较新的传递依赖要求 Node.js 20.19+。
+
+## PDF 导入运行依赖
+
+Linux API 进程需要 `poppler-utils`（pdftotext）和 `util-linux`（prlimit）；Compose 运行镜像自动安装。本机缺少 Poppler 时使用 Compose 验收 PDF；普通 Rust 检查和 Markdown 导入不依赖该可执行文件。

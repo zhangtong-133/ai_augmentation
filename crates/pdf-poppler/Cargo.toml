@@ -1,0 +1,12 @@
+[package]
+name = "personal-ai-pdf-poppler"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["process", "io-util", "time", "sync"] }
+
+[lints]
+workspace = true

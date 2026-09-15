@@ -100,11 +100,13 @@ async fn documents_persist_and_are_owner_scoped() {
             id: Uuid::new_v4().to_string(),
             title: "中文文档".into(),
             source: "note.md".into(),
+            source_type: "markdown".into(),
             tags: vec!["Rust".into()],
             created_at_unix_ms: 1234,
             chunk_count: 1,
         },
         markdown: "# 中文".into(),
+        original_pdf: None,
         chunks: vec!["中文".into()],
     };
     store
@@ -185,4 +187,31 @@ async fn documents_persist_and_are_owner_scoped() {
             .unwrap(),
         second
     );
+    let pdf = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            source_type: "pdf".into(),
+            source: "note.pdf".into(),
+            ..second.summary.clone()
+        },
+        markdown: "Extracted text **literal**".into(),
+        chunks: vec!["Extracted text **literal**".into()],
+        original_pdf: Some(b"%PDF-test-original".to_vec()),
+    };
+    reopened
+        .insert_document(&owner.id, "pdf:test-digest", &pdf)
+        .await
+        .unwrap();
+    let again = PostgresStore::connect(&url).await.unwrap();
+    assert_eq!(
+        again
+            .get_document(&owner.id, &pdf.summary.id)
+            .await
+            .unwrap(),
+        pdf
+    );
+    assert!(matches!(
+        again.get_document(&other.id, &pdf.summary.id).await,
+        Err(StorageError::NotFound)
+    ));
 }

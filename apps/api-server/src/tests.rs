@@ -701,6 +701,10 @@ async fn documents_are_private_deduplicated_and_validated() {
         StatusCode::CREATED
     );
     for bad in [
+        json!({"title":"x"}),
+        json!({"title":"x","pdf_base64":"%%%"}),
+        json!({"title":"x","pdf_base64":"bm90IGEgcGRm"}),
+        json!({"title":"x","markdown":"text","pdf_base64":"JVBERi0="}),
         json!({"title":"","markdown":"text"}),
         json!({"title":"x","markdown":"\u{0000}"}),
         json!({"title":"x","markdown":" "}),

@@ -26,7 +26,8 @@
 
 - [x] Markdown 导入、按用户隔离、去重与文档列表/详情
 - [x] Markdown 文本解析与 Unicode 分块
-- [ ] PDF/网页导入
+- [x] PDF 导入（文本提取、原文件持久化、用户隔离与浏览器验收；不含 OCR）
+- [ ] 网页 URL 导入
 - [ ] MinIO 原文适配器、Embedding、Qdrant adapter
 - [ ] RAG 检索与知识问答
 

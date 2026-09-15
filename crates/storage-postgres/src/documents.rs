@@ -12,6 +12,7 @@ fn summary(row: &PgRow) -> DocumentSummary {
         id: row.get::<Uuid, _>("id").to_string(),
         title: row.get("title"),
         source: row.get("source"),
+        source_type: row.get("source_type"),
         tags: row.get("tags"),
         created_at_unix_ms: row.get("created_at_unix_ms"),
         chunk_count: row.get("chunk_count"),
@@ -57,10 +58,10 @@ impl DocumentStore for PostgresStore {
         let document = document.clone();
         Box::pin(async move {
             // One INSERT atomically persists the original, metadata and all chunks.
-            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
                 .bind(parse_id(&document.summary.id)?).bind(owner?)
                 .bind(document.summary.title).bind(document.summary.source).bind(document.summary.tags)
-                .bind(digest).bind(document.markdown).bind(document.chunks).bind(document.summary.created_at_unix_ms)
+                .bind(digest).bind(document.markdown).bind(document.chunks).bind(document.summary.created_at_unix_ms).bind(document.summary.source_type).bind(document.original_pdf)
                 .execute(&self.pool).await.map_err(|error| {
                     if error.as_database_error().is_some_and(sqlx::error::DatabaseError::is_unique_violation) {
                         StorageError::Conflict("document already exists".into())
@@ -76,7 +77,7 @@ impl DocumentStore for PostgresStore {
     ) -> BoxFuture<'_, StorageResult<Vec<DocumentSummary>>> {
         let owner = parse_id(owner.as_str());
         Box::pin(async move {
-            let rows = sqlx::query("SELECT id,title,source,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count FROM documents WHERE user_id=$1 ORDER BY created_at_unix_ms DESC,id DESC LIMIT 20 OFFSET $2")
+            let rows = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count FROM documents WHERE user_id=$1 ORDER BY created_at_unix_ms DESC,id DESC LIMIT 20 OFFSET $2")
                 .bind(owner?).bind(i64::from(offset)).fetch_all(&self.pool).await.map_err(map_error)?;
             Ok(rows.iter().map(summary).collect())
         })
@@ -89,11 +90,12 @@ impl DocumentStore for PostgresStore {
         let owner = parse_id(owner.as_str());
         let id = parse_id(id);
         Box::pin(async move {
-            let row = sqlx::query("SELECT id,title,source,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks FROM documents WHERE user_id=$1 AND id=$2")
+            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf FROM documents WHERE user_id=$1 AND id=$2")
                 .bind(owner?).bind(id?).fetch_one(&self.pool).await.map_err(map_error)?;
             Ok(StoredDocument {
                 summary: summary(&row),
                 markdown: row.get("markdown"),
+                original_pdf: row.get("original_pdf"),
                 chunks: row.get("chunks"),
             })
         })

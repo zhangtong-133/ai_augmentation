@@ -9,8 +9,10 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 use personal_ai_domain::DocumentId;
 use personal_ai_knowledge::{chunk_text, markdown_text};
+use personal_ai_pdf_poppler::{MAX_PDF_BYTES, PdfError};
 use personal_ai_storage::{
     StorageError,
     documents::{DocumentSummary, StoredDocument},
@@ -24,13 +26,14 @@ pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/documents", get(list).post(import))
         .route("/api/documents/{id}", get(detail))
-        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(8 * 1024 * 1024))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Import {
     title: String,
-    markdown: String,
+    markdown: Option<String>,
+    pdf_base64: Option<String>,
     #[serde(default)]
     source: String,
     #[serde(default)]
@@ -61,19 +64,11 @@ async fn import(
         || input.tags.iter().any(|t| {
             t.trim().is_empty() || t.chars().count() > 40 || t.chars().any(char::is_control)
         })
-        || input.markdown.trim().is_empty()
-        || input.markdown.contains('\0')
     {
         return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_document"));
     }
-    if input.markdown.len() > 256 * 1024 {
-        return Err(ApiError(
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "document_too_large",
-        ));
-    }
+    let (content, text, original_pdf, source_type, digest) = prepare_content(&input).await?;
     let id = Uuid::new_v4().to_string();
-    let text = markdown_text(&input.markdown.replace("\r\n", "\n"));
     let chunks: Vec<_> = chunk_text(&DocumentId::new(&id), &text, 1000)
         .into_iter()
         .map(|c| c.content)
@@ -81,7 +76,6 @@ async fn import(
     if chunks.is_empty() {
         return Err(ApiError(StatusCode::BAD_REQUEST, "empty_document"));
     }
-    let digest = format!("{:x}", Sha256::digest(input.markdown.as_bytes()));
     let created_at_unix_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
@@ -101,11 +95,13 @@ async fn import(
             id,
             title,
             source: input.source,
+            source_type,
             tags,
             created_at_unix_ms,
             chunk_count,
         },
-        markdown: input.markdown,
+        markdown: content,
+        original_pdf,
         chunks,
     };
     state
@@ -124,6 +120,64 @@ async fn import(
         ],
         Json(document.summary),
     ))
+}
+// Keep Markdown's existing digest and response field for compatibility.
+async fn prepare_content(
+    input: &Import,
+) -> Result<(String, String, Option<Vec<u8>>, String, String), ApiError> {
+    match (&input.markdown, &input.pdf_base64) {
+        (Some(markdown), None) => {
+            if markdown.len() > 256 * 1024 {
+                return Err(ApiError(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "document_too_large",
+                ));
+            }
+            if markdown.trim().is_empty() || markdown.contains('\0') {
+                return Err(ApiError(StatusCode::BAD_REQUEST, "invalid_document"));
+            }
+            Ok((
+                markdown.clone(),
+                markdown_text(&markdown.replace("\r\n", "\n")),
+                None,
+                "markdown".into(),
+                format!("{:x}", Sha256::digest(markdown.as_bytes())),
+            ))
+        }
+        (None, Some(encoded)) => {
+            if encoded.len() > MAX_PDF_BYTES.div_ceil(3) * 4 {
+                return Err(ApiError(
+                    StatusCode::PAYLOAD_TOO_LARGE,
+                    "document_too_large",
+                ));
+            }
+            let bytes = STANDARD
+                .decode(encoded)
+                .map_err(|_| ApiError(StatusCode::BAD_REQUEST, "invalid_pdf"))?;
+            let text =
+                personal_ai_pdf_poppler::extract(&bytes)
+                    .await
+                    .map_err(|error| match error {
+                        PdfError::Invalid => ApiError(StatusCode::BAD_REQUEST, "invalid_pdf"),
+                        PdfError::TooLarge => {
+                            ApiError(StatusCode::PAYLOAD_TOO_LARGE, "document_too_large")
+                        }
+                        PdfError::Empty => {
+                            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "pdf_no_text")
+                        }
+                        PdfError::Unavailable => {
+                            ApiError(StatusCode::SERVICE_UNAVAILABLE, "pdf_unavailable")
+                        }
+                        PdfError::Busy => ApiError(StatusCode::SERVICE_UNAVAILABLE, "pdf_busy"),
+                        PdfError::Timeout => {
+                            ApiError(StatusCode::UNPROCESSABLE_ENTITY, "pdf_timeout")
+                        }
+                    })?;
+            let digest = format!("pdf:{:x}", Sha256::digest(&bytes));
+            Ok((text.clone(), text, Some(bytes), "pdf".into(), digest))
+        }
+        _ => Err(ApiError(StatusCode::BAD_REQUEST, "invalid_document")),
+    }
 }
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]

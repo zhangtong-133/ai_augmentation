@@ -23,11 +23,13 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "axum",
+ "base64",
  "personal-ai-agent-core",
  "personal-ai-domain",
  "personal-ai-knowledge",
  "personal-ai-learning",
  "personal-ai-llm",
+ "personal-ai-pdf-poppler",
  "personal-ai-storage",
  "personal-ai-storage-postgres",
  "personal-ai-tools",
@@ -1019,6 +1021,13 @@ name = "personal-ai-mcp"
 version = "0.1.0"
 dependencies = [
  "personal-ai-tools",
+]
+
+[[package]]
+name = "personal-ai-pdf-poppler"
+version = "0.1.0"
+dependencies = [
+ "tokio",
 ]
 
 [[package]]

@@ -1,5 +1,7 @@
 # 文档索引
 
+- [PDF 导入](design/sprint-2-pdf.md)：文本提取、原文件持久化、解析限制与部署依赖。
+
 - [WSL 无头浏览器验收](design/sprint-1-browser-acceptance.md)：独立 Playwright、双入口页面交互、测试隔离及报告。
 
 - [真实数据库与部署验收](design/sprint-1-acceptance.md)：隔离 Compose、持久化集成测试、双入口 HTTP smoke test 与清理边界。

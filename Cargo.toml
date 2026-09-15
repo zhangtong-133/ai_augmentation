@@ -8,6 +8,7 @@ members = [
   "crates/domain",
   "crates/agent-core",
   "crates/knowledge",
+  "crates/pdf-poppler",
   "crates/learning",
   "crates/storage",
   "crates/llm",
