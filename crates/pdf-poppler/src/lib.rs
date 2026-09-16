@@ -1,4 +1,4 @@
-//! Bounded text extraction through a disposable Poppler subprocess.
+//! 通过一次性 Poppler 子进程执行有资源限制的文本提取。
 #![forbid(unsafe_code)]
 
 use std::{process::Stdio, time::Duration};
@@ -22,11 +22,11 @@ pub enum PdfError {
     Timeout,
 }
 
-/// Extract UTF-8 text without opening links, running scripts, or writing files.
+/// 提取 UTF-8 文本，不打开链接、运行脚本或写入文件。
 ///
 /// # Errors
-/// Rejects malformed/locked PDFs, empty text, oversized input/output and overload.
-/// Requires `pdftotext` and `prlimit` on PATH (Linux runtime).
+/// PDF 损坏或加密、正文为空、输入输出超限或并发过载时返回错误。
+/// Linux 运行环境的 PATH 中必须包含 `pdftotext` 和 `prlimit`。
 pub async fn extract(bytes: &[u8]) -> Result<String, PdfError> {
     if bytes.len() > MAX_PDF_BYTES {
         return Err(PdfError::TooLarge);
@@ -57,7 +57,7 @@ pub async fn extract(bytes: &[u8]) -> Result<String, PdfError> {
     let stdout = child.stdout.take().ok_or(PdfError::Unavailable)?;
     let operation = async {
         let write = async {
-            // Wait for exit status even if a missing executable closes stdin early.
+            // 即使缺少可执行文件导致标准输入提前关闭，也要等待退出状态。
             let result = stdin.write_all(bytes).await;
             drop(stdin);
             Ok::<_, PdfError>(result)

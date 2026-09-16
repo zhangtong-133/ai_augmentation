@@ -1,4 +1,4 @@
-//! Public-web fetching with per-hop address validation and pinned DNS results.
+//! 抓取公开网页，每次跳转均校验地址，并将连接固定到已校验的 DNS 结果。
 #![forbid(unsafe_code)]
 
 use personal_ai_knowledge::web::{WebImportError as Error, WebImporter, WebPage};
@@ -35,7 +35,7 @@ impl WebImporter for PublicWebImporter {
             let permit = slots.try_acquire_owned().map_err(|_| Error::Busy)?;
             tokio::time::timeout(DEADLINE, async move {
                 let (url, html) = fetch_html(url).await?;
-                // The permit remains held if a cancelled request leaves parsing running.
+                // 若请求取消后解析仍在运行，则继续持有并发许可。
                 tokio::task::spawn_blocking(move || {
                     let _permit = permit;
                     extract_html(&url, html)
@@ -49,7 +49,7 @@ impl WebImporter for PublicWebImporter {
     }
 }
 
-#[allow(clippy::case_sensitive_file_extension_comparisons)] // URL-normalized DNS names, not file extensions.
+#[allow(clippy::case_sensitive_file_extension_comparisons)] // 此处比较的是 URL 规范化后的 DNS 名称，并非文件扩展名。
 fn validate_url(input: &str) -> Result<Url, Error> {
     if input.len() > 2048 || input.chars().any(char::is_control) {
         return Err(Error::InvalidUrl);
@@ -106,7 +106,7 @@ fn public_ip(ip: IpAddr) -> bool {
         }
         IpAddr::V6(ip) => {
             let s = ip.segments();
-            // Permit ordinary global unicast only; exclude transition/special/documentation ranges.
+            // 仅允许普通全球单播地址，排除过渡、特殊用途及文档示例地址段。
             (s[0] & 0xe000) == 0x2000
                 && s[0] != 0x2002
                 && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
@@ -163,7 +163,7 @@ async fn fetch_html(mut url: Url) -> Result<(Url, String), Error> {
             }
         };
         validate_addresses(&addresses)?;
-        // No proxy, fresh client per hop, and only these checked addresses can be dialled.
+        // 禁用代理，每次跳转新建客户端，且只能连接这些已校验的地址。
         let response = client_for(&url, &addresses)?
             .get(url.clone())
             .header(header::ACCEPT, "text/html")

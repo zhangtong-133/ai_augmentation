@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 async function createAccount() {
   const email = `${randomUUID()}@browser.example`;
   const password = randomUUID();
-  // Node fetch avoids Playwright request diagnostics recording the admin header.
+  // 使用 Node fetch，避免 Playwright 请求诊断记录管理员认证头。
   const headers = { authorization: `Bearer ${process.env.E2E_ADMIN_TOKEN}`, "content-type": "application/json" };
   const created = await fetch(process.env.E2E_API_URL + "/api/users", {
     method: "POST", headers, body: JSON.stringify({ email, display_name: "浏览器验收" }), signal: AbortSignal.timeout(10000),
@@ -31,7 +31,7 @@ async function upload(page, name, buffer) {
   await page.getByRole("button", { name: "导入文档", exact: true }).click();
 }
 
-// Register as skipped before fixtures launch when public-network checks are disabled.
+// 未启用公网检查时，在测试夹具启动前将用例注册为跳过。
 const publicWebTest = process.env.E2E_PUBLIC_WEB === "1" ? test : test.skip;
 publicWebTest("public webpage import persists, deduplicates and isolates through the UI", async ({ page }, testInfo) => {
   const owner = await createAccount();
@@ -132,7 +132,7 @@ test("invalid files are rejected and overview failure can be retried", async ({ 
   await expect(page.getByRole("region", { name: "个人知识库", exact: true }).getByRole("alert")).toHaveText("文件太大，请选择不超过 256 KiB 的 Markdown。");
   await expect(metric(page, "文档总数")).toHaveText("0");
 
-  // Only this failure is simulated; normal requests use the real API/database.
+  // 仅模拟此故障，正常请求均使用真实 API 和数据库。
   await page.route("**/api/overview", route => route.fulfill({ status: 503, json: { error: { code: "storage_unavailable" } } }));
   await page.getByRole("button", { name: "刷新概览", exact: true }).click();
   const overview = page.getByRole("region", { name: "今日概览" });
@@ -170,7 +170,7 @@ function pdfFile(text, padding = 0, pages = 1) {
   pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
   for (const offset of offsets.slice(1)) pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`;
-  // A large legal comment exercises every proxy's request limit.
+  // 使用较大的合法 PDF 注释，验证各层代理的请求大小限制。
   if (padding) pdf += "%" + "x".repeat(padding) + "\n";
   pdf += `startxref\n${xref}\n%%EOF\n`;
   return Buffer.from(pdf);

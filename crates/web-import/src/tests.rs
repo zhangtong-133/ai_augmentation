@@ -74,8 +74,8 @@ fn extracts_article_unicode_entities_and_literal_text_without_active_content() {
     );
 }
 
-// Unit-only transport injection: production fetch_html validates DNS before client_for.
-// No runtime flag or allowlist exists to make loopback URLs importable.
+// 仅单元测试可注入传输目标：生产 fetch_html 会先校验 DNS，再调用 client_for。
+// 不提供任何允许导入回环地址的运行时开关或白名单。
 async fn fixture(response: Vec<u8>) -> (Url, Client, tokio::task::JoinHandle<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();

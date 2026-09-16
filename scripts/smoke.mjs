@@ -1,4 +1,4 @@
-// Uses only Node built-ins. Never targets the user's .env or ordinary Compose project.
+// 验收流程仅使用 Node 内置模块；不操作用户的 .env 或常规 Compose 项目。
 import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -23,8 +23,8 @@ if (process.argv.includes("--browser")) {
     throw new Error("Missing platform-native Playwright/Chromium; run make browser-install on this machine.");
   }
 }
-// Resolve the user's selected endpoint before isolating registry credentials.
-// DOCKER_CONTEXT takes precedence over DOCKER_HOST, as in the Docker CLI.
+// 隔离镜像仓库凭据前，先解析用户选定的 Docker 连接地址。
+// 与 Docker CLI 一致，DOCKER_CONTEXT 优先于 DOCKER_HOST。
 const execute = promisify(execFile);
 const dockerHost = process.env.DOCKER_CONTEXT || !process.env.DOCKER_HOST
   ? (await execute("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], { timeout: 10000 })).stdout.trim()
@@ -33,8 +33,8 @@ if (!dockerHost.startsWith("unix:///")) {
   throw new Error("Smoke acceptance requires a local Unix Docker socket for loopback ports.");
 }
 const project = `personal-ai-smoke-${randomBytes(8).toString("hex")}`;
-// Only public images are used. Isolate stale Desktop credential helpers and login data.
-// Preserve plugin discovery (OrbStack/Desktop install buildx under this directory).
+// 仅使用公开镜像，隔离旧 Desktop 凭据助手和登录数据。
+// 保留插件发现能力（OrbStack/Desktop 会在此目录安装 buildx）。
 const originalDockerConfig = process.env.DOCKER_CONFIG || join(homedir(), ".docker");
 let extraPluginDirs = [];
 try {
@@ -57,7 +57,7 @@ const env = {
   SMOKE_TOKEN: randomBytes(32).toString("hex"),
 };
 delete env.DOCKER_CONTEXT;
-// Public-network acceptance must be explicitly requested, never inherited.
+// 公网验收必须显式启用，不从环境中继承开关。
 delete env.E2E_PUBLIC_WEB;
 let active;
 let interrupted = false;
@@ -74,7 +74,7 @@ function command(binary, args, extra = {}, capture = false) {
     active = child;
     let output = "";
     child.stdout?.on("data", data => { output += data; });
-    // Captured errors can contain credentials; report only command name and exit code.
+    // 捕获的错误可能含有凭据，因此仅报告命令名和退出状态。
     child.stderr?.resume();
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 20 * 60 * 1000);
@@ -104,7 +104,7 @@ async function ready(url) {
     if (interrupted) throw new Error("interrupted");
     try {
       if ((await fetch(url, { signal: AbortSignal.timeout(2000) })).ok) return;
-    } catch { /* Startup may temporarily refuse connections. */ }
+    } catch { /* 启动期间可能暂时拒绝连接。 */ }
     await delay(1000);
   }
   throw new Error(`readiness timeout: ${url}`);
@@ -195,7 +195,7 @@ try {
     const overview = await request(base, "/api/overview", 200, { cookie });
     assert.equal(overview.data.knowledge.total_documents, 1);
     assert.equal(overview.data.knowledge.total_chunks, document.chunk_count);
-    // Derive expectation from the returned day window to avoid UTC-midnight flakes.
+    // 根据返回的当天时间区间计算预期值，避免 UTC 午夜切换导致测试偶发失败。
     assert.equal(overview.data.knowledge.imported_today,
       Number(document.created_at_unix_ms >= overview.data.day_start_unix_ms &&
         document.created_at_unix_ms < overview.data.day_end_unix_ms));
@@ -212,7 +212,7 @@ try {
   assert.equal((await request(web, path, 200, { cookie: renewed })).data.id, document.id);
   console.log("PASS: database/API restart persistence, logout revocation and re-login");
   if (process.argv.includes("--browser")) {
-    // Docker may assign a new ephemeral host port when the API restarts.
+    // API 重启时，Docker 可能重新分配临时宿主端口。
     const browserApi = await endpoint("api-server", 8080);
     await ready(browserApi + "/api/readyz");
     await command("npm", ["--prefix", "tests/browser", "test"], {
@@ -222,13 +222,13 @@ try {
     });
   }
 } catch (error) {
-  // Do not dump request bodies, environment, cookies or Docker inspect data.
+  // 不输出请求体、环境变量、Cookie 或 Docker inspect 数据。
   console.error(`FAIL: ${error.message}`);
   process.exitCode = 1;
 } finally {
   if (started) {
     try {
-      // Only this run's randomly named project and test volumes; never global prune.
+      // 仅清理本次随机命名的项目及测试卷，不执行全局清理。
       await compose(["down", "--volumes", "--remove-orphans"]);
       console.log(`Cleaned test containers, network and data for ${project}; build images retained.`);
     } catch { console.error(`Cleanup failed; inspect Compose project ${project}.`); process.exitCode = 1; }

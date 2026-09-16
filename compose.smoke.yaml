@@ -1,4 +1,4 @@
-# Isolated Sprint 1 acceptance stack. Only scripts/smoke.mjs supplies credentials.
+# Sprint 1 隔离验收环境，凭据仅由 scripts/smoke.mjs 提供。
 services:
   postgres:
     image: postgres:16-alpine

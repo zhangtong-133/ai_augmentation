@@ -24,7 +24,7 @@ pub struct DocumentSummary {
 pub struct StoredDocument {
     #[serde(flatten)]
     pub summary: DocumentSummary,
-    /// Markdown source or extracted PDF/web text, depending on `source_type`.
+    /// 根据 `source_type` 保存 Markdown 原文，或 PDF/网页提取文本。
     pub markdown: String,
     #[serde(skip_serializing)]
     pub original_pdf: Option<Vec<u8>>,
@@ -33,9 +33,9 @@ pub struct StoredDocument {
     pub chunks: Vec<String>,
 }
 
-/// Every operation requires the authenticated owner; no global lookup is exposed.
+/// 每项操作都要求提供已认证的所有者，不暴露全局查询接口。
 pub trait DocumentStore: Send + Sync {
-    /// Count this owner's documents, with today's imports in `[start_ms, end_ms)`.
+    /// 统计该所有者的文档；今日导入量采用 `[start_ms, end_ms)` 时间区间。
     fn document_stats(
         &self,
         owner: &UserId,

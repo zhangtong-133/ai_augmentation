@@ -1,4 +1,4 @@
-//! `PostgreSQL` adapter. Vendor types stay outside the storage port.
+//! `PostgreSQL` 适配器，厂商特有类型不进入存储接口。
 mod documents;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};
@@ -11,10 +11,10 @@ pub struct PostgresStore {
 }
 
 impl PostgresStore {
-    /// Connects and applies embedded, versioned migrations.
+    /// 连接数据库并执行嵌入的版本化迁移。
     ///
     /// # Errors
-    /// Returns an opaque error if the database or migration is unavailable.
+    /// 数据库不可用或迁移失败时，返回不暴露内部细节的错误。
     pub async fn connect(url: &str) -> StorageResult<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
@@ -30,7 +30,7 @@ impl PostgresStore {
     }
 }
 
-#[allow(clippy::needless_pass_by_value)] // Used directly with Result::map_err.
+#[allow(clippy::needless_pass_by_value)] // 直接用于 Result::map_err。
 fn map_error(error: sqlx::Error) -> StorageError {
     match error {
         sqlx::Error::RowNotFound => StorageError::NotFound,
@@ -91,7 +91,7 @@ impl MetadataStore for PostgresStore {
         Box::pin(async move {
             let id = id.map_err(|_| StorageError::InvalidData("invalid id".into()))?;
             let mut tx = self.pool.begin().await.map_err(map_error)?;
-            // Serialize with password resets and verify the credential is still current.
+            // 与密码重置操作串行执行，并验证凭据仍然有效。
             sqlx::query("SELECT id FROM users WHERE id=$1 AND password_hash=$2 FOR UPDATE")
                 .bind(id)
                 .bind(credential_hash)

@@ -21,7 +21,7 @@ pub enum WebImportError {
     Redirect,
 }
 
-/// Fetch public HTML without forwarding any application credentials.
+/// 抓取公开 HTML，不转发任何应用凭据。
 pub trait WebImporter: Send + Sync {
     fn import(&self, url: &str) -> BoxFuture<'_, Result<WebPage, WebImportError>>;
 }

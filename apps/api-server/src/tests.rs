@@ -307,7 +307,7 @@ async fn auth_request(
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // A single end-to-end session lifecycle.
+#[allow(clippy::too_many_lines)] // 在同一测试中覆盖完整的端到端会话生命周期。
 async fn login_cookie_logout_and_password_reset() {
     let app = app();
     let (_, user) = request(
@@ -461,7 +461,7 @@ async fn login_cookie_logout_and_password_reset() {
 #[tokio::test]
 async fn login_attempt_budget_is_enforced() {
     let app = app();
-    // Malformed attempts consume the budget without expensive password work.
+    // 格式错误的请求也会消耗尝试次数，但不执行高开销的密码运算。
     for _ in 0..20 {
         assert_eq!(
             auth_request(app.clone(), "POST", "/api/auth/login", None, "{", true)
@@ -836,7 +836,7 @@ impl personal_ai_knowledge::web::WebImporter for FixtureWebImporter {
 }
 
 #[tokio::test]
-#[allow(clippy::too_many_lines)] // One complete authenticated import/isolation lifecycle.
+#[allow(clippy::too_many_lines)] // 在同一测试中覆盖认证后的完整导入与隔离流程。
 async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     let store = Arc::new(MemoryStore::default());
     let mut cookies = Vec::new();

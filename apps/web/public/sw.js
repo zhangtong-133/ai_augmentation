@@ -16,7 +16,7 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Auth and API responses must never use offline cache fallbacks.
+  // 身份认证和 API 响应绝不能回退到离线缓存。
   if (new URL(event.request.url).pathname.startsWith("/api/")) return;
   if (event.request.method !== "GET") return;
   event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));

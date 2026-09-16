@@ -25,10 +25,10 @@ pub struct Config {
 }
 
 impl Config {
-    /// Reads configuration without printing secrets.
+    /// 读取配置，不输出密钥。
     ///
     /// # Errors
-    /// Rejects missing credentials or malformed listen addresses.
+    /// 凭据缺失或监听地址格式错误时返回错误。
     pub fn from_env() -> Result<Self, String> {
         Self::load(|key| std::env::var(key).ok())
     }

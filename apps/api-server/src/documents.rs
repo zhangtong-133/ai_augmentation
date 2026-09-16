@@ -141,7 +141,7 @@ struct PreparedContent {
     title: Option<String>,
 }
 
-// Keep Markdown's existing digest and response field for compatibility.
+// 保留 Markdown 现有的摘要算法和响应字段，以维持兼容性。
 async fn prepare_content(state: &AppState, input: &Import) -> Result<PreparedContent, ApiError> {
     match (&input.markdown, &input.pdf_base64, &input.url) {
         (Some(markdown), None, None) => {

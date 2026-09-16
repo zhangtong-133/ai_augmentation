@@ -24,7 +24,7 @@ export default defineConfig({
     locale: "zh-CN",
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
-    // No traces/auth state exports: they may capture request credentials.
+    // 不导出跟踪记录或认证状态，避免其中包含请求凭据。
     trace: "off",
     video: "off",
     screenshot: "only-on-failure",

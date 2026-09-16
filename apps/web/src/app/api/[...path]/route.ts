@@ -12,7 +12,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   if (!allowed.includes(endpoint) && !documentDetail) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
-  // Require a non-simple header; never add it on behalf of an untrusted request.
+  // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
   if (request.method === "POST" && request.headers.get("x-requested-with") !== "personal-ai") {
     return Response.json({ error: { code: "csrf_rejected" } }, { status: 403 });
   }

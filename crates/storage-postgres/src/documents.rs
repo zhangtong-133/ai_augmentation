@@ -57,7 +57,7 @@ impl DocumentStore for PostgresStore {
         let digest = digest.to_owned();
         let document = document.clone();
         Box::pin(async move {
-            // One INSERT atomically persists the original, metadata and all chunks.
+            // 使用一条 INSERT 原子性地保存原文、元数据及全部文本块。
             sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf,original_html) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")
                 .bind(parse_id(&document.summary.id)?).bind(owner?)
                 .bind(document.summary.title).bind(document.summary.source).bind(document.summary.tags)

@@ -77,8 +77,8 @@ pub trait Planner: Send + Sync {
     ) -> BoxFuture<'_, Result<Plan, AgentError>>;
 }
 
-/// Marker describing the v1 orchestration stages. Concrete adapters are wired
-/// in the application crate instead of being owned by this domain crate.
+/// 描述 v1 编排阶段的标记。具体适配器由应用 crate 组装，
+/// 不由本领域 crate 持有。
 pub const V1_RUNTIME_STAGES: [&str; 6] = [
     "context_builder",
     "planner",

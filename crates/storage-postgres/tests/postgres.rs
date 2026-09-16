@@ -3,7 +3,7 @@ use personal_ai_storage::{MetadataStore, StorageError};
 use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
 
-// Requires a disposable PostgreSQL database. CI provisions a dedicated service.
+// 需要可丢弃的 PostgreSQL 数据库，CI 会提供专用服务。
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
 async fn migrations_persistence_and_case_insensitive_uniqueness() {
@@ -57,7 +57,7 @@ async fn migrations_persistence_and_case_insensitive_uniqueness() {
         store.session_user(&token_digest).await,
         Err(StorageError::NotFound)
     ));
-    // Reconnect and rerun migrations to verify restart safety and persistence.
+    // 重新连接并再次执行迁移，验证重启安全性和数据持久化。
     let reopened = PostgresStore::connect(&url).await.unwrap();
     assert_eq!(reopened.get_user(&user.id).await.unwrap(), user);
     let duplicate = User {
@@ -78,7 +78,7 @@ async fn migrations_persistence_and_case_insensitive_uniqueness() {
 }
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
-#[allow(clippy::too_many_lines)] // One persistence/isolation lifecycle including aggregate boundaries.
+#[allow(clippy::too_many_lines)] // 在同一测试中覆盖持久化、用户隔离及聚合统计边界。
 async fn documents_persist_and_are_owner_scoped() {
     use personal_ai_storage::documents::{DocumentStore, DocumentSummary, StoredDocument};
     let url = std::env::var("TEST_DATABASE_URL").expect("TEST_DATABASE_URL required");

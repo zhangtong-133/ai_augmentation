@@ -5,7 +5,7 @@ pub mod web;
 use personal_ai_domain::DocumentId;
 use pulldown_cmark::{Event, Parser, TagEnd};
 
-/// Extracts readable text; raw HTML events are never rendered or indexed.
+/// 提取可读文本；不渲染原始 HTML 事件，也不将其纳入索引。
 #[must_use]
 pub fn markdown_text(markdown: &str) -> String {
     let mut text = String::new();
@@ -45,8 +45,8 @@ pub struct DocumentChunk {
     pub content: String,
 }
 
-/// Splits UTF-8 text on paragraph boundaries and only hard-splits a paragraph
-/// when it exceeds the requested character budget.
+/// 按段落边界切分 UTF-8 文本，仅在段落超出指定字符数上限时
+/// 才在段落内部强制切分。
 #[must_use]
 pub fn chunk_text(document_id: &DocumentId, text: &str, max_chars: usize) -> Vec<DocumentChunk> {
     if max_chars == 0 || text.trim().is_empty() {

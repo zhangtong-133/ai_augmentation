@@ -5,54 +5,54 @@
 help:
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-18s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-env-check: ## Check required and optional local tools
+env-check: ## 检查本地必需及可选工具
 	@./scripts/check-env.sh
 
-check: ## Run formatting, linting, and tests for the Rust workspace
+check: ## 执行 Rust 工作区格式检查、静态检查与测试
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cargo test --workspace
 
-fmt: ## Format Rust and web source files
+fmt: ## 格式化 Rust 源码
 	cargo fmt --all
 
-test: ## Run Rust workspace tests
+test: ## 运行 Rust 工作区测试
 	cargo test --workspace
 
-test-postgres: ## Run PostgreSQL integration tests using TEST_DATABASE_URL
+test-postgres: ## 使用 TEST_DATABASE_URL 运行 PostgreSQL 集成测试
 	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
 
-smoke: ## Build isolated Compose stack, test real persistence/HTTP flows, and clean test data
+smoke: ## 构建隔离 Compose 环境，验证持久化与 HTTP 流程，并清理测试数据
 	node scripts/smoke.mjs
 
-browser-install: ## Install locked Playwright dependencies and platform-native headless Chromium
+browser-install: ## 安装锁定的 Playwright 依赖与当前平台的无头 Chromium
 	npm --prefix tests/browser ci
 	npm --prefix tests/browser run install-browser
 
-browser-test: ## Run HTTP acceptance plus headless UI tests in an isolated Compose stack
+browser-test: ## 在隔离 Compose 环境中运行 HTTP 与无头浏览器验收
 	node scripts/smoke.mjs --browser
 
 .PHONY: browser-test-public
-browser-test-public: ## Also verify real public webpage imports (requires direct Internet access)
+browser-test-public: ## 额外验证真实公网网页导入（需要直连互联网）
 	node scripts/smoke.mjs --browser --public-web
 
-web-install: ## Install pinned web dependencies
+web-install: ## 安装锁定的前端依赖
 	npm --prefix apps/web ci
 
-web-dev: ## Start the Next.js development server
+web-dev: ## 启动 Next.js 开发服务器
 	npm --prefix apps/web run dev
 
-compose-config: ## Validate the Compose model without starting services
+compose-config: ## 校验 Compose 配置，不启动服务
 	@./scripts/compose.sh --env-file .env.example config --quiet
 
-infra-up: ## Start PostgreSQL, Redis, Qdrant, and MinIO
+infra-up: ## 启动 PostgreSQL、Redis、Qdrant 和 MinIO
 	@./scripts/compose.sh up -d postgres redis qdrant minio
 
-infra-down: ## Stop local services
+infra-down: ## 停止本地服务
 	@./scripts/compose.sh down
 
-stack-up: ## Build and start the complete local stack
+stack-up: ## 构建并启动完整本地服务栈
 	@./scripts/compose.sh up -d --build
 
-stack-down: ## Stop the complete local stack
+stack-down: ## 停止完整本地服务栈
 	@./scripts/compose.sh down

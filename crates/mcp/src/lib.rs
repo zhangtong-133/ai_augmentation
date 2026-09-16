@@ -14,8 +14,8 @@ pub struct ServerManifest {
     pub tools: Vec<ExposedTool>,
 }
 
-/// The transport adapter is intentionally deferred. This crate owns mappings
-/// between internal tools and MCP protocol types, never tool business logic.
+/// 传输适配器留待后续实现。本 crate 负责内部工具与 MCP 协议类型
+/// 之间的映射，不包含工具的业务逻辑。
 #[must_use]
 pub fn empty_manifest() -> ServerManifest {
     ServerManifest {

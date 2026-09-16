@@ -1,8 +1,8 @@
 FROM rust:1.96-bookworm AS builder
 
 WORKDIR /workspace
-# Use the toolchain bundled with the versioned image. Copying the developer's
-# "stable" override would download a second, drifting toolchain during builds.
+# 使用指定版本镜像自带的工具链。复制开发环境的 "stable" 覆盖配置
+# 会在构建时额外下载一套版本可能变化的工具链。
 COPY Cargo.toml Cargo.lock ./
 COPY apps ./apps
 COPY crates ./crates
