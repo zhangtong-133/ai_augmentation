@@ -4,11 +4,11 @@
 
 核心部署验收运行 `make smoke`：构建独立 Compose 测试环境，执行真实数据库与双入口 HTTP 测试，结束后自动清理该次测试数据。前置条件和范围见 [验收设计](docs/design/sprint-1-acceptance.md)。
 
-浏览器交互验收：先运行 `make browser-install`，再运行 `make browser-test`。使用 WSL 无头 Chromium，不依赖 Windows 浏览器扩展、不抢键鼠；详见 [浏览器验收设计](docs/design/sprint-1-browser-acceptance.md)。
+浏览器交互验收：在当前机器先运行 `make browser-install`，再运行 `make browser-test`。支持 WSL/Linux 与 macOS 无头 Chromium；`make browser-test-public` 额外验证真实公网网页成功导入，需要 API 容器能直连公网。详见 [浏览器验收设计](docs/design/sprint-1-browser-acceptance.md)。
 
 Dashboard 显示 API 存活/数据库就绪状态，以及当前用户的文档总数、文本块总数和今日导入量（UTC）；导入后自动刷新。接口与统计口径见 [今日概览设计](docs/design/sprint-1-overview.md)。
 
-PDF 支持可提取文字的文件（最多 5 MiB），原文件暂存 PostgreSQL；扫描件需先 OCR。本机 API 需安装 `poppler-utils`、`util-linux`，Compose 镜像已包含。详见 [PDF 导入设计](docs/design/sprint-2-pdf.md)。
+PDF 支持可提取文字的文件（最多 5 MiB），原文件暂存 PostgreSQL；扫描件需先 OCR。Linux 本机 API 需安装 `poppler-utils`、`util-linux`，Compose 镜像已包含；macOS 使用 Linux API 容器运行 PDF 提取。详见 [PDF 导入设计](docs/design/sprint-2-pdf.md)。
 
 网页 URL 导入支持公开 UTF-8 静态 HTML（最多 1 MiB），保留原 HTML 和最终来源，拒绝内网地址；详见 [网页导入设计](docs/design/sprint-2-web-import.md)。
 

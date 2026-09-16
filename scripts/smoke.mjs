@@ -1,26 +1,64 @@
 // Uses only Node built-ins. Never targets the user's .env or ordinary Compose project.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { randomBytes } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+if (process.argv.includes("--public-web") && !process.argv.includes("--browser")) {
+  throw new Error("--public-web requires --browser");
+}
+if (process.argv.includes("--browser")) {
+  try {
+    const require = createRequire(new URL("../tests/browser/package.json", import.meta.url));
+    const { chromium } = require("@playwright/test");
+    await access(chromium.executablePath());
+  } catch {
+    throw new Error("Missing platform-native Playwright/Chromium; run make browser-install on this machine.");
+  }
+}
+// Resolve the user's selected endpoint before isolating registry credentials.
+// DOCKER_CONTEXT takes precedence over DOCKER_HOST, as in the Docker CLI.
+const execute = promisify(execFile);
+const dockerHost = process.env.DOCKER_CONTEXT || !process.env.DOCKER_HOST
+  ? (await execute("docker", ["context", "inspect", "--format", "{{.Endpoints.docker.Host}}"], { timeout: 10000 })).stdout.trim()
+  : process.env.DOCKER_HOST;
+if (!dockerHost.startsWith("unix:///")) {
+  throw new Error("Smoke acceptance requires a local Unix Docker socket for loopback ports.");
+}
 const project = `personal-ai-smoke-${randomBytes(8).toString("hex")}`;
 // Only public images are used. Isolate stale Desktop credential helpers and login data.
+// Preserve plugin discovery (OrbStack/Desktop install buildx under this directory).
+const originalDockerConfig = process.env.DOCKER_CONFIG || join(homedir(), ".docker");
+let extraPluginDirs = [];
+try {
+  const config = JSON.parse(await readFile(join(originalDockerConfig, "config.json"), "utf8"));
+  if (Array.isArray(config.cliPluginsExtraDirs)) {
+    extraPluginDirs = config.cliPluginsExtraDirs.filter(value => typeof value === "string");
+  }
+} catch (error) {
+  if (error.code !== "ENOENT") throw new Error("Cannot read Docker plugin configuration.");
+}
 const dockerConfig = await mkdtemp(join(tmpdir(), "personal-ai-smoke-docker-"));
-await writeFile(join(dockerConfig, "config.json"), '{"auths":{}}\n', { mode: 0o600 });
+await writeFile(join(dockerConfig, "config.json"), JSON.stringify({
+  auths: {}, cliPluginsExtraDirs: [...extraPluginDirs, join(originalDockerConfig, "cli-plugins")],
+}), { mode: 0o600 });
 const env = {
   ...process.env,
   DOCKER_CONFIG: dockerConfig,
-  DOCKER_HOST: "unix:///var/run/docker.sock",
-  DOCKER_CONTEXT: "default",
+  DOCKER_HOST: dockerHost,
   SMOKE_PASSWORD: randomBytes(24).toString("hex"),
   SMOKE_TOKEN: randomBytes(32).toString("hex"),
 };
+delete env.DOCKER_CONTEXT;
+// Public-network acceptance must be explicitly requested, never inherited.
+delete env.E2E_PUBLIC_WEB;
 let active;
 let interrupted = false;
 for (const signal of ["SIGINT", "SIGTERM"]) {
@@ -38,11 +76,13 @@ function command(binary, args, extra = {}, capture = false) {
     child.stdout?.on("data", data => { output += data; });
     // Captured errors can contain credentials; report only command name and exit code.
     child.stderr?.resume();
-    const timer = setTimeout(() => child.kill("SIGKILL"), 20 * 60 * 1000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 20 * 60 * 1000);
     child.on("error", error => { clearTimeout(timer); active = null; reject(error); });
     child.on("close", code => {
       clearTimeout(timer); active = null;
-      if (code !== 0) reject(new Error(`${binary} exited with ${code}`));
+      if (timedOut) reject(new Error(`${binary} timed out after 20 minutes; rerun to reuse downloaded images/build caches`));
+      else if (code !== 0) reject(new Error(`${binary} exited with ${code}`));
       else resolve(output.trim());
     });
   });
@@ -178,6 +218,7 @@ try {
     await command("npm", ["--prefix", "tests/browser", "test"], {
       E2E_API_URL: browserApi, E2E_WEB_URL: web, E2E_GATEWAY_URL: gateway,
       E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
+      E2E_PUBLIC_WEB: process.argv.includes("--public-web") ? "1" : "0",
     });
   }
 } catch (error) {

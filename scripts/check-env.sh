@@ -34,6 +34,19 @@ optional pnpm pnpm
 optional just just
 optional protoc protoc
 
+if [ "$(uname -s)" = "Linux" ]; then
+  optional pdftotext pdftotext
+  optional prlimit prlimit
+else
+  printf '[info] %-16s use the Linux API container (pdftotext + prlimit)\n' 'PDF extraction'
+fi
+
+if [ -d tests/browser/node_modules/@playwright/test ]; then
+  printf '[ok]   %-16s package installed; make browser-install ensures matching Chromium\n' 'Playwright'
+else
+  printf '[warn] %-16s run make browser-install on this machine\n' 'Playwright'
+fi
+
 if docker info >/dev/null 2>&1; then
   printf '[ok]   %-16s reachable\n' 'Docker daemon'
 else

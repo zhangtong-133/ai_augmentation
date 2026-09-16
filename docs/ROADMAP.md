@@ -28,7 +28,8 @@
 - [x] Markdown 文本解析与 Unicode 分块
 - [x] PDF 导入（文本提取、原文件持久化、用户隔离与浏览器验收；不含 OCR）
 - [x] 网页 URL 导入（公开静态 HTML、原文持久化、DNS/重定向限制及分层测试）
-- [ ] 公网网页成功导入端到端验收（当前本机公网 DNS 解析失败，见网页导入设计）
+- [x] 公网网页成功导入浏览器用例与独立 `make browser-test-public` 入口；Mac/WSL Docker 与浏览器环境适配
+- [x] 公网网页成功导入端到端验收通过（2026-09-16 Mac/OrbStack，完整双入口结果见网页导入设计）
 - [ ] MinIO 原文适配器、Embedding、Qdrant adapter
 - [ ] RAG 检索与知识问答
 

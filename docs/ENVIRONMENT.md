@@ -1,5 +1,15 @@
 # Local environment baseline
 
+## 2026-09-16 macOS 开发环境
+
+当前宿主为 Apple Silicon macOS，Rust/Cargo 1.96.1、Node 22.13.1、npm 10.9.2。OrbStack Docker Engine 29.4.0 与 Compose v2 可用；沙箱内不可访问 socket 不代表 daemon 停止。WSL 的浏览器及 Docker 镜像缓存不会随 Git 提交迁移到 Mac。
+
+已运行 `make browser-install` 安装 Playwright 1.63.0 与 mac-arm64 Chromium 153.0.8010.12，并独立启动无头浏览器验证中文 DOM 读取。PDF 提取继续通过 Linux API 容器中的 `prlimit` 和 `pdftotext` 执行，macOS 宿主未安装这些运行依赖。
+
+已通过 `make check`（23 个常规测试）、前端 lint/typecheck/build、Compose 配置校验，以及此前因 WSL DNS 失败的 `live_public_html_import` 公网测试。`make browser-test-public` 的两项真实 PostgreSQL 测试、完整 HTTP smoke 和 10 项浏览器测试全部通过（UI 阶段 38.4 秒）。完整记录见 [网页导入设计](design/sprint-2-web-import.md)。
+
+验收脚本现按当前 Docker context/环境变量解析本机 socket，不再写死 Linux 路径；匿名 Docker 配置保留插件发现路径，避免隐藏 OrbStack 的 buildx。新增 `make browser-test-public`，在原有回归上显式启用公网成功导入验收。
+
 ## 2026-09-12 WSL 浏览器验收
 
 已安装独立 Playwright 1.63.0 与 Chromium 153.0.8010.12，`make browser-install` 成功；`make browser-test` 的 4 项桌面/窄屏交互测试、2 项 PostgreSQL 测试和 HTTP smoke 全部通过。无需连接 Windows Chrome 或使用前台鼠标键盘；CI 已接入，远程运行尚未验证。详见 [浏览器验收设计](design/sprint-1-browser-acceptance.md)。

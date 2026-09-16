@@ -31,6 +31,50 @@ async function upload(page, name, buffer) {
   await page.getByRole("button", { name: "导入文档", exact: true }).click();
 }
 
+// Register as skipped before fixtures launch when public-network checks are disabled.
+const publicWebTest = process.env.E2E_PUBLIC_WEB === "1" ? test : test.skip;
+publicWebTest("public webpage import persists, deduplicates and isolates through the UI", async ({ page }, testInfo) => {
+  const owner = await createAccount();
+  const other = await createAccount();
+  await page.goto("/");
+  await login(page, owner);
+  const region = page.getByRole("region", { name: "个人知识库", exact: true });
+  async function importPage() {
+    await page.getByLabel("网页地址", { exact: true }).fill("https://example.com/");
+    const response = page.waitForResponse(r => r.url().endsWith("/api/documents") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "导入网页", exact: true }).click();
+    return response;
+  }
+  const response = await importPage();
+  expect(response.status(), "Real public fetch must succeed; failures are not skipped").toBe(201);
+  const document = await response.json();
+  expect(document.source_type).toBe("web_page");
+  expect(document.title).toBe("Example Domain");
+  expect(document.source).toBe("https://example.com/");
+  await expect(metric(page, "文档总数")).toHaveText("1");
+  await expect(metric(page, "文本块总数")).toHaveText(String(document.chunk_count));
+  await expect(page.getByLabel("网页地址", { exact: true })).toHaveValue("");
+  await page.reload();
+  await page.getByRole("button", { name: document.title, exact: true }).click();
+  const detail = page.getByRole("region", { name: "文档详情" });
+  await expect(detail.getByRole("heading", { name: "网页提取文本" })).toBeVisible();
+  await expect(detail.locator("pre").first()).toContainText("Example Domain");
+  await expect(detail.getByRole("link")).toHaveAttribute("href", document.source);
+  const stored = await page.evaluate(async id => (await fetch(`/api/documents/${id}`)).json(), document.id);
+  expect(stored.original_html).toBeUndefined();
+  expect(stored.chunks.length).toBeGreaterThan(0);
+  await region.screenshot({ path: testInfo.outputPath("public-web-import.png") });
+  expect((await importPage()).status()).toBe(409);
+  await expect(region.getByRole("alert")).toHaveText("这份内容已经导入，无需重复上传。");
+  await expect(metric(page, "文档总数")).toHaveText("1");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, other);
+  await expect(metric(page, "文档总数")).toHaveText("0");
+  expect(await page.evaluate(async id => (await fetch(`/api/documents/${id}`)).status, document.id)).toBe(404);
+  expect((await importPage()).status()).toBe(201);
+  await expect(metric(page, "文档总数")).toHaveText("1");
+});
+
 test("file import refreshes overview; logout and account switch clear private UI", async ({ page }, testInfo) => {
   const owner = await createAccount();
   const other = await createAccount();

@@ -25,12 +25,16 @@ test-postgres: ## Run PostgreSQL integration tests using TEST_DATABASE_URL
 smoke: ## Build isolated Compose stack, test real persistence/HTTP flows, and clean test data
 	node scripts/smoke.mjs
 
-browser-install: ## Install locked Playwright dependencies and WSL headless Chromium
+browser-install: ## Install locked Playwright dependencies and platform-native headless Chromium
 	npm --prefix tests/browser ci
 	npm --prefix tests/browser run install-browser
 
 browser-test: ## Run HTTP acceptance plus headless UI tests in an isolated Compose stack
 	node scripts/smoke.mjs --browser
+
+.PHONY: browser-test-public
+browser-test-public: ## Also verify real public webpage imports (requires direct Internet access)
+	node scripts/smoke.mjs --browser --public-web
 
 web-install: ## Install pinned web dependencies
 	npm --prefix apps/web ci

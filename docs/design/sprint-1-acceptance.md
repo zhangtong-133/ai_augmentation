@@ -18,7 +18,7 @@ make smoke
 
 构建按需转发宿主 `HTTP_PROXY`、`HTTPS_PROXY`、`NO_PROXY` 标准变量；代理须能从 Docker 构建网络访问。它们使用 Docker 的预定义代理 build args，不写入应用运行环境，不在脚本日志中输出。
 
-每次生成随机 Compose 项目名、管理令牌及数据库密码，所有映射端口仅绑定 `127.0.0.1` 并由 Docker 分配。显式使用无凭据的 `infra/smoke.env`，不读取开发 `.env`。临时 Docker 客户端配置仅用于匿名拉取公开镜像，避免旧 Desktop 凭据助手干扰；不会修改已有 Docker 登录信息。本脚本明确连接本机 `/var/run/docker.sock`，不支持远程 context。
+每次生成随机 Compose 项目名、管理令牌及数据库密码，所有映射端口仅绑定 `127.0.0.1` 并由 Docker 分配。显式使用无凭据的 `infra/smoke.env`，不读取开发 `.env`。临时 Docker 客户端配置仅用于匿名拉取公开镜像，避免旧 Desktop 凭据助手干扰；不会修改已有 Docker 登录信息。隔离配置前解析用户当前 context 的本地 Unix socket，也支持显式 `DOCKER_HOST`（`DOCKER_CONTEXT` 优先）；兼容 OrbStack、Docker Desktop 和 Linux，不支持远程 daemon。
 
 数据库存储使用本次项目专属命名卷。成功或失败均在 finally 中执行仅针对该项目的 `down --volumes --remove-orphans`；不执行全局 prune，不删除普通项目数据。镜像与构建缓存保留。强制终止进程/断电无法保证清理，按输出项目名定位残留资源后处理，不能使用广泛清理命令。
 

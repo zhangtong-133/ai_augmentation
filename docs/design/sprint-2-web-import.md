@@ -47,7 +47,9 @@
 - PostgreSQL 测试：迁移、重新连接后的 HTML/正文完整持久化和用户隔离。
 - 双入口 Chromium：真实 API 拒绝私网与非默认端口、错误提示、页面重载计数保持为零；继续执行既有 Markdown/PDF 导入回归。
 
-自动测试不依赖外部网站稳定性；本机 HTTP 测试只在私有测试函数中注入连接地址，不向生产配置增加任何内网放行开关。当前浏览器验收未覆盖真实公网网页成功抓取，成功流程由适配器、API 与存储分层测试覆盖。
+默认自动测试不依赖外部网站稳定性；本机 HTTP 测试只在私有测试函数中注入连接地址，不向生产配置增加任何内网放行开关。
+
+`make browser-test-public` 显式启用真实公网浏览器验收：Next.js 桌面和 Nginx 窄屏分别经页面提交 `https://example.com/`，验证默认标题、来源链接、正文和分块、概览自动更新、输入重置、刷新后持久化、重复导入 409、跨用户详情 404 和另一用户独立导入。API 使用生产抓取器直连公网，测试不拦截导入请求。截图写入各测试的 `public-web-import.png`。该模式要求 API 容器能访问公网，网站内容变化或网络故障均会使测试失败；普通 `make browser-test` 跳过这两项用例。
 
 ### 2026-09-15 本地结果
 
@@ -56,3 +58,12 @@
 - `make browser-test` 的 2 项 PostgreSQL 测试、全部 HTTP smoke、8 项 Chromium 测试通过（25.9 秒）。已检查桌面与窄屏网页表单截图，测试容器、网络和数据库已清理。
 - 补充的 `cargo test -p personal-ai-web-import live_public_html_import -- --ignored` 未通过：本机无法解析 `example.com`，独立 `curl --noproxy '*' --head https://example.com/` 同样返回 `Could not resolve host`。该测试默认忽略，不作为离线 CI 依赖；公网成功抓取和浏览器成功导入验收仍待网络恢复后完成，不计为已通过。
 - 浏览器回归之后补充的隐藏祖先过滤/URL 规范化长度检查已通过最终 `make check`，来源链接换行样式已通过最终前端检查和构建；未为这两项修改重复全套 Docker 验收。
+
+### 2026-09-16 macOS / OrbStack 验收
+
+- `make browser-install` 安装 mac-arm64 Chromium 成功，独立无头启动检查通过；运行不需要前台点击或键鼠操作。
+- `make check` 的 23 项常规 Rust 测试、前端 lint/typecheck/build、Compose 配置检查通过。单独执行此前 ignored 的 `live_public_html_import` 公网适配器测试通过。
+- `make browser-test-public` 通过：2 项真实 PostgreSQL 测试、完整 HTTP smoke（含数据库/API 重启与会话持久化）、10 项 Chromium 测试全部成功，UI 阶段耗时 38.4 秒，未跳过用例。
+- 两项新增公网测试分别通过 Next.js 桌面与 Nginx 窄屏入口，使用真实公网抓取器和数据库；已检查各自 `public-web-import.png`，中文、来源链接及提取正文显示正常。
+- 普通模式已单独验证会跳过这两项公网用例（在启动浏览器之前），保持默认 CI 不依赖外部网站。
+- 新机首次使用旧构建器下载/构建累计触发 20 分钟命令上限，自动清理成功；保留插件路径后重跑使用 buildx 完成验收。两个测试项目的容器、网络及数据库卷均已清理，镜像/浏览器/依赖缓存保留。未验证远程 CI。

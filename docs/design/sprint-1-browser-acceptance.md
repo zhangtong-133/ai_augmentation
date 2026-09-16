@@ -2,7 +2,7 @@
 
 ## 方案
 
-用户选择独立 Playwright + Chromium，无需 Windows Chrome、浏览器扩展或应用内 Browser 连接。无头进程只在 Linux 中运行，不切换桌面、不操作系统鼠标键盘；仍会消耗 CPU/内存。单 worker 串行运行，禁止报告自动弹窗。
+用户选择独立 Playwright + Chromium，无需 Windows Chrome、浏览器扩展或应用内 Browser 连接。无头进程在执行测试的宿主机运行（WSL/Linux 或 macOS），不切换桌面、不操作系统鼠标键盘；仍会消耗 CPU/内存。单 worker 串行运行，禁止报告自动弹窗。
 
 测试包独立放在 `tests/browser`，精确锁定 Playwright 版本，不增加 Next.js 生产依赖。生产镜像仍使用应用现有依赖。专属浏览器安装在 Playwright 用户缓存，不读取个人 Chrome profile。
 
@@ -14,6 +14,14 @@
 make browser-install
 make browser-test
 ```
+
+切换到新机器后需重新执行 `make browser-install`；WSL 的 Linux 浏览器缓存不能复用于 macOS。Playwright 自动下载宿主平台的 Chromium。macOS 不使用 Linux 的 `--with-deps` 或字体安装命令；PDF 提取依赖随 Linux API 容器安装。
+
+Smoke runner 在隔离 Docker 登录凭据前解析当前 context 的 socket（也遵循 `DOCKER_CONTEXT` 优先于 `DOCKER_HOST` 的规则），支持 OrbStack、Docker Desktop 和 Linux Engine 的本地 Unix socket。远程 daemon 不受支持，因为测试端口必须位于宿主机 loopback；不改变用户当前 context。
+
+隔离配置只保留原配置的插件查找目录和 `cli-plugins` 路径，以便发现 Compose/buildx，不复制登录凭据或凭据助手。启动容器前先检查对应平台的 Chromium 文件是否存在，缺失时提示安装。
+
+显式运行 `make browser-test-public` 可在完整验收中增加公网网页成功导入测试。默认 `make browser-test` 与 CI 跳过该外部网站依赖；显式启用后网络失败作为测试失败报告，不自动跳过。
 
 首次安装需要网络；若 Chromium 报缺少系统库，在有系统安装权限的终端执行 `npm --prefix tests/browser run install-browser -- --with-deps`。CI 自动安装系统依赖。Docker 访问仍需普通终端或经批准的沙箱外执行。
 
