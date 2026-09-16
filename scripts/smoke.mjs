@@ -92,7 +92,8 @@ let binary = "docker";
 let prefix = ["compose"];
 async function compose(args, capture = false) {
   return command(binary, [...prefix, "--project-directory", root, "--env-file", "infra/smoke.env",
-    "-p", project, "-f", "compose.smoke.yaml", ...args], {}, capture);
+    "-p", project, "-f", "compose.smoke.yaml",
+    ...(process.argv.includes("--objects") ? ["-f", "compose.objects-test.yaml"] : []), ...args], {}, capture);
 }
 async function endpoint(service, port) {
   const address = await compose(["port", service, String(port)], true);
@@ -102,9 +103,15 @@ async function endpoint(service, port) {
 async function ready(url) {
   for (let attempt = 0; attempt < 90; attempt++) {
     if (interrupted) throw new Error("interrupted");
+    const controller = new AbortController();
+    // 保持超时计时器活跃，避免 Node 20 在首次连接服务时因无活跃句柄而退出。
+    const timer = setTimeout(() => controller.abort(), 2000);
     try {
-      if ((await fetch(url, { signal: AbortSignal.timeout(2000) })).ok) return;
+      const response = await fetch(url, { signal: controller.signal });
+      await response.body?.cancel();
+      if (response.ok) return;
     } catch { /* 启动期间可能暂时拒绝连接。 */ }
+    finally { clearTimeout(timer); }
     await delay(1000);
   }
   throw new Error(`readiness timeout: ${url}`);
@@ -159,6 +166,20 @@ try {
   await command("make", ["test-postgres"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  if (process.argv.includes("--objects")) {
+    await compose(["up", "-d", "minio"]);
+    console.log("Waiting for MinIO readiness");
+    await ready((await endpoint("minio", 9000)) + "/minio/health/ready");
+    console.log("Initializing private MinIO bucket");
+    await compose(["run", "--rm", "minio-init"]);
+    await command("cargo", ["test", "-p", "personal-ai-storage-postgres", "--test", "objects", "--", "--ignored"], {
+      TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+      TEST_OBJECT_ENDPOINT: await endpoint("minio", 9000),
+      TEST_OBJECT_BUCKET: "originals", TEST_OBJECT_ACCESS_KEY: "smoke-user", TEST_OBJECT_SECRET_KEY: env.SMOKE_PASSWORD,
+      // 测试服务始终走本机回环，避免继承宿主代理后把 S3 请求送出测试环境。
+      NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1",
+    });
+  }
   await compose(["up", "-d", "--build"]);
   const api = await endpoint("api-server", 8080);
   const web = await endpoint("web", 3000);
@@ -201,6 +222,7 @@ try {
         document.created_at_unix_ms < overview.data.day_end_unix_ms));
   }
   console.log("PASS: gateway/proxy, login, CSRF, import, deduplication, isolation and overview");
+  if (process.argv.includes("--objects")) await compose(["restart", "minio"]);
   await compose(["restart", "postgres"]);
   await compose(["restart", "api-server"]);
   await ready(web + "/api/readyz");

@@ -1,3 +1,4 @@
+mod object_storage;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Request, State, rejection::JsonRejection},
@@ -6,6 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+pub use object_storage::object_storage_from_env;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{MetadataStore, StorageError};
 use serde::{Deserialize, Serialize};

@@ -57,16 +57,33 @@ impl DocumentStore for PostgresStore {
         let digest = digest.to_owned();
         let document = document.clone();
         Box::pin(async move {
-            // 使用一条 INSERT 原子性地保存原文、元数据及全部文本块。
-            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf,original_html) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)")
-                .bind(parse_id(&document.summary.id)?).bind(owner?)
-                .bind(document.summary.title).bind(document.summary.source).bind(document.summary.tags)
-                .bind(digest).bind(document.markdown).bind(document.chunks).bind(document.summary.created_at_unix_ms).bind(document.summary.source_type).bind(document.original_pdf).bind(document.original_html)
-                .execute(&self.pool).await.map_err(|error| {
+            let owner = owner?;
+            let id = parse_id(&document.summary.id)?;
+            let original = original(&document)?;
+            // 每次尝试使用独立对象键，避免失败清理或重复导入覆盖已提交原文。
+            let key = self
+                .objects
+                .as_ref()
+                .map(|_| format!("users/{owner}/documents/{id}/{}", Uuid::new_v4()));
+            let external = key.is_some();
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            // 先获得唯一约束，再上传；重复导入不会产生对象。
+            sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf,original_html,original_object_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+                .bind(id).bind(owner)
+                .bind(&document.summary.title).bind(&document.summary.source).bind(&document.summary.tags)
+                .bind(digest).bind(&document.markdown).bind(&document.chunks).bind(document.summary.created_at_unix_ms).bind(&document.summary.source_type)
+                .bind(if external { None } else { document.original_pdf.as_deref() })
+                .bind(if external { None } else { document.original_html.as_deref() }).bind(&key)
+                .execute(&mut *tx).await.map_err(|error| {
                     if error.as_database_error().is_some_and(sqlx::error::DatabaseError::is_unique_violation) {
                         StorageError::Conflict("document already exists".into())
                     } else { map_error(error) }
                 })?;
+            if let (Some(objects), Some(key)) = (&self.objects, &key) {
+                objects.put(key, original.0, Some(original.1)).await?;
+            }
+            // 提交失败可能只表示回执丢失，不能删除可能已被数据库引用的对象。
+            tx.commit().await.map_err(map_error)?;
             Ok(())
         })
     }
@@ -90,15 +107,63 @@ impl DocumentStore for PostgresStore {
         let owner = parse_id(owner.as_str());
         let id = parse_id(id);
         Box::pin(async move {
-            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf,original_html FROM documents WHERE user_id=$1 AND id=$2")
+            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf,original_html,original_object_key FROM documents WHERE user_id=$1 AND id=$2")
                 .bind(owner?).bind(id?).fetch_one(&self.pool).await.map_err(map_error)?;
-            Ok(StoredDocument {
+            let mut document = StoredDocument {
                 summary: summary(&row),
                 markdown: row.get("markdown"),
                 original_pdf: row.get("original_pdf"),
                 original_html: row.get("original_html"),
                 chunks: row.get("chunks"),
-            })
+            };
+            if let Some(key) = row.get::<Option<String>, _>("original_object_key") {
+                let objects = self.objects.as_ref().ok_or_else(|| {
+                    StorageError::Unavailable("object store is not configured".into())
+                })?;
+                let bytes = objects.get(&key).await.map_err(|_| {
+                    StorageError::Unavailable("document original unavailable".into())
+                })?;
+                match document.summary.source_type.as_str() {
+                    "pdf" => document.original_pdf = Some(bytes),
+                    "web_page" => document.original_html = Some(original_text(bytes)?),
+                    "markdown" => document.markdown = original_text(bytes)?,
+                    _ => return Err(StorageError::InvalidData("invalid source type".into())),
+                }
+            }
+            Ok(document)
         })
+    }
+}
+
+fn original_text(bytes: Vec<u8>) -> StorageResult<String> {
+    String::from_utf8(bytes).map_err(|_| StorageError::InvalidData("invalid original text".into()))
+}
+
+fn original(document: &StoredDocument) -> StorageResult<(&[u8], &'static str)> {
+    let value = match document.summary.source_type.as_str() {
+        "markdown" if document.original_pdf.is_none() && document.original_html.is_none() => {
+            Some((
+                document.markdown.as_bytes(),
+                "text/markdown; charset=utf-8",
+                256 * 1024,
+            ))
+        }
+        "pdf" if document.original_html.is_none() => document
+            .original_pdf
+            .as_deref()
+            .map(|v| (v, "application/pdf", 5 * 1024 * 1024)),
+        "web_page" if document.original_pdf.is_none() => document
+            .original_html
+            .as_deref()
+            .map(|v| (v.as_bytes(), "text/html; charset=utf-8", 1024 * 1024)),
+        _ => None,
+    };
+    match value {
+        Some((bytes, content_type, limit)) if !bytes.is_empty() && bytes.len() <= limit => {
+            Ok((bytes, content_type))
+        }
+        _ => Err(StorageError::InvalidData(
+            "invalid document original".into(),
+        )),
     }
 }

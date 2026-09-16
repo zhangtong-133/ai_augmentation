@@ -1,5 +1,7 @@
 # Sprint 2：PDF 导入
 
+后续更新：原文对象存储现已实现，启用方式、兼容规则与跨存储事务边界见 [MinIO / S3 原文存储](sprint-2-object-storage.md)。以下保留本阶段交付时的设计。
+
 ## 行为和接口
 
 Dashboard 文件框支持 Markdown（UTF-8、256 KiB）和 PDF（5 MiB）。PDF 服务端提取文本后按原有 Unicode 规则每块最多 1000 字符分块；PDF 中的 Markdown 符号保留为普通文本。成功后刷新文档列表和今日概览，详情展示「PDF 提取文本」。不包含 OCR、原文件下载或页面布局还原；扫描件无文字时提示先 OCR。

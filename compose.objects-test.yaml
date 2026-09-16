@@ -1,0 +1,40 @@
+# 仅供 scripts/smoke.mjs --objects 合并到隔离验收栈。
+services:
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: smoke-user
+      MINIO_ROOT_PASSWORD: ${SMOKE_PASSWORD:?run make smoke-objects}
+    ports:
+      - "127.0.0.1::9000"
+    volumes:
+      - smoke-objects:/data
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    environment:
+      MINIO_ROOT_PASSWORD: ${SMOKE_PASSWORD:?run make smoke-objects}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        attempt=0
+        until mc alias set local http://minio:9000 smoke-user "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; do
+          attempt=$$((attempt + 1)); [ "$$attempt" -lt 60 ] || exit 1; sleep 1
+        done
+        mc mb --ignore-existing local/originals
+    depends_on:
+      minio:
+        condition: service_started
+  api-server:
+    environment:
+      OBJECT_STORE_ENABLED: "true"
+      OBJECT_STORE_ENDPOINT: http://minio:9000
+      OBJECT_STORE_BUCKET: originals
+      OBJECT_STORE_ACCESS_KEY: smoke-user
+      OBJECT_STORE_SECRET_KEY: ${SMOKE_PASSWORD:?run make smoke-objects}
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+volumes:
+  smoke-objects:

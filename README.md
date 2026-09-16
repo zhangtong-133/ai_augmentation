@@ -8,7 +8,7 @@
 
 Dashboard 显示 API 存活/数据库就绪状态，以及当前用户的文档总数、文本块总数和今日导入量（UTC）；导入后自动刷新。接口与统计口径见 [今日概览设计](docs/design/sprint-1-overview.md)。
 
-PDF 支持可提取文字的文件（最多 5 MiB），原文件暂存 PostgreSQL；扫描件需先 OCR。Linux 本机 API 需安装 `poppler-utils`、`util-linux`，Compose 镜像已包含；macOS 使用 Linux API 容器运行 PDF 提取。详见 [PDF 导入设计](docs/design/sprint-2-pdf.md)。
+PDF 支持可提取文字的文件（最多 5 MiB），原文件默认存 PostgreSQL，可启用 MinIO / S3；扫描件需先 OCR。Linux 本机 API 需安装 `poppler-utils`、`util-linux`，Compose 镜像已包含；macOS 使用 Linux API 容器运行 PDF 提取。详见 [PDF 导入设计](docs/design/sprint-2-pdf.md)。
 
 网页 URL 导入支持公开 UTF-8 静态 HTML（最多 1 MiB），保留原 HTML 和最终来源，拒绝内网地址；详见 [网页导入设计](docs/design/sprint-2-web-import.md)。
 
@@ -26,7 +26,7 @@ PDF 支持可提取文字的文件（最多 5 MiB），原文件暂存 PostgreSQ
 - `crates/storage-postgres`：SQLx 用户仓储与自动执行的版本化迁移
 - `infra/postgres/init`：保留初始建表脚本，兼容首阶段数据库卷
 
-业务 crate 不直接绑定 PostgreSQL、Qdrant、MinIO 或任一模型厂商。PostgreSQL 适配器已实现 `MetadataStore`；其他存储和模型适配器仍待实现。Rust 工具链基线为 1.96。
+业务 crate 不直接绑定 PostgreSQL、Qdrant、MinIO 或任一模型厂商。PostgreSQL 适配器已实现 `MetadataStore` / `DocumentStore`，S3 适配器实现 `ObjectStorage`；向量库与模型适配器仍待实现。Rust 工具链基线为 1.96。
 
 ## 快速开始
 
@@ -72,3 +72,9 @@ scripts/    跨平台开发入口
 ```
 
 下一步优先级见 [`docs/ROADMAP.md`](docs/ROADMAP.md)。设计边界见 [`docs/architecture/0001-hexagonal-boundaries.md`](docs/architecture/0001-hexagonal-boundaries.md)。
+
+### MinIO 原文存储
+
+设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；此轮不批量搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
+
+运行 `make smoke-objects` 可在独立 PostgreSQL/MinIO 环境验证原文、隔离、失败重试和双入口 HTTP 持久化；也可运行 `node scripts/smoke.mjs --objects --browser` 追加已有浏览器验收。

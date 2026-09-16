@@ -10,7 +10,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
         .init();
     let config = Config::from_env().map_err(std::io::Error::other)?;
-    let store = Arc::new(PostgresStore::connect(&config.database_url).await?);
+    let mut store = PostgresStore::connect(&config.database_url).await?;
+    if let Some(objects) = api_server::object_storage_from_env()? {
+        store = store.with_object_storage(objects);
+    }
+    let store = Arc::new(store);
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     tracing::info!(address = %config.address, "API ready");
     axum::serve(

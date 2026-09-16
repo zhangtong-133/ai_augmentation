@@ -3,14 +3,25 @@ mod documents;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
 pub struct PostgresStore {
     pool: PgPool,
+    objects: Option<Arc<dyn personal_ai_storage::ObjectStorage>>,
 }
 
 impl PostgresStore {
+    /// 为新导入启用外部原文存储；旧记录继续从数据库读取。
+    #[must_use]
+    pub fn with_object_storage(
+        mut self,
+        objects: Arc<dyn personal_ai_storage::ObjectStorage>,
+    ) -> Self {
+        self.objects = Some(objects);
+        self
+    }
+
     /// 连接数据库并执行嵌入的版本化迁移。
     ///
     /// # Errors
@@ -26,7 +37,10 @@ impl PostgresStore {
             .run(&pool)
             .await
             .map_err(|_| StorageError::Unavailable("migration failed".into()))?;
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            objects: None,
+        })
     }
 }
 

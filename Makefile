@@ -46,7 +46,7 @@ compose-config: ## 校验 Compose 配置，不启动服务
 	@./scripts/compose.sh --env-file .env.example config --quiet
 
 infra-up: ## 启动 PostgreSQL、Redis、Qdrant 和 MinIO
-	@./scripts/compose.sh up -d postgres redis qdrant minio
+	@./scripts/compose.sh up -d postgres redis qdrant minio minio-init
 
 infra-down: ## 停止本地服务
 	@./scripts/compose.sh down
@@ -56,3 +56,7 @@ stack-up: ## 构建并启动完整本地服务栈
 
 stack-down: ## 停止完整本地服务栈
 	@./scripts/compose.sh down
+
+.PHONY: smoke-objects
+smoke-objects: ## 在隔离 MinIO/PostgreSQL 中验证原文存储及 HTTP 流程
+	node scripts/smoke.mjs --objects

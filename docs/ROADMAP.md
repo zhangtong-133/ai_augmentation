@@ -30,7 +30,9 @@
 - [x] 网页 URL 导入（公开静态 HTML、原文持久化、DNS/重定向限制及分层测试）
 - [x] 公网网页成功导入浏览器用例与独立 `make browser-test-public` 入口；Mac/WSL Docker 与浏览器环境适配
 - [x] 公网网页成功导入端到端验收通过（2026-09-16 Mac/OrbStack，完整双入口结果见网页导入设计）
-- [ ] MinIO 原文适配器、Embedding、Qdrant adapter
+- [x] MinIO / S3 原文适配器、导入接入、数据库引用与历史内联数据兼容
+- [ ] Embedding、Qdrant adapter
+- [ ] 历史原文迁移与孤立对象清理
 - [ ] RAG 检索与知识问答
 
 ## Sprint 3

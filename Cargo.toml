@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "crates/storage-postgres",
+  "crates/storage-s3",
   "apps/api-server",
   "apps/worker",
   "apps/scheduler",
