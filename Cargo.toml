@@ -3,6 +3,8 @@ resolver = "2"
 members = [
   "crates/storage-postgres",
   "crates/storage-s3",
+  "crates/storage-qdrant",
+  "crates/llm-openai",
   "apps/api-server",
   "apps/worker",
   "apps/scheduler",
@@ -39,7 +41,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "net
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "uuid", "migrate", "macros"] }
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = { version = "0.5", features = ["util"] }

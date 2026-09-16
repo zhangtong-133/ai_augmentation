@@ -1,3 +1,4 @@
+mod indexing;
 mod object_storage;
 use axum::{
     Json, Router,
@@ -7,6 +8,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+pub use indexing::{Indexing, indexing_from_env};
 pub use object_storage::object_storage_from_env;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{MetadataStore, StorageError};
@@ -57,6 +59,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub indexing: Option<Arc<Indexing>>,
     pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,
     pub documents: Arc<dyn personal_ai_storage::documents::DocumentStore>,
     pub store: Arc<dyn MetadataStore>,
@@ -75,6 +78,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
+        .merge(indexing::routes())
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))

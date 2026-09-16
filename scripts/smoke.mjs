@@ -93,7 +93,8 @@ let prefix = ["compose"];
 async function compose(args, capture = false) {
   return command(binary, [...prefix, "--project-directory", root, "--env-file", "infra/smoke.env",
     "-p", project, "-f", "compose.smoke.yaml",
-    ...(process.argv.includes("--objects") ? ["-f", "compose.objects-test.yaml"] : []), ...args], {}, capture);
+    ...(process.argv.includes("--objects") ? ["-f", "compose.objects-test.yaml"] : []),
+    ...(process.argv.includes("--index") ? ["-f", "compose.index-test.yaml"] : []), ...args], {}, capture);
 }
 async function endpoint(service, port) {
   const address = await compose(["port", service, String(port)], true);
@@ -152,6 +153,17 @@ async function login(base, credentials) {
   return cookie.split(";")[0];
 }
 
+async function verifyIndex(document) {
+  const base = await endpoint("qdrant", 6333);
+  const response = await fetch(base + "/collections/smoke_knowledge/points/count", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ exact: true, filter: { must: [{ key: "record.document_id", match: { value: document.id } }] } }),
+    signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).result.count, document.chunk_count);
+}
+
 let started = false;
 try {
   await command("docker", ["info", "--format", "{{.ServerVersion}}"], {}, true);
@@ -178,6 +190,14 @@ try {
       TEST_OBJECT_BUCKET: "originals", TEST_OBJECT_ACCESS_KEY: "smoke-user", TEST_OBJECT_SECRET_KEY: env.SMOKE_PASSWORD,
       // 测试服务始终走本机回环，避免继承宿主代理后把 S3 请求送出测试环境。
       NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1",
+    });
+  }
+  if (process.argv.includes("--index")) {
+    await compose(["up", "-d", "qdrant"]);
+    const qdrant = await endpoint("qdrant", 6333);
+    await ready(qdrant + "/readyz");
+    await command("cargo", ["test", "-p", "personal-ai-storage-qdrant", "--test", "qdrant", "--", "--ignored"], {
+      TEST_QDRANT_URL: qdrant, NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1",
     });
   }
   await compose(["up", "-d", "--build"]);
@@ -221,8 +241,23 @@ try {
       Number(document.created_at_unix_ms >= overview.data.day_start_unix_ms &&
         document.created_at_unix_ms < overview.data.day_end_unix_ms));
   }
+  if (process.argv.includes("--index")) {
+    await request(web, path + "/index", 403, { method: "POST", cookie, csrf: false });
+    await request(gateway, path + "/index", 404, { method: "POST", cookie: otherCookie });
+    for (const base of [web, gateway]) {
+      const indexed = await request(base, path + "/index", 200, { method: "POST", cookie });
+      assert.equal(indexed.data.indexed_chunks, document.chunk_count);
+      assert.equal(indexed.data.next_offset, null);
+    }
+    await verifyIndex(document);
+    console.log("PASS: authenticated indexing through both HTTP entry points, CSRF, isolation and idempotency");
+  }
   console.log("PASS: gateway/proxy, login, CSRF, import, deduplication, isolation and overview");
   if (process.argv.includes("--objects")) await compose(["restart", "minio"]);
+  if (process.argv.includes("--index")) {
+    await compose(["restart", "qdrant"]);
+    await ready((await endpoint("qdrant", 6333)) + "/readyz");
+  }
   await compose(["restart", "postgres"]);
   await compose(["restart", "api-server"]);
   await ready(web + "/api/readyz");
@@ -232,6 +267,7 @@ try {
   await request(web, "/api/documents", 401, { cookie });
   const renewed = await login(web, owner);
   assert.equal((await request(web, path, 200, { cookie: renewed })).data.id, document.id);
+  if (process.argv.includes("--index")) await verifyIndex(document);
   console.log("PASS: database/API restart persistence, logout revocation and re-login");
   if (process.argv.includes("--browser")) {
     // API 重启时，Docker 可能重新分配临时宿主端口。

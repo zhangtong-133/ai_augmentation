@@ -9,7 +9,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     ? ["healthz", "readyz", "auth/me", "documents", "overview"]
     : ["auth/login", "auth/logout", "documents"];
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
-  if (!allowed.includes(endpoint) && !documentDetail) {
+  const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
@@ -43,7 +44,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     }
     const response = await fetch(
       new URL("/api/" + endpoint + request.nextUrl.search, process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080"),
-      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(10000) },
+      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(documentIndex ? 40000 : 10000) },
     );
     const output = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
     const cookie = response.headers.get("set-cookie");

@@ -74,3 +74,8 @@ pub trait LlmProvider: Send + Sync {
         false
     }
 }
+
+/// 独立的向量化端口，索引流程无需依赖聊天能力。
+pub trait EmbeddingProvider: Send + Sync {
+    fn embedding(&self, input: &[String]) -> BoxFuture<'_, LlmResult<Vec<Embedding>>>;
+}

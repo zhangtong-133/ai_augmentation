@@ -137,6 +137,7 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
+        indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
@@ -244,6 +245,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
+        indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
         store: Arc::new(MemoryStore {
@@ -592,6 +594,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
+        indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
@@ -787,6 +790,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
+        indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
             unavailable: true,
@@ -855,6 +859,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     }
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
+        indexing: None,
         web_importer: importer.clone(),
         documents: store.clone(),
         store,
@@ -972,5 +977,214 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     assert_eq!(
         read_overview(app, &cookies[0]).await["knowledge"]["total_documents"],
         1
+    );
+}
+
+#[derive(Default)]
+struct IndexDependencies {
+    calls: std::sync::atomic::AtomicUsize,
+    mode: std::sync::atomic::AtomicUsize,
+    points: Mutex<HashMap<(String, String), personal_ai_storage::EmbeddingRecord>>,
+}
+impl personal_ai_llm::EmbeddingProvider for IndexDependencies {
+    fn embedding(
+        &self,
+        input: &[String],
+    ) -> personal_ai_llm::BoxFuture<'_, personal_ai_llm::LlmResult<Vec<personal_ai_llm::Embedding>>>
+    {
+        use std::sync::atomic::Ordering;
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        let mode = self.mode.load(Ordering::SeqCst);
+        let len = input.len();
+        Box::pin(async move {
+            if mode == 1 {
+                return Err(personal_ai_llm::LlmError::RateLimited);
+            }
+            Ok((0..if mode == 2 { len - 1 } else { len })
+                .map(|_| personal_ai_llm::Embedding {
+                    values: vec![1.0, 0.0],
+                    model: "m".into(),
+                })
+                .collect())
+        })
+    }
+}
+impl personal_ai_storage::VectorStore for IndexDependencies {
+    fn insert_embeddings(
+        &self,
+        owner: &UserId,
+        records: &[personal_ai_storage::EmbeddingRecord],
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        let result = if self.mode.load(std::sync::atomic::Ordering::SeqCst) == 3 {
+            Err(StorageError::Unavailable("secret vector error".into()))
+        } else {
+            for record in records {
+                self.points
+                    .lock()
+                    .unwrap()
+                    .insert((owner.to_string(), record.id.clone()), record.clone());
+            }
+            Ok(())
+        };
+        Box::pin(async { result })
+    }
+    fn similar_search(
+        &self,
+        _: &UserId,
+        _: &[f32],
+        _: usize,
+    ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::VectorMatch>>> {
+        Box::pin(async { unreachable!() })
+    }
+    fn remove(&self, _: &UserId, _: &[String]) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async { unreachable!() })
+    }
+}
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
+    use std::sync::atomic::Ordering;
+    let store = Arc::new(MemoryStore::default());
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: "index@example.com".into(),
+        display_name: "Owner".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    let token = "c".repeat(64);
+    store.sessions.lock().unwrap().insert(
+        format!("{:x}", Sha256::digest(token.as_bytes())),
+        owner.id.to_string(),
+    );
+    let cookie = format!("personal_ai_session_v2={token}");
+    let dependencies = Arc::new(IndexDependencies::default());
+    let indexer = personal_ai_knowledge::index::DocumentIndexer::new(
+        dependencies.clone(),
+        dependencies.clone(),
+        "m".into(),
+        2,
+    );
+    let state = AppState {
+        indexing: Some(Arc::new(Indexing::new(indexer))),
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
+        documents: store.clone(),
+        store: store.clone(),
+        api_token: Arc::from(TOKEN),
+        auth: Arc::new(AuthConfig::new(false)),
+    };
+    let app = router(state.clone());
+    let document = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            title: "Index".into(),
+            source: "note.md".into(),
+            source_type: "markdown".into(),
+            tags: vec![],
+            created_at_unix_ms: 1,
+            chunk_count: 17,
+        },
+        markdown: "text".into(),
+        original_pdf: None,
+        original_html: None,
+        chunks: (0..17).map(|i| format!("chunk {i}")).collect(),
+    };
+    store
+        .insert_document(&owner.id, "digest", &document)
+        .await
+        .unwrap();
+    let path = format!("/api/documents/{}/index", document.summary.id);
+    assert_eq!(
+        auth_request(app.clone(), "POST", &path, None, "", true)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        auth_request(app.clone(), "POST", &path, Some(&cookie), "", false)
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    let foreign = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            ..document.summary.clone()
+        },
+        ..document.clone()
+    };
+    store
+        .insert_document(
+            &UserId::new(Uuid::new_v4().to_string()),
+            "foreign-digest",
+            &foreign,
+        )
+        .await
+        .unwrap();
+    let foreign_path = format!("/api/documents/{}/index", foreign.summary.id);
+    assert_eq!(
+        auth_request(app.clone(), "POST", &foreign_path, Some(&cookie), "", true)
+            .await
+            .status(),
+        StatusCode::NOT_FOUND
+    );
+    for suffix in ["?offset=17", "?offset=-1", "?unexpected=1"] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                &(path.clone() + suffix),
+                Some(&cookie),
+                "",
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(dependencies.calls.load(Ordering::SeqCst), 0);
+    for _ in 0..2 {
+        let response = auth_request(app.clone(), "POST", &path, Some(&cookie), "", true).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["indexed_chunks"], 16);
+        assert_eq!(body["next_offset"], 16);
+    }
+    assert_eq!(dependencies.points.lock().unwrap().len(), 16);
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        &(path.clone() + "?offset=16"),
+        Some(&cookie),
+        "",
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert!(body["next_offset"].is_null());
+    assert_eq!(dependencies.points.lock().unwrap().len(), 17);
+    for (mode, status) in [
+        (1, StatusCode::TOO_MANY_REQUESTS),
+        (2, StatusCode::BAD_GATEWAY),
+        (3, StatusCode::SERVICE_UNAVAILABLE),
+    ] {
+        dependencies.mode.store(mode, Ordering::SeqCst);
+        let response = auth_request(app.clone(), "POST", &path, Some(&cookie), "", true).await;
+        assert_eq!(response.status(), status);
+        let bytes = to_bytes(response.into_body(), 4096).await.unwrap();
+        assert!(!String::from_utf8_lossy(&bytes).contains("secret"));
+    }
+    let disabled = router(AppState {
+        indexing: None,
+        ..state
+    });
+    assert_eq!(
+        auth_request(disabled, "POST", &path, Some(&cookie), "", true)
+            .await
+            .status(),
+        StatusCode::SERVICE_UNAVAILABLE
     );
 }

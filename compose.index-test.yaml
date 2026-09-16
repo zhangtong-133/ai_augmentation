@@ -1,0 +1,29 @@
+# 仅供 smoke --index 使用，Embedding 为本机确定性夹具，无外部调用或费用。
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.13.6
+    ports:
+      - "127.0.0.1::6333"
+    volumes:
+      - smoke-vectors:/qdrant/storage
+  embeddings:
+    image: node:20.15-bookworm-slim
+    command: ["node", "/fixture.mjs"]
+    volumes:
+      - ./scripts/embedding-fixture.mjs:/fixture.mjs:ro
+  api-server:
+    environment:
+      KNOWLEDGE_INDEX_ENABLED: "true"
+      OPENAI_BASE_URL: http://embeddings:8081/v1
+      OPENAI_API_KEY: fixture-only-key
+      OPENAI_EMBEDDING_MODEL: fixture-embedding
+      EMBEDDING_DIMENSIONS: "3"
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: smoke_knowledge
+    depends_on:
+      qdrant:
+        condition: service_started
+      embeddings:
+        condition: service_started
+volumes:
+  smoke-vectors:

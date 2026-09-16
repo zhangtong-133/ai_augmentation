@@ -1,5 +1,7 @@
 # 文档索引
 
+- [Embedding 与 Qdrant 索引](design/sprint-2-vector-index.md)：显式分批索引、用户/模型隔离、HTTP 契约和真实向量库验收。
+
 - [MinIO / S3 原文存储](design/sprint-2-object-storage.md)：三种原文格式、私有桶、数据库引用、旧数据兼容与隔离验收。
 
 - [网页 URL 导入](design/sprint-2-web-import.md)：公开静态网页抓取、正文提取、DNS/重定向限制及持久化。

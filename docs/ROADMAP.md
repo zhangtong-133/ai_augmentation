@@ -31,7 +31,8 @@
 - [x] 公网网页成功导入浏览器用例与独立 `make browser-test-public` 入口；Mac/WSL Docker 与浏览器环境适配
 - [x] 公网网页成功导入端到端验收通过（2026-09-16 Mac/OrbStack，完整双入口结果见网页导入设计）
 - [x] MinIO / S3 原文适配器、导入接入、数据库引用与历史内联数据兼容
-- [ ] Embedding、Qdrant adapter
+- [x] Embedding、Qdrant adapter 与按用户隔离的显式分批文档索引
+- [ ] 持久化索引任务、完整索引状态与自动重试
 - [ ] 历史原文迁移与孤立对象清理
 - [ ] RAG 检索与知识问答
 

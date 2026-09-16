@@ -60,3 +60,7 @@ stack-down: ## 停止完整本地服务栈
 .PHONY: smoke-objects
 smoke-objects: ## 在隔离 MinIO/PostgreSQL 中验证原文存储及 HTTP 流程
 	node scripts/smoke.mjs --objects
+
+.PHONY: smoke-index
+smoke-index: ## 验证隔离 Qdrant、Embedding HTTP 夹具和双入口文档索引
+	node scripts/smoke.mjs --index

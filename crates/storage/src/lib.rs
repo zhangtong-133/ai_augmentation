@@ -31,9 +31,13 @@ impl Display for StorageError {
 
 impl Error for StorageError {}
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmbeddingRecord {
     pub id: String,
+    pub document_id: String,
+    pub ordinal: usize,
+    pub text: String,
+    pub model: String,
     pub vector: Vec<f32>,
     pub source: String,
     pub content_type: String,
@@ -95,18 +99,18 @@ pub trait MetadataStore: Send + Sync {
 pub trait VectorStore: Send + Sync {
     fn insert_embeddings(
         &self,
-        collection: &str,
+        owner: &UserId,
         records: &[EmbeddingRecord],
     ) -> BoxFuture<'_, StorageResult<()>>;
 
     fn similar_search(
         &self,
-        collection: &str,
+        owner: &UserId,
         query: &[f32],
         limit: usize,
     ) -> BoxFuture<'_, StorageResult<Vec<VectorMatch>>>;
 
-    fn remove(&self, collection: &str, ids: &[String]) -> BoxFuture<'_, StorageResult<()>>;
+    fn remove(&self, owner: &UserId, ids: &[String]) -> BoxFuture<'_, StorageResult<()>>;
 }
 
 pub trait ObjectStorage: Send + Sync {

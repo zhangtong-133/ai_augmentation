@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+personal-ai-llm-openai = { path = "../../crates/llm-openai" }
+personal-ai-storage-qdrant = { path = "../../crates/storage-qdrant" }
 personal-ai-storage-s3 = { path = "../../crates/storage-s3" }
 personal-ai-web-import = { path = "../../crates/web-import" }
 base64 = "0.22"
@@ -13,7 +15,7 @@ personal-ai-pdf-poppler = { path = "../../crates/pdf-poppler" }
 argon2.workspace = true
 sha2.workspace = true
 axum.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["time", "sync"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

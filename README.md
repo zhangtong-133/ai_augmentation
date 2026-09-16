@@ -26,7 +26,7 @@ PDF 支持可提取文字的文件（最多 5 MiB），原文件默认存 Postgr
 - `crates/storage-postgres`：SQLx 用户仓储与自动执行的版本化迁移
 - `infra/postgres/init`：保留初始建表脚本，兼容首阶段数据库卷
 
-业务 crate 不直接绑定 PostgreSQL、Qdrant、MinIO 或任一模型厂商。PostgreSQL 适配器已实现 `MetadataStore` / `DocumentStore`，S3 适配器实现 `ObjectStorage`；向量库与模型适配器仍待实现。Rust 工具链基线为 1.96。
+业务 crate 不直接绑定 PostgreSQL、Qdrant、MinIO 或任一模型厂商。PostgreSQL 适配器已实现 `MetadataStore` / `DocumentStore`，S3 适配器实现 `ObjectStorage`；Embedding 与 Qdrant 适配器已接入显式分批索引，聊天模型和 RAG 仍待实现。Rust 工具链基线为 1.96。
 
 ## 快速开始
 
@@ -78,3 +78,9 @@ scripts/    跨平台开发入口
 设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；此轮不批量搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
 
 运行 `make smoke-objects` 可在独立 PostgreSQL/MinIO 环境验证原文、隔离、失败重试和双入口 HTTP 持久化；也可运行 `node scripts/smoke.mjs --objects --browser` 追加已有浏览器验收。
+
+### 文档向量索引
+
+配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index?offset=0` 索引自己的文档，每批最多 16 块，按响应 `next_offset` 顺序继续。导入不会自动调用模型；当前没有页面按钮、持久化索引任务或问答接口。配置、重试语义与限制见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
+
+`make smoke-index` 运行真实 Qdrant、确定性本地 Embedding HTTP 夹具与双入口验收，不调用外部模型。
