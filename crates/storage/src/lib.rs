@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod documents;
+pub mod index_jobs;
 
 use personal_ai_domain::{ConversationId, User, UserId};
 use std::error::Error;

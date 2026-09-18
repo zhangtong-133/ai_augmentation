@@ -81,6 +81,8 @@ scripts/    跨平台开发入口
 
 ### 文档向量索引
 
-配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index?offset=0` 索引自己的文档，每批最多 16 块，按响应 `next_offset` 顺序继续。导入不会自动调用模型；当前没有页面按钮、持久化索引任务或问答接口。配置、重试语义与限制见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
+配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index-job` 提交持久化任务，并通过同一路径的 GET 查询完整进度。后台每批最多 16 块，支持重启恢复和每批最多 3 次尝试；失败任务可再次 POST 从确认进度续传，已完成任务重复提交不会再次调用模型。POST 必须携带 `X-Requested-With: personal-ai`。导入不会自动调用模型，超时或恢复可能重复计费；当前没有页面按钮或问答接口。详见 [任务设计](docs/design/sprint-2-index-jobs.md)。
+
+旧的 `POST /api/documents/{id}/index?offset=0` 同步分批接口继续支持，但不会更新任务进度。配置与接口细节见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
 
 `make smoke-index` 运行真实 Qdrant、确定性本地 Embedding HTTP 夹具与双入口验收，不调用外部模型。

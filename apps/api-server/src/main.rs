@@ -15,8 +15,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         store = store.with_object_storage(objects);
     }
     let store = Arc::new(store);
-    let indexing = api_server::indexing_from_env().await?;
+    let indexing = api_server::indexing_from_env(store.clone()).await?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
+    let index_task = indexing.as_ref().map(|indexing| {
+        let indexing = indexing.clone();
+        let documents = store.clone();
+        tokio::spawn(async move { indexing.run_jobs(documents).await })
+    });
     tracing::info!(address = %config.address, "API ready");
     axum::serve(
         listener,
@@ -33,6 +38,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .with_graceful_shutdown(shutdown())
     .await?;
+    if let Some(task) = index_task {
+        task.abort();
+        let _ = task.await;
+    }
     Ok(())
 }
 

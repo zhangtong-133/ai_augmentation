@@ -10,7 +10,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     : ["auth/login", "auth/logout", "documents"];
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex) {
+  const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。

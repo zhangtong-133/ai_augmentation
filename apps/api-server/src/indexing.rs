@@ -8,16 +8,19 @@ use axum::{
 };
 use personal_ai_knowledge::index::{DocumentIndexer, IndexError};
 use personal_ai_llm::LlmError;
-use personal_ai_storage::StorageError;
+use personal_ai_storage::{StorageError, index_jobs::IndexJobStore};
 use serde::Deserialize;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 
 pub struct Indexing {
-    indexer: DocumentIndexer,
-    slots: Semaphore,
+    pub(super) indexer: DocumentIndexer,
+    pub(super) slots: Semaphore,
+    pub(super) jobs: Option<Arc<dyn IndexJobStore>>,
+    pub(super) target: String,
 }
 impl Indexing {
     #[must_use]
@@ -25,14 +28,25 @@ impl Indexing {
         Self {
             indexer,
             slots: Semaphore::new(2),
+            jobs: None,
+            target: String::new(),
         }
+    }
+
+    #[must_use]
+    pub fn with_jobs(mut self, jobs: Arc<dyn IndexJobStore>, target: String) -> Self {
+        self.jobs = Some(jobs);
+        self.target = target;
+        self
     }
 }
 /// 显式启用索引时才读取模型凭据、连接向量库；缺失配置启动失败。
 ///
 /// # Errors
 /// 配置无效、向量库不可用或集合维度不匹配时返回错误。
-pub async fn indexing_from_env() -> Result<Option<Arc<Indexing>>, Box<dyn std::error::Error>> {
+pub async fn indexing_from_env(
+    jobs: Arc<dyn IndexJobStore>,
+) -> Result<Option<Arc<Indexing>>, Box<dyn std::error::Error>> {
     match std::env::var("KNOWLEDGE_INDEX_ENABLED").as_deref() {
         Err(std::env::VarError::NotPresent) | Ok("false") => return Ok(None),
         Ok("true") => {}
@@ -65,12 +79,26 @@ pub async fn indexing_from_env() -> Result<Option<Arc<Indexing>>, Box<dyn std::e
         dimensions,
     )?;
     vectors.ensure_collection().await?;
-    Ok(Some(Arc::new(Indexing::new(DocumentIndexer::new(
-        Arc::new(provider),
-        Arc::new(vectors),
-        model,
-        dimensions,
-    )))))
+    // 不包含凭据；模型、维度或存储目标改变后使用独立进度，避免虚假完成。
+    let target = format!(
+        "{:x}",
+        Sha256::digest(serde_json::to_vec(&(
+            std::env::var("OPENAI_BASE_URL").unwrap_or_else(|_| "https://api.openai.com/v1".into()),
+            &model,
+            dimensions,
+            required("QDRANT_URL")?,
+            required("QDRANT_COLLECTION")?,
+        ))?)
+    );
+    Ok(Some(Arc::new(
+        Indexing::new(DocumentIndexer::new(
+            Arc::new(provider),
+            Arc::new(vectors),
+            model,
+            dimensions,
+        ))
+        .with_jobs(jobs, target),
+    )))
 }
 pub(super) fn routes() -> Router<AppState> {
     Router::new().route("/api/documents/{id}/index", post(index))

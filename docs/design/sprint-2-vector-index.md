@@ -1,5 +1,7 @@
 # Sprint 2：Embedding 与 Qdrant 文档索引
 
+后续阶段已补齐[持久化索引任务与自动重试](sprint-2-index-jobs.md)。本文描述保留兼容的同步分批接口，其阶段性限制不代表新增异步任务的能力。
+
 ## 本轮范围
 
 实现独立 `EmbeddingProvider` 端口、`personal-ai-llm-openai` HTTP 适配器、`personal-ai-storage-qdrant` REST 适配器，以及已登录用户的显式分批索引接口。原有导入仍只负责可靠保存文档；不会因导入而自动调用付费模型。此轮无聊天、自动问答、搜索 HTTP 接口或新增页面控件。

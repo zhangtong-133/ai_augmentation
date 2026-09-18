@@ -1,3 +1,4 @@
+mod index_jobs;
 mod indexing;
 mod object_storage;
 use axum::{
@@ -79,6 +80,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
         .merge(indexing::routes())
+        .merge(index_jobs::routes())
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))

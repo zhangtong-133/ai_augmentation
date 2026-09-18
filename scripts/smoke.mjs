@@ -251,6 +251,45 @@ try {
     }
     await verifyIndex(document);
     console.log("PASS: authenticated indexing through both HTTP entry points, CSRF, isolation and idempotency");
+    const jobPath = path + "/index-job";
+    await request(web, jobPath, 401);
+    await request(web, jobPath, 403, { method: "POST", cookie, csrf: false });
+    await request(gateway, jobPath, 404, { method: "POST", cookie: otherCookie });
+    await request(web, jobPath, 404, { cookie });
+    // 模型停机时持久化任务仍可接收；恢复依赖和 API 后自动完成多批次索引。
+    await compose(["stop", "embeddings"]);
+    await request(web, jobPath, 202, { method: "POST", cookie });
+    const waitJob = async (base, route, statuses) => {
+      for (let attempt = 0; attempt < 90; attempt++) {
+        const { data } = await request(base, route, 200, { cookie });
+        assert.equal(data.owner, undefined);
+        assert.equal(data.lease, undefined);
+        if (statuses.includes(data.status)) return data;
+        assert.notEqual(data.status, "failed");
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      throw new Error("index job state timeout");
+    };
+    const retry = await waitJob(web, jobPath, ["retrying"]);
+    assert.equal(retry.indexed_chunks, 0);
+    assert.equal(retry.error_code, "embedding_unavailable");
+    const duplicate = await request(gateway, jobPath, 202, { method: "POST", cookie });
+    assert.equal(duplicate.data.attempts, retry.attempts);
+    await compose(["restart", "api-server"]);
+    await compose(["start", "embeddings"]);
+    await Promise.all([web, gateway].map(base => ready(base + "/api/readyz")));
+    const done = await waitJob(gateway, jobPath, ["completed"]);
+    assert.equal(done.indexed_chunks, document.chunk_count);
+    await request(gateway, jobPath, 404, { cookie: otherCookie });
+    const large = await request(web, "/api/documents", 201, { method: "POST", cookie,
+      body: { title: "多批次索引", markdown: "多批次知识。".repeat(3500), tags: [] } });
+    assert.ok(large.data.chunk_count > 16);
+    const largePath = `/api/documents/${large.data.id}/index-job`;
+    await request(gateway, largePath, 202, { method: "POST", cookie });
+    assert.equal((await waitJob(web, largePath, ["completed"])).indexed_chunks, large.data.chunk_count);
+    await verifyIndex(large.data);
+    await verifyIndex(document);
+    console.log("PASS: durable jobs, bounded retry, API restart recovery, multi-batch completion and owner isolation");
   }
   console.log("PASS: gateway/proxy, login, CSRF, import, deduplication, isolation and overview");
   if (process.argv.includes("--objects")) await compose(["restart", "minio"]);
@@ -260,14 +299,17 @@ try {
   }
   await compose(["restart", "postgres"]);
   await compose(["restart", "api-server"]);
-  await ready(web + "/api/readyz");
+  await Promise.all([web, gateway].map(base => ready(base + "/api/readyz")));
   assert.equal((await request(web, path, 200, { cookie })).data.markdown, body.markdown);
   await request(web, "/api/auth/logout", 200, { method: "POST", cookie });
   await request(gateway, "/api/auth/me", 401, { cookie });
   await request(web, "/api/documents", 401, { cookie });
   const renewed = await login(web, owner);
   assert.equal((await request(web, path, 200, { cookie: renewed })).data.id, document.id);
-  if (process.argv.includes("--index")) await verifyIndex(document);
+  if (process.argv.includes("--index")) {
+    await verifyIndex(document);
+    assert.equal((await request(web, path + "/index-job", 200, { cookie: renewed })).data.status, "completed");
+  }
   console.log("PASS: database/API restart persistence, logout revocation and re-login");
   if (process.argv.includes("--browser")) {
     // API 重启时，Docker 可能重新分配临时宿主端口。

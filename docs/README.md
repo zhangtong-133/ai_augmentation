@@ -1,5 +1,7 @@
 # 文档索引
 
+- [持久化索引任务](design/sprint-2-index-jobs.md)：异步提交、连续分批进度、租约恢复、有界重试及隔离验收。
+
 - [Embedding 与 Qdrant 索引](design/sprint-2-vector-index.md)：显式分批索引、用户/模型隔离、HTTP 契约和真实向量库验收。
 
 - [MinIO / S3 原文存储](design/sprint-2-object-storage.md)：三种原文格式、私有桶、数据库引用、旧数据兼容与隔离验收。
