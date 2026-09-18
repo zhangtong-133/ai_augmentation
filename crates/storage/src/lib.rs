@@ -114,7 +114,28 @@ pub trait VectorStore: Send + Sync {
     fn remove(&self, owner: &UserId, ids: &[String]) -> BoxFuture<'_, StorageResult<()>>;
 }
 
+#[derive(Clone, Debug)]
+pub struct ObjectInfo {
+    pub key: String,
+    pub modified_unix_ms: i64,
+}
+
 pub trait ObjectStorage: Send + Sync {
+    /// 按键名升序列出 users/ 下、游标之后的对象，最多 100 项。
+    fn list_originals(&self, _after: &str) -> BoxFuture<'_, StorageResult<Vec<ObjectInfo>>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "object listing unsupported".into(),
+            ))
+        })
+    }
+    fn head(&self, _key: &str) -> BoxFuture<'_, StorageResult<ObjectInfo>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "object metadata unsupported".into(),
+            ))
+        })
+    }
     fn put(
         &self,
         key: &str,

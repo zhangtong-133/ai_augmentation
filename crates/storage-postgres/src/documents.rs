@@ -19,6 +19,16 @@ fn summary(row: &PgRow) -> DocumentSummary {
     }
 }
 
+pub(super) fn stored(row: &PgRow) -> StoredDocument {
+    StoredDocument {
+        summary: summary(row),
+        markdown: row.get("markdown"),
+        original_pdf: row.get("original_pdf"),
+        original_html: row.get("original_html"),
+        chunks: row.get("chunks"),
+    }
+}
+
 fn parse_id(id: &str) -> StorageResult<Uuid> {
     Uuid::parse_str(id).map_err(|_| StorageError::InvalidData("invalid id".into()))
 }
@@ -67,6 +77,9 @@ impl DocumentStore for PostgresStore {
                 .map(|_| format!("users/{owner}/documents/{id}/{}", Uuid::new_v4()));
             let external = key.is_some();
             let mut tx = self.pool.begin().await.map_err(map_error)?;
+            if external {
+                super::originals::writer_lock(&mut tx).await?;
+            }
             // 先获得唯一约束，再上传；重复导入不会产生对象。
             sqlx::query("INSERT INTO documents (id,user_id,title,source,tags,content_digest,markdown,chunks,created_at_unix_ms,source_type,original_pdf,original_html,original_object_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
                 .bind(id).bind(owner)
@@ -109,13 +122,7 @@ impl DocumentStore for PostgresStore {
         Box::pin(async move {
             let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,original_pdf,original_html,original_object_key FROM documents WHERE user_id=$1 AND id=$2")
                 .bind(owner?).bind(id?).fetch_one(&self.pool).await.map_err(map_error)?;
-            let mut document = StoredDocument {
-                summary: summary(&row),
-                markdown: row.get("markdown"),
-                original_pdf: row.get("original_pdf"),
-                original_html: row.get("original_html"),
-                chunks: row.get("chunks"),
-            };
+            let mut document = stored(&row);
             if let Some(key) = row.get::<Option<String>, _>("original_object_key") {
                 let objects = self.objects.as_ref().ok_or_else(|| {
                     StorageError::Unavailable("object store is not configured".into())
@@ -139,7 +146,7 @@ fn original_text(bytes: Vec<u8>) -> StorageResult<String> {
     String::from_utf8(bytes).map_err(|_| StorageError::InvalidData("invalid original text".into()))
 }
 
-fn original(document: &StoredDocument) -> StorageResult<(&[u8], &'static str)> {
+pub(super) fn original(document: &StoredDocument) -> StorageResult<(&[u8], &'static str)> {
     let value = match document.summary.source_type.as_str() {
         "markdown" if document.original_pdf.is_none() && document.original_html.is_none() => {
             Some((

@@ -75,9 +75,11 @@ scripts/    跨平台开发入口
 
 ### MinIO 原文存储
 
-设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；此轮不批量搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
+设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；启动不会自动搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
 
 运行 `make smoke-objects` 可在独立 PostgreSQL/MinIO 环境验证原文、隔离、失败重试和双入口 HTTP 持久化；也可运行 `node scripts/smoke.mjs --objects --browser` 追加已有浏览器验收。
+
+原文存储维护已提供默认只预览的 `object-maintenance` 命令，支持历史内联原文迁移与孤立对象清理。执行前须确认专用桶、所有写入器版本和备份策略，详见 [原文维护设计](docs/design/sprint-2-original-maintenance.md)。不会自动迁移或清理现有数据。
 
 ### 文档向量索引
 

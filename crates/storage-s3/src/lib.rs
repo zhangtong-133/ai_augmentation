@@ -1,8 +1,9 @@
 //! `MinIO` / S3 原文适配器；SDK 类型与凭据不进入领域接口。
+use futures::TryStreamExt;
 use object_store::{
     Attribute, Attributes, ObjectStore, PutOptions, aws::AmazonS3Builder, path::Path,
 };
-use personal_ai_storage::{BoxFuture, ObjectStorage, StorageError, StorageResult};
+use personal_ai_storage::{BoxFuture, ObjectInfo, ObjectStorage, StorageError, StorageResult};
 use std::time::Duration;
 
 pub struct S3Store {
@@ -81,6 +82,40 @@ fn map_error(error: object_store::Error) -> StorageError {
 }
 
 impl ObjectStorage for S3Store {
+    fn list_originals(&self, after: &str) -> BoxFuture<'_, StorageResult<Vec<ObjectInfo>>> {
+        let after = after.to_owned();
+        Box::pin(async move {
+            let prefix = Path::from("users");
+            let offset = if after.is_empty() {
+                Path::from("users/")
+            } else {
+                path(&after)?
+            };
+            let mut stream = self.inner.list_with_offset(Some(&prefix), &offset);
+            let mut result = Vec::new();
+            while result.len() < 100 {
+                let Some(meta) = stream.try_next().await.map_err(map_error)? else {
+                    break;
+                };
+                result.push(ObjectInfo {
+                    key: meta.location.to_string(),
+                    // HEAD 的 HTTP 时间只有秒精度，统一精度才能与列举结果核对。
+                    modified_unix_ms: meta.last_modified.timestamp() * 1000,
+                });
+            }
+            Ok(result)
+        })
+    }
+    fn head(&self, key: &str) -> BoxFuture<'_, StorageResult<ObjectInfo>> {
+        let key = path(key);
+        Box::pin(async move {
+            let meta = self.inner.head(&key?).await.map_err(map_error)?;
+            Ok(ObjectInfo {
+                key: meta.location.to_string(),
+                modified_unix_ms: meta.last_modified.timestamp() * 1000,
+            })
+        })
+    }
     fn put(
         &self,
         key: &str,

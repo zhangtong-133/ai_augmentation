@@ -1,5 +1,7 @@
 # Sprint 2：MinIO / S3 原文存储
 
+后续已实现[历史原文迁移与孤立对象清理](sprint-2-original-maintenance.md)。本文保留初次接入的阶段性说明；维护命令与安全前提以新文档为准。
+
 ## 范围与接口
 
 新增 `personal-ai-storage-s3`，以 `object_store` SDK 实现已有 `ObjectStorage` 端口的 put/get/delete。使用显式 endpoint、bucket、region 和静态服务端凭据，采用 path-style S3 签名请求；供应商类型不进入领域、知识库或 HTTP 接口。客户端请求超时 15 秒，最多重试两次，重试预算 30 秒；错误转换不包含 SDK 响应、URL 或凭据。
