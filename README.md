@@ -83,10 +83,12 @@ scripts/    跨平台开发入口
 
 ### 文档向量索引
 
-配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index-job` 提交持久化任务，并通过同一路径的 GET 查询完整进度。后台每批最多 16 块，支持重启恢复和每批最多 3 次尝试；失败任务可再次 POST 从确认进度续传，已完成任务重复提交不会再次调用模型。POST 必须携带 `X-Requested-With: personal-ai`。导入不会自动调用模型，超时或恢复可能重复计费；当前没有页面按钮或问答接口。详见 [任务设计](docs/design/sprint-2-index-jobs.md)。
+配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index-job` 提交持久化任务，并通过同一路径的 GET 查询完整进度。后台每批最多 16 块，支持重启恢复和每批最多 3 次尝试；失败任务可再次 POST 从确认进度续传，已完成任务重复提交不会再次调用模型。POST 必须携带 `X-Requested-With: personal-ai`。导入不会自动调用模型，超时或恢复可能重复计费；当前没有页面索引按钮。详见 [任务设计](docs/design/sprint-2-index-jobs.md)。
 
 旧的 `POST /api/documents/{id}/index?offset=0` 同步分批接口继续支持，但不会更新任务进度。配置与接口细节见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
 
 `make smoke-index` 运行真实 Qdrant、确定性本地 Embedding HTTP 夹具与双入口验收，不调用外部模型。
 
 启用索引后可调用 `POST /api/knowledge/search`，请求体为 `{"query":"问题","limit":5}`；需要会话 Cookie 与 `X-Requested-With: personal-ai`。返回当前用户的核验分块、标题、来源与得分，最多 20 条。检索不会自动索引文档，进行中的索引可能只返回部分分块。详见 [检索与问答设计](docs/design/sprint-2-retrieval-qa.md)。
+
+知识问答另需 `KNOWLEDGE_ANSWER_ENABLED=true` 和支持严格结构化输出的 `OPENAI_CHAT_MODEL`。`POST /api/knowledge/answer` 接收 `{"query":"问题"}`，返回答案与核验来源；无匹配资料返回 `insufficient_evidence`，不调用聊天模型。每次最多使用 5 个分块，无工具执行、自动重试或聊天历史；引用归属校验不保证答案语义正确。当前交付 API，检索/问答 UI 尚未实现。

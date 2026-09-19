@@ -262,9 +262,24 @@ try {
       assert.equal(found.response.headers.get("cache-control"), "no-store");
       const isolated = await request(base, searchPath, 200, { method: "POST", cookie: otherCookie, body });
       assert.deepEqual(isolated.data.hits, []);
+      const answerPath = "/api/knowledge/answer";
+      const question = { query: searchable.chunks[0] };
+      await request(base, answerPath, 401, { method: "POST", body: question });
+      await request(base, answerPath, 403, { method: "POST", cookie, body: question, csrf: false });
+      const answered = await request(base, answerPath, 200, { method: "POST", cookie, body: question });
+      assert.equal(answered.data.status, "answered");
+      assert.ok(answered.data.answer.length > 0);
+      assert.equal(answered.data.citations.length, 1);
+      const citation = answered.data.citations[0];
+      assert.equal(citation.id, 1);
+      assert.equal(citation.document_id, document.id);
+      assert.equal(citation.text, searchable.chunks[citation.ordinal]);
+      assert.equal(answered.response.headers.get("cache-control"), "no-store");
+      const unanswered = await request(base, answerPath, 200, { method: "POST", cookie: otherCookie, body: question });
+      assert.deepEqual(unanswered.data, { status: "insufficient_evidence", answer: null, citations: [] });
     }
     await verifyIndex(document);
-    console.log("PASS: authenticated indexing and verified semantic search through both HTTP entry points, CSRF, isolation and idempotency");
+    console.log("PASS: authenticated indexing, verified semantic search and cited answers through both HTTP entry points, CSRF, isolation and idempotency");
     const jobPath = path + "/index-job";
     await request(web, jobPath, 401);
     await request(web, jobPath, 403, { method: "POST", cookie, csrf: false });

@@ -79,3 +79,22 @@ pub trait LlmProvider: Send + Sync {
 pub trait EmbeddingProvider: Send + Sync {
     fn embedding(&self, input: &[String]) -> BoxFuture<'_, LlmResult<Vec<Embedding>>>;
 }
+/// 仅使用给定证据回答问题，不提供工具执行能力。
+#[derive(Clone, Debug)]
+pub struct AnswerSource {
+    pub id: usize,
+    pub text: String,
+}
+#[derive(Clone, Debug)]
+pub struct ModelAnswer {
+    pub answer: String,
+    pub citations: Vec<usize>,
+    pub insufficient_evidence: bool,
+}
+pub trait AnswerProvider: Send + Sync {
+    fn answer(
+        &self,
+        question: &str,
+        sources: &[AnswerSource],
+    ) -> BoxFuture<'_, LlmResult<ModelAnswer>>;
+}

@@ -1,3 +1,5 @@
+mod answering;
+pub use answering::answering_from_env;
 mod index_jobs;
 mod indexing;
 mod object_storage;
@@ -61,6 +63,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
     pub indexing: Option<Arc<Indexing>>,
     pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,
     pub documents: Arc<dyn personal_ai_storage::documents::DocumentStore>,
@@ -82,6 +85,7 @@ pub fn router(state: AppState) -> Router {
         .merge(documents::routes())
         .merge(indexing::routes())
         .merge(retrieval::routes())
+        .merge(answering::routes())
         .merge(index_jobs::routes())
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))

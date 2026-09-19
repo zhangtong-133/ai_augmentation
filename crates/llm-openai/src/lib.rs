@@ -1,4 +1,7 @@
-//! `OpenAI` 兼容 Embedding HTTP 适配器。
+//! `OpenAI` 兼容 Embedding 与引用问答 HTTP 适配器。
+mod chat;
+pub use chat::OpenAiAnswers;
+
 use personal_ai_llm::{BoxFuture, Embedding, EmbeddingProvider, LlmError, LlmResult};
 use reqwest::{
     Client, Url,

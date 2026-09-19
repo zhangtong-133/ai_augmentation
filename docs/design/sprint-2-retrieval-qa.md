@@ -19,3 +19,30 @@
 `make check`、前端 lint/typecheck/build、`make smoke-index` 通过。单元/HTTP 测试故意让向量假实现返回其他用户和过期载荷，验证数据库复核不会泄露正文，并验证来源取自 PostgreSQL、参数限制、CSRF、模型限流、无效向量、向量故障及空结果。真实 Qdrant 验收覆盖双 HTTP 入口检索与用户隔离，同时回归持久化任务、自动恢复和重启持久化。
 
 `make smoke-objects` 新增文本投影集成断言，验证三种外部原文均可在未配置对象适配器时按所有者读取分块，原文二进制/HTML 不出现在投影中。未运行 Playwright（本轮没有 UI）及真实付费模型；不对搜索相关性或生成答案事实准确率作离线夹具之外的承诺。
+
+## 问答配置与协议
+
+默认 `KNOWLEDGE_ANSWER_ENABLED=false`。启用需要同时设置 `KNOWLEDGE_INDEX_ENABLED=true`、`KNOWLEDGE_ANSWER_ENABLED=true`、`OPENAI_CHAT_MODEL` 和既有模型/Qdrant 配置。聊天与向量化共用服务端 `OPENAI_BASE_URL` / `OPENAI_API_KEY`；聊天模型必须支持 Chat Completions 的严格 JSON Schema 输出，不设隐式默认模型，不回退到无约束文本。配置缺失时启动失败。实现参考 [OpenAI Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)，使用 `response_format`、`max_completion_tokens`，并检查 `finish_reason` 与 `refusal`。
+
+请求示例（带登录 Cookie 及 `X-Requested-With: personal-ai`）：
+
+```http
+POST /api/knowledge/answer
+Content-Type: application/json
+
+{"query":"我的资料中如何描述这个问题？"}
+```
+
+成功响应为 `{"status":"answered","answer":"…","citations":[{"id":1,"document_id":"…","ordinal":0,"title":"…","source":"…","text":"…","score":0.9}]}`。引用由服务端从本次命中分配 1 起始 ID；模型只返回答案、ID 列表及证据不足标志，不能提供自己的来源对象。只有校验过且实际引用的条目才出现在响应里。重复、零值、越界或缺失引用、空答案、超过 4000 字符的答案均返回 502 `invalid_answer`。
+
+无命中或模型明确判定证据不足时响应为 `{"status":"insufficient_evidence","answer":null,"citations":[]}`。没有命中时聊天调用次数为零，但仍需要执行查询向量化；该状态不是对整个知识库内容的不存在证明。模型报告证据不足时必须同时返回空答案与空引用，矛盾输出视为错误。429 限流、502 模型错误与 503 检索存储故障均不伪装成证据不足。
+
+模型输入最多 1000 字符问题和 5 个各不超过 1000 字符的核验片段。输出上限 2048 token（含模型推理 token），HTTP 响应最多 128 KiB，模型请求超时 20 秒，问答总时限 55 秒，Next.js 代理时限 60 秒。默认 Nginx 读取时限 60 秒覆盖 API 预算。不启用流式响应或模型服务端存储，不跟随重定向，不记录问答文本，不持久化聊天记录。调用者应将答案按纯文本展示，并提供引用片段查看，不把模型文本当 HTML 或可执行操作。
+
+该接口只验证引用归属和格式；模型仍可能错误理解资料或生成未被引用支持的句子。实际模型质量、提示注入抵抗效果、模型兼容性与费用需在具体部署模型上单独评估。本地确定性夹具验证协议与隔离，不替代语义质量评估。
+
+## 问答验收（2026-09-19，WSL / Docker）
+
+`make check`、前端 lint/typecheck/build、`make smoke-index`、`make compose-config` 与 `git diff --check` 通过。HTTP 测试验证认证、CSRF、并发额度、默认关闭、空结果零聊天调用、模型故障/限流、缺失/越界/重复/零值引用、超长答案和证据不足一致性。模型 HTTP 适配器测试验证严格 schema 请求、禁用存储/流式、无工具、拒答、截断/非法内容、重定向与错误正文脱敏。
+
+真实 PostgreSQL/Qdrant 与本地 Embedding/聊天 HTTP 夹具覆盖 Next.js 和 Nginx 双入口检索、答案引用正文核对、用户隔离、无匹配资料分支，并回归索引依赖失败恢复、多批次任务与数据库/API 重启持久化。隔离资源已清理。原文迁移和清理在上一检索步骤通过真实 MinIO 验收。本轮未运行 Playwright 或真实付费模型，未新增数据库迁移。

@@ -1,4 +1,4 @@
-# 仅供 smoke --index 使用，Embedding 为本机确定性夹具，无外部调用或费用。
+# 仅供 smoke --index 使用，Embedding 与聊天均为本机确定性夹具，无外部调用或费用。
 services:
   qdrant:
     image: qdrant/qdrant:v1.13.6
@@ -13,6 +13,8 @@ services:
       - ./scripts/embedding-fixture.mjs:/fixture.mjs:ro
   api-server:
     environment:
+      KNOWLEDGE_ANSWER_ENABLED: "true"
+      OPENAI_CHAT_MODEL: fixture-chat
       KNOWLEDGE_INDEX_ENABLED: "true"
       OPENAI_BASE_URL: http://embeddings:8081/v1
       OPENAI_API_KEY: fixture-only-key

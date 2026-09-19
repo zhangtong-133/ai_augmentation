@@ -137,6 +137,7 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
+        answering: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -245,6 +246,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
+        answering: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
@@ -594,6 +596,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
+        answering: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -790,6 +793,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
+        answering: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
@@ -859,6 +863,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     }
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
+        answering: None,
         indexing: None,
         web_importer: importer.clone(),
         documents: store.clone(),
@@ -1078,6 +1083,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         2,
     );
     let state = AppState {
+        answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -1191,6 +1197,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         assert!(!String::from_utf8_lossy(&bytes).contains("secret"));
     }
     let disabled = router(AppState {
+        answering: None,
         indexing: None,
         ..state
     });
@@ -1251,6 +1258,7 @@ async fn retrieval_fixture() -> (
         .unwrap();
     assert!(indexer.index_batch(&owner.id, &document, 0).await.is_ok());
     let state = AppState {
+        answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -1404,4 +1412,222 @@ async fn search_revalidates_untrusted_vectors_and_rejects_unauthorized_and_inval
     let result: serde_json::Value =
         serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
     assert_eq!(result["hits"], json!([]));
+}
+
+#[derive(Default)]
+struct AnswerFixture {
+    calls: std::sync::atomic::AtomicUsize,
+    mode: std::sync::atomic::AtomicUsize,
+}
+impl personal_ai_llm::AnswerProvider for AnswerFixture {
+    fn answer(
+        &self,
+        _: &str,
+        sources: &[personal_ai_llm::AnswerSource],
+    ) -> personal_ai_llm::BoxFuture<'_, personal_ai_llm::LlmResult<personal_ai_llm::ModelAnswer>>
+    {
+        use personal_ai_llm::{LlmError, ModelAnswer};
+        use std::sync::atomic::Ordering;
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].text, "verified evidence");
+        let result = match self.mode.load(Ordering::SeqCst) {
+            1 => Err(LlmError::RateLimited),
+            2 => Err(LlmError::ProviderUnavailable("secret upstream body".into())),
+            3 => Ok(ModelAnswer {
+                answer: "Forged".into(),
+                citations: vec![99],
+                insufficient_evidence: false,
+            }),
+            4 => Ok(ModelAnswer {
+                answer: String::new(),
+                citations: vec![],
+                insufficient_evidence: true,
+            }),
+            5 => Ok(ModelAnswer {
+                answer: "Uncited".into(),
+                citations: vec![],
+                insufficient_evidence: false,
+            }),
+            6 => Ok(ModelAnswer {
+                answer: "Contradiction".into(),
+                citations: vec![1],
+                insufficient_evidence: true,
+            }),
+            7 => Ok(ModelAnswer {
+                answer: "Duplicate".into(),
+                citations: vec![1, 1],
+                insufficient_evidence: false,
+            }),
+            8 => Ok(ModelAnswer {
+                answer: "Zero".into(),
+                citations: vec![0],
+                insufficient_evidence: false,
+            }),
+            9 => Ok(ModelAnswer {
+                answer: "x".repeat(4001),
+                citations: vec![1],
+                insufficient_evidence: false,
+            }),
+            _ => Ok(ModelAnswer {
+                answer: "Supported answer".into(),
+                citations: vec![1],
+                insufficient_evidence: false,
+            }),
+        };
+        Box::pin(async { result })
+    }
+}
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn answers_require_verified_evidence_and_never_call_chat_for_empty_results() {
+    use std::sync::atomic::Ordering;
+    let (mut state, _, dependencies, _, cookie, document) = retrieval_fixture().await;
+    let path = "/api/knowledge/answer";
+    assert_eq!(
+        auth_request(
+            router(state.clone()),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"question"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    let provider = Arc::new(AnswerFixture::default());
+    state.answering = Some(provider.clone());
+    let app = router(state.clone());
+    for (session, csrf, status) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                path,
+                session,
+                r#"{"query":"question"}"#,
+                csrf
+            )
+            .await
+            .status(),
+            status
+        );
+    }
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":""}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+    let permits = state
+        .indexing
+        .as_ref()
+        .unwrap()
+        .slots
+        .acquire_many(2)
+        .await
+        .unwrap();
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"question"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    assert_eq!(provider.calls.load(Ordering::SeqCst), 0);
+    drop(permits);
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"question"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 16384).await.unwrap()).unwrap();
+    assert_eq!(body["status"], "answered");
+    assert_eq!(body["citations"][0]["id"], 1);
+    assert_eq!(body["citations"][0]["document_id"], document.summary.id);
+    assert_eq!(body["citations"][0]["text"], "verified evidence");
+    for (mode, status) in [
+        (1, StatusCode::TOO_MANY_REQUESTS),
+        (2, StatusCode::BAD_GATEWAY),
+        (3, StatusCode::BAD_GATEWAY),
+        (5, StatusCode::BAD_GATEWAY),
+        (6, StatusCode::BAD_GATEWAY),
+        (7, StatusCode::BAD_GATEWAY),
+        (8, StatusCode::BAD_GATEWAY),
+        (9, StatusCode::BAD_GATEWAY),
+    ] {
+        provider.mode.store(mode, Ordering::SeqCst);
+        let response = auth_request(
+            app.clone(),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"question"}"#,
+            true,
+        )
+        .await;
+        assert_eq!(response.status(), status);
+        assert!(
+            !String::from_utf8_lossy(&to_bytes(response.into_body(), 4096).await.unwrap())
+                .contains("secret")
+        );
+    }
+    provider.mode.store(4, Ordering::SeqCst);
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"question"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(body["status"], "insufficient_evidence");
+    dependencies.points.lock().unwrap().clear();
+    let calls = provider.calls.load(Ordering::SeqCst);
+    let response = auth_request(
+        app,
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"missing"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(body["status"], "insufficient_evidence");
+    assert!(body["answer"].is_null());
+    assert_eq!(body["citations"], json!([]));
+    assert_eq!(provider.calls.load(Ordering::SeqCst), calls);
 }

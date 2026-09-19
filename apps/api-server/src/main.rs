@@ -16,6 +16,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let store = Arc::new(store);
     let indexing = api_server::indexing_from_env(store.clone()).await?;
+    let answering = api_server::answering_from_env(indexing.is_some())?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     let index_task = indexing.as_ref().map(|indexing| {
         let indexing = indexing.clone();
@@ -27,6 +28,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         listener,
         router(AppState {
             indexing,
+            answering,
             web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
             store: store.clone(),
             documents: store,

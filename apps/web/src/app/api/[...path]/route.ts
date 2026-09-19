@@ -7,7 +7,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const endpoint = path.join("/");
   const allowed = request.method === "GET"
     ? ["healthz", "readyz", "auth/me", "documents", "overview"]
-    : ["auth/login", "auth/logout", "documents", "knowledge/search"];
+    : ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer"];
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
@@ -45,7 +45,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     }
     const response = await fetch(
       new URL("/api/" + endpoint + request.nextUrl.search, process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080"),
-      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout((documentIndex || endpoint === "knowledge/search") ? 40000 : 10000) },
+      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(endpoint === "knowledge/answer" ? 60000 : (documentIndex || endpoint === "knowledge/search") ? 40000 : 10000) },
     );
     const output = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
     const cookie = response.headers.get("set-cookie");
