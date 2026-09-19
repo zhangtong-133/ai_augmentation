@@ -164,6 +164,46 @@ async function verifyIndex(document) {
   assert.equal((await response.json()).result.count, document.chunk_count);
 }
 
+async function waitJob(base, path, cookie, predicate) {
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const { data } = await request(base, path, 200, { cookie });
+    if (predicate(data.job)) return data.job;
+    assert.notEqual(data.job?.status, "failed", "background indexing failed");
+    await delay(250);
+  }
+  throw new Error("background indexing state timeout");
+}
+async function verifyDurableJob(web, gateway, cookie, otherCookie) {
+  const { data: doc } = await request(web, "/api/documents", 201, {
+    method: "POST", cookie, body: { title: "后台索引", markdown: "# 后台任务\n\n" + "可靠索引".repeat(5000) },
+  });
+  assert.ok(doc.chunk_count > 16);
+  const path = `/api/documents/${doc.id}/index-jobs`;
+  assert.equal((await request(web, path, 200, { cookie })).data.job, null);
+  await request(web, path, 401);
+  await request(web, path, 401, { method: "POST" });
+  await request(web, path, 403, { method: "POST", cookie, csrf: false });
+  for (const method of ["GET", "POST"]) await request(gateway, path, 404, { method, cookie: otherCookie });
+  await compose(["exec", "-T", "embeddings", "node", "-e",
+    "fetch('http://127.0.0.1:8081/control/fail-once',{method:'POST'}).then(r=>{if(r.status!==204)process.exit(1)})"]);
+  const accepted = await request(web, path, 202, { method: "POST", cookie });
+  const waiting = await waitJob(gateway, path, cookie, job => job?.status === "queued" && job.error_code === "embedding_rate_limited");
+  assert.equal(waiting.indexed_chunks, 0);
+  assert.equal(waiting.attempts, 1);
+  const duplicate = await request(gateway, path, 202, { method: "POST", cookie });
+  assert.equal(accepted.data.id, duplicate.data.id);
+  assert.equal(duplicate.data.attempts, 1);
+  await compose(["restart", "api-server"]);
+  await ready(web + "/api/readyz");
+  const completed = await waitJob(web, path, cookie, job => job?.status === "succeeded");
+  assert.equal(completed.id, accepted.data.id);
+  assert.equal(completed.indexed_chunks, doc.chunk_count);
+  assert.equal(completed.total_chunks, doc.chunk_count);
+  assert.equal((await request(web, path, 200, { method: "POST", cookie })).data.id, completed.id);
+  await verifyIndex(doc);
+  console.log("PASS: durable whole-document job, ownership/CSRF, rate-limit backoff, API restart resume and complete vector count");
+}
+
 let started = false;
 try {
   await command("docker", ["info", "--format", "{{.ServerVersion}}"], {}, true);
@@ -250,6 +290,7 @@ try {
       assert.equal(indexed.data.next_offset, null);
     }
     await verifyIndex(document);
+    await verifyDurableJob(web, gateway, cookie, otherCookie);
     console.log("PASS: authenticated indexing through both HTTP entry points, CSRF, isolation and idempotency");
   }
   console.log("PASS: gateway/proxy, login, CSRF, import, deduplication, isolation and overview");

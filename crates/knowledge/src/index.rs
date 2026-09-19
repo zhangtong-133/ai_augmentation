@@ -21,6 +21,15 @@ pub struct DocumentIndexer {
 }
 impl DocumentIndexer {
     #[must_use]
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+    #[must_use]
+    pub fn dimensions(&self) -> usize {
+        self.dimensions
+    }
+
+    #[must_use]
     pub fn new(
         provider: Arc<dyn EmbeddingProvider>,
         vectors: Arc<dyn VectorStore>,

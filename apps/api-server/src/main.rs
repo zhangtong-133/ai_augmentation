@@ -18,9 +18,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let indexing = api_server::indexing_from_env().await?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     tracing::info!(address = %config.address, "API ready");
+    let worker = indexing.as_ref().map(|indexing| {
+        tokio::spawn(api_server::run_index_jobs(
+            indexing.clone(),
+            store.clone(),
+            store.clone(),
+        ))
+    });
     axum::serve(
         listener,
         router(AppState {
+            index_jobs: Some(store.clone()),
             indexing,
             web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
             store: store.clone(),
@@ -33,6 +41,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .with_graceful_shutdown(shutdown())
     .await?;
+    if let Some(worker) = worker {
+        worker.abort();
+        let _ = worker.await;
+    }
     Ok(())
 }
 

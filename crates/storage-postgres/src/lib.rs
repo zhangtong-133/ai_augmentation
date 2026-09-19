@@ -1,5 +1,6 @@
 //! `PostgreSQL` 适配器，厂商特有类型不进入存储接口。
 mod documents;
+mod index_jobs;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};
 use sqlx::{PgPool, Row, postgres::PgPoolOptions};
