@@ -1,6 +1,6 @@
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{
-    BoxFuture, MetadataStore, ObjectStorage, StorageError, StorageResult,
+    BoxFuture, MetadataStore, ObjectInfo, ObjectStorage, StorageError, StorageResult,
     documents::{DocumentStore, DocumentSummary, StoredDocument},
 };
 use personal_ai_storage_postgres::PostgresStore;
@@ -17,8 +17,34 @@ struct FaultStore {
     fail_put: AtomicBool,
     reads: AtomicUsize,
     writes: AtomicUsize,
+    corrupt_get: AtomicBool,
+    aged: AtomicBool,
+    head_recent: AtomicBool,
+    fail_delete: AtomicBool,
 }
 impl ObjectStorage for FaultStore {
+    fn list_originals(&self, after: &str) -> BoxFuture<'_, StorageResult<Vec<ObjectInfo>>> {
+        let result = self.inner.list_originals(after);
+        Box::pin(async move {
+            let mut entries = result.await?;
+            if self.aged.load(Ordering::SeqCst) {
+                for entry in &mut entries {
+                    entry.modified_unix_ms -= 48 * 60 * 60 * 1000;
+                }
+            }
+            Ok(entries)
+        })
+    }
+    fn head(&self, key: &str) -> BoxFuture<'_, StorageResult<ObjectInfo>> {
+        let result = self.inner.head(key);
+        Box::pin(async move {
+            let mut entry = result.await?;
+            if self.aged.load(Ordering::SeqCst) && !self.head_recent.load(Ordering::SeqCst) {
+                entry.modified_unix_ms -= 48 * 60 * 60 * 1000;
+            }
+            Ok(entry)
+        })
+    }
     fn put(
         &self,
         key: &str,
@@ -34,9 +60,17 @@ impl ObjectStorage for FaultStore {
     }
     fn get(&self, key: &str) -> BoxFuture<'_, StorageResult<Vec<u8>>> {
         self.reads.fetch_add(1, Ordering::SeqCst);
+        if self.corrupt_get.load(Ordering::SeqCst) {
+            return Box::pin(async { Ok(b"corrupt".to_vec()) });
+        }
         self.inner.get(key)
     }
     fn delete(&self, key: &str) -> BoxFuture<'_, StorageResult<()>> {
+        if self.fail_delete.load(Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(StorageError::Unavailable("injected delete failure".into()))
+            });
+        }
         self.inner.delete(key)
     }
 }
@@ -77,6 +111,10 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
         fail_put: AtomicBool::new(false),
         reads: AtomicUsize::new(0),
         writes: AtomicUsize::new(0),
+        corrupt_get: AtomicBool::new(false),
+        aged: AtomicBool::new(false),
+        head_recent: AtomicBool::new(false),
+        fail_delete: AtomicBool::new(false),
     });
     let legacy = PostgresStore::connect(&url).await.unwrap();
     let store = PostgresStore::connect(&url)
@@ -122,6 +160,7 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
         Err(StorageError::NotFound)
     ));
 
+    let mut legacy_documents = Vec::new();
     for kind in ["markdown", "pdf", "web_page"] {
         let old = document(kind);
         legacy
@@ -132,6 +171,7 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
             store.get_document(&user.id, &old.summary.id).await.unwrap(),
             old
         );
+        legacy_documents.push(old);
         let doc = document(kind);
         store.insert_document(&user.id, kind, &doc).await.unwrap();
         let row = sqlx::query(
@@ -227,5 +267,165 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
             .await
             .unwrap(),
         failed
+    );
+
+    // 预览不上传；上传或回读失败不切换引用；并发迁移不重复处理已锁记录。
+    let writes = objects.writes.load(Ordering::SeqCst);
+    let preview = store.migrate_originals(false, 100).await.unwrap();
+    assert!(preview.eligible >= 3);
+    assert_eq!(preview.changed, 0);
+    assert_eq!(objects.writes.load(Ordering::SeqCst), writes);
+    assert!(store.migrate_originals(true, 0).await.is_err());
+    objects.fail_put.store(true, Ordering::SeqCst);
+    assert!(store.migrate_originals(true, 1).await.is_err());
+    objects.fail_put.store(false, Ordering::SeqCst);
+    objects.corrupt_get.store(true, Ordering::SeqCst);
+    assert!(store.migrate_originals(true, 1).await.is_err());
+    objects.corrupt_get.store(false, Ordering::SeqCst);
+    assert_eq!(
+        store.migrate_originals(false, 100).await.unwrap().eligible,
+        preview.eligible
+    );
+    let (a, b) = tokio::join!(
+        store.migrate_originals(true, 100),
+        store.migrate_originals(true, 100)
+    );
+    assert_eq!(a.unwrap().changed + b.unwrap().changed, preview.eligible);
+    assert_eq!(store.migrate_originals(true, 100).await.unwrap().changed, 0);
+    for doc in legacy_documents {
+        assert_eq!(
+            store.get_document(&user.id, &doc.summary.id).await.unwrap(),
+            doc
+        );
+        let row = sqlx::query(
+            "SELECT original_object_key,original_pdf,original_html FROM documents WHERE id=$1",
+        )
+        .bind(Uuid::parse_str(&doc.summary.id).unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(
+            row.get::<Option<String>, _>("original_object_key")
+                .is_some()
+        );
+        assert!(row.get::<Option<Vec<u8>>, _>("original_pdf").is_none());
+        assert!(row.get::<Option<String>, _>("original_html").is_none());
+    }
+
+    let orphan = format!(
+        "users/{}/documents/{}/{}",
+        user.id.as_str(),
+        Uuid::new_v4(),
+        Uuid::new_v4()
+    );
+    objects.put(&orphan, b"orphan", None).await.unwrap();
+    let listing = objects.list_originals("").await.unwrap();
+    let listed = listing.iter().find(|entry| entry.key == orphan).unwrap();
+    assert_eq!(
+        listed.modified_unix_ms,
+        objects.head(&orphan).await.unwrap().modified_unix_ms
+    );
+    objects
+        .put("users/unmanaged-file", b"keep", None)
+        .await
+        .unwrap();
+    assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
+    // 只在夹具中模拟旧时间，实际列举、读取、删除仍由真实 MinIO 执行。
+    objects.aged.store(true, Ordering::SeqCst);
+    let dry = store.collect_originals(false, "").await.unwrap();
+    assert!(dry.eligible >= 2);
+    assert_eq!(dry.changed, 0);
+    assert_eq!(objects.get(&orphan).await.unwrap(), b"orphan");
+    let mut upload = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock_shared(7384920617)")
+        .execute(&mut *upload)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.collect_originals(true, "").await,
+        Err(StorageError::Conflict(_))
+    ));
+    upload.rollback().await.unwrap();
+    let mut cleanup = pool.begin().await.unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock(7384920617)")
+        .execute(&mut *cleanup)
+        .await
+        .unwrap();
+    let writes = objects.writes.load(Ordering::SeqCst);
+    let blocked = document("markdown");
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            store.insert_document(&user.id, "blocked-upload", &blocked)
+        )
+        .await
+        .is_err()
+    );
+    assert_eq!(objects.writes.load(Ordering::SeqCst), writes);
+    cleanup.rollback().await.unwrap();
+    objects.head_recent.store(true, Ordering::SeqCst);
+    assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
+    objects.head_recent.store(false, Ordering::SeqCst);
+    objects.fail_delete.store(true, Ordering::SeqCst);
+    assert!(store.collect_originals(true, "").await.is_err());
+    objects.fail_delete.store(false, Ordering::SeqCst);
+    assert_eq!(
+        store.collect_originals(true, "").await.unwrap().changed,
+        dry.eligible
+    );
+    assert!(matches!(
+        objects.get(&orphan).await,
+        Err(StorageError::NotFound)
+    ));
+    assert_eq!(objects.get("users/unmanaged-file").await.unwrap(), b"keep");
+    assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
+    assert_eq!(
+        store
+            .get_document(&user.id, &failed.summary.id)
+            .await
+            .unwrap(),
+        failed
+    );
+    // 用户删除后的失去引用对象可以回收，其他用户引用仍保留。
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(Uuid::parse_str(other.id.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 3);
+    assert_eq!(
+        store
+            .get_document(&user.id, &failed.summary.id)
+            .await
+            .unwrap(),
+        failed
+    );
+
+    // SDK 分页从排他的键名游标继续，不跳过或重复对象。
+    let page_prefix = format!("users/{}/documents/", Uuid::new_v4());
+    for index in 0..101 {
+        objects
+            .put(&format!("{page_prefix}{index:03}"), b"page", None)
+            .await
+            .unwrap();
+    }
+    let first = objects
+        .list_originals(page_prefix.trim_end_matches('/'))
+        .await
+        .unwrap();
+    assert_eq!(first.len(), 100);
+    let second = objects
+        .list_originals(&first.last().unwrap().key)
+        .await
+        .unwrap();
+    assert!(
+        second
+            .iter()
+            .any(|entry| entry.key == format!("{page_prefix}100"))
+    );
+    assert!(
+        second
+            .iter()
+            .all(|entry| entry.key > first.last().unwrap().key)
     );
 }

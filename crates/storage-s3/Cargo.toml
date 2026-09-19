@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+futures = "0.3"
 personal-ai-storage.workspace = true
 object_store = { version = "0.12", default-features = false, features = ["aws"] }
 url = "2"

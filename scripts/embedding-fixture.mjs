@@ -1,21 +1,11 @@
 // 仅用于隔离验收的确定性 HTTP 服务，不连接任何外部模型。
 import { createServer } from "node:http";
-let failNext = false;
 createServer(async (request, response) => {
-  // 仅隔离测试容器内部使用的故障注入入口，不发布宿主端口。
-  if (request.method === "POST" && request.url === "/control/fail-once") {
-    failNext = true;
-    response.writeHead(204).end(); return;
-  }
   if (request.method !== "POST" || request.url !== "/v1/embeddings") {
     response.writeHead(404).end(); return;
   }
   if (request.headers.authorization !== "Bearer fixture-only-key") {
     response.writeHead(401).end(); return;
-  }
-  if (failNext) {
-    failNext = false;
-    response.writeHead(429).end(); return;
   }
   const buffers = [];
   let size = 0;

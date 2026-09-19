@@ -20,7 +20,7 @@ test: ## 运行 Rust 工作区测试
 	cargo test --workspace
 
 test-postgres: ## 使用 TEST_DATABASE_URL 运行 PostgreSQL 集成测试
-	cargo test -p personal-ai-storage-postgres --test postgres --test index_jobs -- --ignored
+	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
 
 smoke: ## 构建隔离 Compose 环境，验证持久化与 HTTP 流程，并清理测试数据
 	node scripts/smoke.mjs

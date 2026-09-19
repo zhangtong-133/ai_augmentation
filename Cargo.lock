@@ -1445,6 +1445,7 @@ dependencies = [
 name = "personal-ai-storage-s3"
 version = "0.1.0"
 dependencies = [
+ "futures",
  "object_store",
  "personal-ai-storage",
  "tokio",

@@ -75,16 +75,16 @@ scripts/    跨平台开发入口
 
 ### MinIO 原文存储
 
-设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；此轮不批量搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
+设置 `OBJECT_STORE_ENABLED=true` 并配置 `.env.example` 中的对象存储 endpoint、bucket、region 与凭据后，新导入的 Markdown/PDF/网页原文写入私有桶；旧数据库原文继续可读。`make infra-up` 自动创建本地桶。迁移 `0007` 由 API 启动时执行；启动不会自动搬迁旧数据。详见 [原文存储设计](docs/design/sprint-2-object-storage.md)。
 
 运行 `make smoke-objects` 可在独立 PostgreSQL/MinIO 环境验证原文、隔离、失败重试和双入口 HTTP 持久化；也可运行 `node scripts/smoke.mjs --objects --browser` 追加已有浏览器验收。
 
+原文存储维护已提供默认只预览的 `object-maintenance` 命令，支持历史内联原文迁移与孤立对象清理。执行前须确认专用桶、所有写入器版本和备份策略，详见 [原文维护设计](docs/design/sprint-2-original-maintenance.md)。不会自动迁移或清理现有数据。
+
 ### 文档向量索引
 
-配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index?offset=0` 索引自己的文档，每批最多 16 块，按响应 `next_offset` 顺序继续。导入不会自动调用模型；当前没有页面按钮或问答接口。整篇后台索引使用下述持久化任务接口。配置、重试语义与限制见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
+配置模型、维度和 Qdrant 后设置 `KNOWLEDGE_INDEX_ENABLED=true`，已登录用户可通过 `POST /api/documents/{id}/index-job` 提交持久化任务，并通过同一路径的 GET 查询完整进度。后台每批最多 16 块，支持重启恢复和每批最多 3 次尝试；失败任务可再次 POST 从确认进度续传，已完成任务重复提交不会再次调用模型。POST 必须携带 `X-Requested-With: personal-ai`。导入不会自动调用模型，超时或恢复可能重复计费；当前没有页面按钮或问答接口。详见 [任务设计](docs/design/sprint-2-index-jobs.md)。
+
+旧的 `POST /api/documents/{id}/index?offset=0` 同步分批接口继续支持，但不会更新任务进度。配置与接口细节见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
 
 `make smoke-index` 运行真实 Qdrant、确定性本地 Embedding HTTP 夹具与双入口验收，不调用外部模型。
-
-### 持久化后台索引
-
-启用索引后，登录用户向 `POST /api/documents/{id}/index-jobs` 提交整篇任务，使用同路径 GET 查询 queued/running/succeeded/failed 和连续完成的分块数。任务在 PostgreSQL 中持久化，API 内后台循环自动逐批处理、退避重试及重启恢复；失败后再次 POST 从已确认进度继续。无需浏览器维护 offset，也不会在普通导入时自动调用模型。迁移 `0008` 随 API 启动执行。配置、租约及至少一次执行的限制见 [后台索引设计](docs/design/sprint-2-index-jobs.md)。

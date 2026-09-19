@@ -1,6 +1,8 @@
 # 文档索引
 
-- [持久化索引任务](design/sprint-2-index-jobs.md)：后台整篇索引、租约恢复、进度查询、自动退避与重试边界。
+- [原文迁移与孤立对象清理](design/sprint-2-original-maintenance.md)：默认预览、回读校验、24 小时保留期、写入互斥与管理员维护命令。
+
+- [持久化索引任务](design/sprint-2-index-jobs.md)：异步提交、连续分批进度、租约恢复、有界重试及隔离验收。
 
 - [Embedding 与 Qdrant 索引](design/sprint-2-vector-index.md)：显式分批索引、用户/模型隔离、HTTP 契约和真实向量库验收。
 

@@ -137,7 +137,6 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
-        index_jobs: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -246,7 +245,6 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
-        index_jobs: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
@@ -596,7 +594,6 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
-        index_jobs: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -793,7 +790,6 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
-        index_jobs: None,
         indexing: None,
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
@@ -863,7 +859,6 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     }
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
-        index_jobs: None,
         indexing: None,
         web_importer: importer.clone(),
         documents: store.clone(),
@@ -1070,7 +1065,6 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         2,
     );
     let state = AppState {
-        index_jobs: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -1184,7 +1178,6 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         assert!(!String::from_utf8_lossy(&bytes).contains("secret"));
     }
     let disabled = router(AppState {
-        index_jobs: None,
         indexing: None,
         ..state
     });

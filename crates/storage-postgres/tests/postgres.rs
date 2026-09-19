@@ -3,6 +3,199 @@ use personal_ai_storage::{MetadataStore, StorageError};
 use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
 
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
+#[allow(clippy::too_many_lines)] // 同一生命周期覆盖并发领取、故障恢复、重试上限与隔离。
+async fn index_jobs_are_durable_fenced_bounded_and_owner_scoped() {
+    use personal_ai_storage::{
+        documents::{DocumentStore, DocumentSummary, StoredDocument},
+        index_jobs::{BatchOutcome, IndexJobStore},
+    };
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let store = PostgresStore::connect(&url).await.unwrap();
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: format!("{}@example.com", Uuid::new_v4()),
+        display_name: "Jobs".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    let document = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            title: "队列测试".into(),
+            source: "test.md".into(),
+            source_type: "markdown".into(),
+            tags: vec![],
+            created_at_unix_ms: 1,
+            chunk_count: 17,
+        },
+        markdown: "test".into(),
+        original_pdf: None,
+        original_html: None,
+        chunks: vec!["test".into(); 17],
+    };
+    store
+        .insert_document(&owner.id, "jobs", &document)
+        .await
+        .unwrap();
+    let doc = &document.summary.id;
+    let target = Uuid::new_v4().to_string();
+    let foreign = UserId::new(Uuid::new_v4().to_string());
+    assert!(matches!(
+        store.enqueue(&foreign, doc, &target).await,
+        Err(StorageError::NotFound)
+    ));
+    let (a, b) = tokio::join!(
+        store.enqueue(&owner.id, doc, &target),
+        store.enqueue(&owner.id, doc, &target)
+    );
+    assert_eq!(a.unwrap().status, "queued");
+    assert_eq!(b.unwrap().status, "queued");
+    assert!(matches!(
+        store.index_status(&foreign, doc, &target).await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(store.claim("different-target").await.unwrap().is_none());
+    let reopened = PostgresStore::connect(&url).await.unwrap();
+    let (a, b) = tokio::join!(store.claim(&target), reopened.claim(&target));
+    let (a, b) = (a.unwrap(), b.unwrap());
+    assert_ne!(a.is_some(), b.is_some());
+    let first = a.or(b).unwrap();
+    assert_eq!(first.attempts, 1);
+    let duplicate = store.enqueue(&owner.id, doc, &target).await.unwrap();
+    assert_eq!(duplicate.lease, first.lease);
+    assert_eq!(duplicate.attempts, 1);
+    let pool = sqlx::PgPool::connect(&url).await.unwrap();
+    // 模拟进程崩溃后的租约过期，不使用真实一分钟等待。
+    sqlx::query(
+        "UPDATE document_index_jobs SET lease_until=NOW()-INTERVAL '1 second' WHERE document_id=$1",
+    )
+    .bind(Uuid::parse_str(doc).unwrap())
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(matches!(
+        store
+            .finish_batch(&target, &first, BatchOutcome::Success(16))
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    let second = reopened.claim(&target).await.unwrap().unwrap();
+    assert_ne!(second.lease, first.lease);
+    assert_eq!(second.attempts, 2);
+    assert!(
+        store
+            .finish_batch(&target, &first, BatchOutcome::Success(16))
+            .await
+            .is_err()
+    );
+    store
+        .finish_batch(&target, &second, BatchOutcome::Success(16))
+        .await
+        .unwrap();
+    let tail = store.claim(&target).await.unwrap().unwrap();
+    assert_eq!(tail.indexed_chunks, 16);
+    assert_eq!(tail.attempts, 1);
+    store
+        .finish_batch(&target, &tail, BatchOutcome::Retry("embedding_unavailable"))
+        .await
+        .unwrap();
+    assert!(store.claim(&target).await.unwrap().is_none());
+    assert_eq!(
+        store
+            .index_status(&owner.id, doc, &target)
+            .await
+            .unwrap()
+            .status,
+        "retrying"
+    );
+    for attempt in [2, 3] {
+        sqlx::query("UPDATE document_index_jobs SET available_at=NOW()-INTERVAL '1 second' WHERE document_id=$1").bind(Uuid::parse_str(doc).unwrap()).execute(&pool).await.unwrap();
+        let retry = store.claim(&target).await.unwrap().unwrap();
+        assert_eq!(retry.attempts, attempt);
+        assert_eq!(retry.indexed_chunks, 16);
+        store
+            .finish_batch(
+                &target,
+                &retry,
+                BatchOutcome::Retry("embedding_unavailable"),
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        store
+            .index_status(&owner.id, doc, &target)
+            .await
+            .unwrap()
+            .status,
+        "failed"
+    );
+    assert!(store.claim(&target).await.unwrap().is_none());
+    let manual = store.enqueue(&owner.id, doc, &target).await.unwrap();
+    assert_eq!(manual.indexed_chunks, 16);
+    assert_eq!(manual.attempts, 0);
+    assert!(manual.error_code.is_none());
+    let last = store.claim(&target).await.unwrap().unwrap();
+    store
+        .finish_batch(&target, &last, BatchOutcome::Success(17))
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened
+            .index_status(&owner.id, doc, &target)
+            .await
+            .unwrap()
+            .status,
+        "completed"
+    );
+    assert_eq!(
+        store.enqueue(&owner.id, doc, &target).await.unwrap().status,
+        "completed"
+    );
+    assert!(store.claim(&target).await.unwrap().is_none());
+    let next_target = format!("{target}-new");
+    assert_eq!(
+        store
+            .enqueue(&owner.id, doc, &next_target)
+            .await
+            .unwrap()
+            .indexed_chunks,
+        0
+    );
+    for attempt in 1..=3 {
+        let crashed = store.claim(&next_target).await.unwrap().unwrap();
+        assert_eq!(crashed.attempts, attempt);
+        sqlx::query("UPDATE document_index_jobs SET lease_until=NOW()-INTERVAL '1 second' WHERE document_id=$1").bind(Uuid::parse_str(doc).unwrap()).execute(&pool).await.unwrap();
+    }
+    assert!(store.claim(&next_target).await.unwrap().is_none());
+    assert_eq!(
+        store
+            .index_status(&owner.id, doc, &next_target)
+            .await
+            .unwrap()
+            .error_code
+            .as_deref(),
+        Some("lease_expired")
+    );
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(Uuid::parse_str(owner.id.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.index_status(&owner.id, doc, &target).await,
+        Err(StorageError::NotFound)
+    ));
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM document_index_jobs WHERE document_id=$1")
+            .bind(Uuid::parse_str(doc).unwrap())
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(count, 0);
+}
+
 // 需要可丢弃的 PostgreSQL 数据库，CI 会提供专用服务。
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
