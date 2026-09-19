@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod index;
+pub mod retrieval;
 pub mod web;
 
 use personal_ai_domain::DocumentId;

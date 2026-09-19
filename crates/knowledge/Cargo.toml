@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+serde.workspace = true
+uuid.workspace = true
 pulldown-cmark = { version = "0.13", default-features = false }
 personal-ai-domain.workspace = true
 personal-ai-llm.workspace = true

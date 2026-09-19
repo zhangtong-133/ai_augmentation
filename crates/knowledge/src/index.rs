@@ -14,10 +14,10 @@ pub struct IndexBatch {
     pub total_chunks: usize,
 }
 pub struct DocumentIndexer {
-    provider: Arc<dyn EmbeddingProvider>,
-    vectors: Arc<dyn VectorStore>,
-    model: String,
-    dimensions: usize,
+    pub(crate) provider: Arc<dyn EmbeddingProvider>,
+    pub(crate) vectors: Arc<dyn VectorStore>,
+    pub(crate) model: String,
+    pub(crate) dimensions: usize,
 }
 impl DocumentIndexer {
     #[must_use]

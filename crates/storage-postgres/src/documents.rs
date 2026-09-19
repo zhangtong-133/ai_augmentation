@@ -112,6 +112,19 @@ impl DocumentStore for PostgresStore {
             Ok(rows.iter().map(summary).collect())
         })
     }
+    fn get_document_text(
+        &self,
+        owner: &UserId,
+        id: &str,
+    ) -> BoxFuture<'_, StorageResult<StoredDocument>> {
+        let owner = parse_id(owner.as_str());
+        let id = parse_id(id);
+        Box::pin(async move {
+            let row = sqlx::query("SELECT id,title,source,source_type,tags,created_at_unix_ms,cardinality(chunks) AS chunk_count,markdown,chunks,NULL::bytea AS original_pdf,NULL::text AS original_html FROM documents WHERE user_id=$1 AND id=$2")
+                .bind(owner?).bind(id?).fetch_one(&self.pool).await.map_err(map_error)?;
+            Ok(stored(&row))
+        })
+    }
     fn get_document(
         &self,
         owner: &UserId,

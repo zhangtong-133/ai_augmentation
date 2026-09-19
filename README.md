@@ -88,3 +88,5 @@ scripts/    跨平台开发入口
 旧的 `POST /api/documents/{id}/index?offset=0` 同步分批接口继续支持，但不会更新任务进度。配置与接口细节见 [向量索引设计](docs/design/sprint-2-vector-index.md)。
 
 `make smoke-index` 运行真实 Qdrant、确定性本地 Embedding HTTP 夹具与双入口验收，不调用外部模型。
+
+启用索引后可调用 `POST /api/knowledge/search`，请求体为 `{"query":"问题","limit":5}`；需要会话 Cookie 与 `X-Requested-With: personal-ai`。返回当前用户的核验分块、标题、来源与得分，最多 20 条。检索不会自动索引文档，进行中的索引可能只返回部分分块。详见 [检索与问答设计](docs/design/sprint-2-retrieval-qa.md)。

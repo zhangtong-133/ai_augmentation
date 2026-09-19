@@ -53,6 +53,14 @@ pub trait DocumentStore: Send + Sync {
         owner: &UserId,
         offset: u32,
     ) -> BoxFuture<'_, StorageResult<Vec<DocumentSummary>>>;
+    /// 仅用于检索的文本投影；适配器应避免读取外部原文。
+    fn get_document_text(
+        &self,
+        owner: &UserId,
+        id: &str,
+    ) -> BoxFuture<'_, StorageResult<StoredDocument>> {
+        self.get_document(owner, id)
+    }
     fn get_document(
         &self,
         owner: &UserId,

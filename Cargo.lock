@@ -1368,6 +1368,8 @@ dependencies = [
  "personal-ai-llm",
  "personal-ai-storage",
  "pulldown-cmark",
+ "serde",
+ "uuid",
 ]
 
 [[package]]

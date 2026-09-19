@@ -1034,7 +1034,20 @@ impl personal_ai_storage::VectorStore for IndexDependencies {
         _: &[f32],
         _: usize,
     ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::VectorMatch>>> {
-        Box::pin(async { unreachable!() })
+        // 故意返回其他所有者的载荷，证明数据库复核独立于向量过滤。
+        let result = if self.mode.load(std::sync::atomic::Ordering::SeqCst) == 3 {
+            Err(StorageError::Unavailable("secret vector error".into()))
+        } else {
+            Ok(self
+                .points
+                .lock()
+                .unwrap()
+                .values()
+                .cloned()
+                .map(|record| personal_ai_storage::VectorMatch { record, score: 0.9 })
+                .collect())
+        };
+        Box::pin(async { result })
     }
     fn remove(&self, _: &UserId, _: &[String]) -> BoxFuture<'_, StorageResult<()>> {
         Box::pin(async { unreachable!() })
@@ -1187,4 +1200,208 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
             .status(),
         StatusCode::SERVICE_UNAVAILABLE
     );
+}
+
+async fn retrieval_fixture() -> (
+    AppState,
+    Arc<MemoryStore>,
+    Arc<IndexDependencies>,
+    UserId,
+    String,
+    StoredDocument,
+) {
+    let store = Arc::new(MemoryStore::default());
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: "search@example.com".into(),
+        display_name: "Owner".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    let token = "d".repeat(64);
+    store.sessions.lock().unwrap().insert(
+        format!("{:x}", Sha256::digest(token.as_bytes())),
+        owner.id.to_string(),
+    );
+    let cookie = format!("personal_ai_session_v2={token}");
+    let dependencies = Arc::new(IndexDependencies::default());
+    let indexer = personal_ai_knowledge::index::DocumentIndexer::new(
+        dependencies.clone(),
+        dependencies.clone(),
+        "m".into(),
+        2,
+    );
+    let document = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            title: "Verified title".into(),
+            source: "local.md".into(),
+            source_type: "markdown".into(),
+            tags: vec![],
+            created_at_unix_ms: 1,
+            chunk_count: 1,
+        },
+        markdown: "verified evidence".into(),
+        original_pdf: None,
+        original_html: None,
+        chunks: vec!["verified evidence".into()],
+    };
+    store
+        .insert_document(&owner.id, "d", &document)
+        .await
+        .unwrap();
+    assert!(indexer.index_batch(&owner.id, &document, 0).await.is_ok());
+    let state = AppState {
+        indexing: Some(Arc::new(Indexing::new(indexer))),
+        web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
+        documents: store.clone(),
+        store: store.clone(),
+        api_token: Arc::from(TOKEN),
+        auth: Arc::new(AuthConfig::new(false)),
+    };
+    (state, store, dependencies, owner.id, cookie, document)
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn search_revalidates_untrusted_vectors_and_rejects_unauthorized_and_invalid_requests() {
+    use std::sync::atomic::Ordering;
+    let (state, store, dependencies, owner, cookie, document) = retrieval_fixture().await;
+    let app = router(state.clone());
+    let path = "/api/knowledge/search";
+    for (session, csrf, status) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                path,
+                session,
+                r#"{"query":"evidence"}"#,
+                csrf
+            )
+            .await
+            .status(),
+            status
+        );
+    }
+    for input in [
+        json!({"query":""}),
+        json!({"query":" ","limit":1}),
+        json!({"query":"x","limit":0}),
+        json!({"query":"x","limit":21}),
+        json!({"query":"x".repeat(1001)}),
+        json!({"query":"x","owner":"forged"}),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                path,
+                Some(&cookie),
+                &input.to_string(),
+                true
+            )
+            .await
+            .status(),
+            if input.get("owner").is_some() {
+                StatusCode::UNPROCESSABLE_ENTITY
+            } else {
+                StatusCode::BAD_REQUEST
+            }
+        );
+    }
+    assert_eq!(dependencies.calls.load(Ordering::SeqCst), 1);
+    let foreign_owner = UserId::new(Uuid::new_v4().to_string());
+    let foreign = StoredDocument {
+        summary: DocumentSummary {
+            id: Uuid::new_v4().to_string(),
+            title: "PRIVATE".into(),
+            ..document.summary.clone()
+        },
+        chunks: vec!["PRIVATE".into()],
+        ..document.clone()
+    };
+    store
+        .insert_document(&foreign_owner, "foreign", &foreign)
+        .await
+        .unwrap();
+    assert!(
+        state
+            .indexing
+            .as_ref()
+            .unwrap()
+            .indexer
+            .index_batch(&foreign_owner, &foreign, 0)
+            .await
+            .is_ok()
+    );
+    {
+        let mut points = dependencies.points.lock().unwrap();
+        let record = points
+            .get_mut(&(owner.to_string(), format!("{}:0", document.summary.id)))
+            .unwrap();
+        record.source = "FORGED SOURCE".into();
+        let mut obsolete = record.clone();
+        obsolete.id = format!("{}:1", document.summary.id);
+        obsolete.ordinal = 1;
+        obsolete.text = "STALE".into();
+        points.insert((owner.to_string(), obsolete.id.clone()), obsolete);
+    }
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"evidence"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let body = to_bytes(response.into_body(), 16384).await.unwrap();
+    let result: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(result["hits"].as_array().unwrap().len(), 1);
+    assert_eq!(result["hits"][0]["source"], "local.md");
+    assert_eq!(result["hits"][0]["text"], "verified evidence");
+    for secret in ["PRIVATE", "STALE", "FORGED"] {
+        assert!(!String::from_utf8_lossy(&body).contains(secret));
+    }
+    for (mode, status) in [
+        (1, StatusCode::TOO_MANY_REQUESTS),
+        (2, StatusCode::BAD_GATEWAY),
+        (3, StatusCode::SERVICE_UNAVAILABLE),
+    ] {
+        dependencies.mode.store(mode, Ordering::SeqCst);
+        let response = auth_request(
+            app.clone(),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"evidence"}"#,
+            true,
+        )
+        .await;
+        assert_eq!(response.status(), status);
+        assert!(
+            !String::from_utf8_lossy(&to_bytes(response.into_body(), 4096).await.unwrap())
+                .contains("secret")
+        );
+    }
+    dependencies.mode.store(0, Ordering::SeqCst);
+    dependencies.points.lock().unwrap().clear();
+    let response = auth_request(
+        app,
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"missing"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let result: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(result["hits"], json!([]));
 }

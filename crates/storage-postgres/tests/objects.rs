@@ -222,6 +222,17 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
             legacy.get_document(&user.id, &doc.summary.id).await,
             Err(StorageError::Unavailable(_))
         ));
+        let projection = legacy
+            .get_document_text(&user.id, &doc.summary.id)
+            .await
+            .unwrap();
+        assert_eq!(projection.chunks, doc.chunks);
+        assert_eq!(projection.summary, doc.summary);
+        assert!(projection.original_pdf.is_none() && projection.original_html.is_none());
+        assert!(matches!(
+            legacy.get_document_text(&other.id, &doc.summary.id).await,
+            Err(StorageError::NotFound)
+        ));
         assert!(!legacy.list_documents(&user.id, 0).await.unwrap().is_empty());
         // 相同原文可由另一用户独立导入。
         let other_doc = document(kind);

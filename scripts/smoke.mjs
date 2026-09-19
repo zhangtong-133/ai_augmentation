@@ -249,8 +249,22 @@ try {
       assert.equal(indexed.data.indexed_chunks, document.chunk_count);
       assert.equal(indexed.data.next_offset, null);
     }
+    const { data: searchable } = await request(web, path, 200, { cookie });
+    for (const base of [web, gateway]) {
+      const searchPath = "/api/knowledge/search";
+      const body = { query: searchable.chunks[0], limit: 5 };
+      await request(base, searchPath, 401, { method: "POST", body });
+      await request(base, searchPath, 403, { method: "POST", cookie, body, csrf: false });
+      const found = await request(base, searchPath, 200, { method: "POST", cookie, body });
+      assert.ok(found.data.hits.length > 0);
+      assert.equal(found.data.hits[0].document_id, document.id);
+      assert.equal(found.data.hits[0].text, searchable.chunks[found.data.hits[0].ordinal]);
+      assert.equal(found.response.headers.get("cache-control"), "no-store");
+      const isolated = await request(base, searchPath, 200, { method: "POST", cookie: otherCookie, body });
+      assert.deepEqual(isolated.data.hits, []);
+    }
     await verifyIndex(document);
-    console.log("PASS: authenticated indexing through both HTTP entry points, CSRF, isolation and idempotency");
+    console.log("PASS: authenticated indexing and verified semantic search through both HTTP entry points, CSRF, isolation and idempotency");
     const jobPath = path + "/index-job";
     await request(web, jobPath, 401);
     await request(web, jobPath, 403, { method: "POST", cookie, csrf: false });
