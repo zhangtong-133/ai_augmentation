@@ -21,6 +21,7 @@ struct FaultStore {
     aged: AtomicBool,
     head_recent: AtomicBool,
     fail_delete: AtomicBool,
+    head_fault: AtomicUsize,
 }
 impl ObjectStorage for FaultStore {
     fn list_originals(&self, after: &str) -> BoxFuture<'_, StorageResult<Vec<ObjectInfo>>> {
@@ -36,6 +37,15 @@ impl ObjectStorage for FaultStore {
         })
     }
     fn head(&self, key: &str) -> BoxFuture<'_, StorageResult<ObjectInfo>> {
+        match self.head_fault.load(Ordering::SeqCst) {
+            1 => return Box::pin(async { Err(StorageError::NotFound) }),
+            2 => {
+                return Box::pin(async {
+                    Err(StorageError::Unavailable("injected head failure".into()))
+                });
+            }
+            _ => {}
+        }
         let result = self.inner.head(key);
         Box::pin(async move {
             let mut entry = result.await?;
@@ -73,6 +83,19 @@ impl ObjectStorage for FaultStore {
         }
         self.inner.delete(key)
     }
+}
+// 使用独立连接立即检查，不能依赖原池复用同一连接或睡眠等待回滚。
+async fn assert_original_locks_released(pool: &sqlx::PgPool) {
+    let mut tx = pool.begin().await.unwrap();
+    let acquired: bool = sqlx::query_scalar("SELECT pg_try_advisory_xact_lock(7384920617)")
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap();
+    assert!(
+        acquired,
+        "maintenance returned before releasing original locks"
+    );
+    tx.rollback().await.unwrap();
 }
 fn document(source_type: &str) -> StoredDocument {
     StoredDocument {
@@ -115,6 +138,7 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
         aged: AtomicBool::new(false),
         head_recent: AtomicBool::new(false),
         fail_delete: AtomicBool::new(false),
+        head_fault: AtomicUsize::new(0),
     });
     let legacy = PostgresStore::connect(&url).await.unwrap();
     let store = PostgresStore::connect(&url)
@@ -283,16 +307,19 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
     // 预览不上传；上传或回读失败不切换引用；并发迁移不重复处理已锁记录。
     let writes = objects.writes.load(Ordering::SeqCst);
     let preview = store.migrate_originals(false, 100).await.unwrap();
+    assert_original_locks_released(&pool).await;
     assert!(preview.eligible >= 3);
     assert_eq!(preview.changed, 0);
     assert_eq!(objects.writes.load(Ordering::SeqCst), writes);
     assert!(store.migrate_originals(true, 0).await.is_err());
     objects.fail_put.store(true, Ordering::SeqCst);
     assert!(store.migrate_originals(true, 1).await.is_err());
+    assert_original_locks_released(&pool).await;
     objects.fail_put.store(false, Ordering::SeqCst);
     objects.corrupt_get.store(true, Ordering::SeqCst);
     assert!(store.migrate_originals(true, 1).await.is_err());
     objects.corrupt_get.store(false, Ordering::SeqCst);
+    assert_original_locks_released(&pool).await;
     assert_eq!(
         store.migrate_originals(false, 100).await.unwrap().eligible,
         preview.eligible
@@ -302,6 +329,7 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
         store.migrate_originals(true, 100)
     );
     assert_eq!(a.unwrap().changed + b.unwrap().changed, preview.eligible);
+    assert_original_locks_released(&pool).await;
     assert_eq!(store.migrate_originals(true, 100).await.unwrap().changed, 0);
     for doc in legacy_documents {
         assert_eq!(
@@ -340,12 +368,27 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
         .put("users/unmanaged-file", b"keep", None)
         .await
         .unwrap();
-    assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
+    // 连续跳过近期/已引用对象，多轮立即重入，回归 CI 中的排他锁竞争。
+    for _ in 0..32 {
+        assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
+        assert_original_locks_released(&pool).await;
+    }
     // 只在夹具中模拟旧时间，实际列举、读取、删除仍由真实 MinIO 执行。
     objects.aged.store(true, Ordering::SeqCst);
     let dry = store.collect_originals(false, "").await.unwrap();
     assert!(dry.eligible >= 2);
     assert_eq!(dry.changed, 0);
+    assert_original_locks_released(&pool).await;
+    objects.head_fault.store(1, Ordering::SeqCst);
+    assert_eq!(store.collect_originals(true, "").await.unwrap().eligible, 0);
+    assert_original_locks_released(&pool).await;
+    objects.head_fault.store(2, Ordering::SeqCst);
+    assert!(matches!(
+        store.collect_originals(true, "").await,
+        Err(StorageError::Unavailable(_))
+    ));
+    assert_original_locks_released(&pool).await;
+    objects.head_fault.store(0, Ordering::SeqCst);
     assert_eq!(objects.get(&orphan).await.unwrap(), b"orphan");
     let mut upload = pool.begin().await.unwrap();
     sqlx::query("SELECT pg_advisory_xact_lock_shared(7384920617)")
@@ -374,11 +417,24 @@ async fn originals_roundtrip_isolation_failure_and_legacy_compatibility() {
     );
     assert_eq!(objects.writes.load(Ordering::SeqCst), writes);
     cleanup.rollback().await.unwrap();
+    // 取消 future 无法 await 回滚；通过数据库锁屏障确认取消的上传已退出。
+    let mut barrier = pool.begin().await.unwrap();
+    sqlx::query("SET LOCAL lock_timeout = '5s'")
+        .execute(&mut *barrier)
+        .await
+        .unwrap();
+    sqlx::query("SELECT pg_advisory_xact_lock(7384920617)")
+        .execute(&mut *barrier)
+        .await
+        .unwrap();
+    barrier.rollback().await.unwrap();
     objects.head_recent.store(true, Ordering::SeqCst);
     assert_eq!(store.collect_originals(true, "").await.unwrap().changed, 0);
     objects.head_recent.store(false, Ordering::SeqCst);
+    assert_original_locks_released(&pool).await;
     objects.fail_delete.store(true, Ordering::SeqCst);
     assert!(store.collect_originals(true, "").await.is_err());
+    assert_original_locks_released(&pool).await;
     objects.fail_delete.store(false, Ordering::SeqCst);
     assert_eq!(
         store.collect_originals(true, "").await.unwrap().changed,

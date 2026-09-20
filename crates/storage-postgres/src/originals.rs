@@ -39,6 +39,20 @@ fn managed_key(key: &str) -> bool {
             .all(|value| Uuid::parse_str(value).is_ok_and(|id| id.to_string() == *value))
 }
 
+// 普通返回路径必须等待事务结束；Drop 只排队回滚，不能保证下一次取锁前已释放。
+async fn finish_item(
+    tx: Transaction<'_, Postgres>,
+    result: StorageResult<bool>,
+    apply: bool,
+) -> StorageResult<bool> {
+    if matches!(result, Ok(true)) && apply {
+        tx.commit().await.map_err(map_error)?;
+    } else {
+        tx.rollback().await.map_err(map_error)?;
+    }
+    result
+}
+
 impl PostgresStore {
     /// 分批迁移旧内联原文；默认调用方应使用预览，不自动执行全库迁移。
     ///
@@ -68,15 +82,15 @@ impl PostgresStore {
         for id in ids {
             report.scanned += 1;
             let mut tx = self.pool.begin().await.map_err(map_error)?;
+            let result = async {
             if apply {
                 writer_lock(&mut tx).await?;
             }
             let row = sqlx::query("SELECT *,cardinality(chunks) AS chunk_count FROM documents WHERE id=$1 AND original_object_key IS NULL FOR UPDATE SKIP LOCKED")
                 .bind(id).fetch_optional(&mut *tx).await.map_err(map_error)?;
             let Some(row) = row else {
-                continue;
+                return Ok(false);
             };
-            report.eligible += 1;
             if apply {
                 let owner = row.get::<Uuid, _>("user_id");
                 let document = super::documents::stored(&row);
@@ -91,8 +105,12 @@ impl PostgresStore {
                 }
                 sqlx::query("UPDATE documents SET original_object_key=$2,original_pdf=NULL,original_html=NULL WHERE id=$1")
                     .bind(id).bind(key).execute(&mut *tx).await.map_err(map_error)?;
-                tx.commit().await.map_err(map_error)?;
-                report.changed += 1;
+            }
+            Ok(true)
+            }.await;
+            if finish_item(tx, result, apply).await? {
+                report.eligible += 1;
+                report.changed += usize::from(apply);
             }
         }
         Ok(report)
@@ -123,6 +141,7 @@ impl PostgresStore {
                 continue;
             }
             let mut tx = self.pool.begin().await.map_err(map_error)?;
+            let result = async {
             if apply {
                 // 不等待进行中的上传；忙碌时明确失败，管理员稍后重试该页。
                 // 锁后的引用查询必须使用新快照，且禁止在延迟副本上决定删除。
@@ -145,28 +164,31 @@ impl PostgresStore {
                 .bind(&entry.key).fetch_one(&mut *tx).await.map_err(map_error)?;
             let cutoff = row.get::<i64, _>("now_ms") - RETENTION_MS;
             if row.get::<bool, _>("referenced") || entry.modified_unix_ms > cutoff {
-                continue;
+                return Ok(false);
             }
             // 列举结果可能陈旧；在写入排他锁下重新查询对象时间，失败则停止。
             let current = match objects.head(&entry.key).await {
                 Ok(current) => current,
-                Err(StorageError::NotFound) => continue,
+                Err(StorageError::NotFound) => return Ok(false),
                 Err(error) => return Err(error),
             };
             if current.key != entry.key
                 || current.modified_unix_ms != entry.modified_unix_ms
                 || current.modified_unix_ms > cutoff
             {
-                continue;
+                return Ok(false);
             }
-            report.eligible += 1;
             if apply {
                 match objects.delete(&entry.key).await {
                     Ok(()) | Err(StorageError::NotFound) => {}
                     Err(error) => return Err(error),
                 }
-                tx.commit().await.map_err(map_error)?;
-                report.changed += 1;
+            }
+            Ok(true)
+            }.await;
+            if finish_item(tx, result, apply).await? {
+                report.eligible += 1;
+                report.changed += usize::from(apply);
             }
         }
         Ok(report)

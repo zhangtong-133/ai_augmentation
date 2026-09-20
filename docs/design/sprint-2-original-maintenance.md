@@ -51,6 +51,16 @@ S3 普通桶按键名升序列举 `users/` 下的一页对象，最多 100 个�
 
 此命令没有在用户现有文档或真实桶上执行；测试只删除隔离测试资源。历史数据的实际迁移/清理需要管理员另行决定执行时机。
 
+### 事务结束与 CI 锁竞争修复（2026-09-20）
+
+CI 曾在 `objects.rs` 首次清理近期对象时出现 `Conflict("cleanup requires writable primary and idle original writers")`。跳过对象的分支依赖 SQLx 事务析构，而析构只排队回滚；下一对象使用另一连接取锁时，可能撞上前一项尚未释放的排他锁。迁移的跳过、预览及错误路径也有同类生命周期问题。
+
+现在每项操作统一收集结果：执行成功则等待提交，跳过、预览或错误则等待回滚，再处理下一项或返回。回滚本身失败仍报告存储错误，不保证此时连接状态。保留原有非阻塞排他锁及全部删除保护，不添加固定睡眠或吞掉锁冲突。进程中断或 future 被取消时仍由驱动回收事务，不能承诺取消瞬间已解锁；测试用数据库锁屏障等待被取消的上传结束。
+
+回归测试连续清理 32 轮，并使用独立连接立即获取排他锁来核对返回后的释放状态，覆盖近期/引用跳过、HEAD 不存在与失败、元数据变化、删除失败、迁移失败与预览路径。
+
+本次修复已通过 `make check`、前端 lint/typecheck/build、`git diff --check` 和完整 `make smoke-objects`：包括 3 项 PostgreSQL 集成测试、真实 MinIO 回归、Linux 镜像构建、双入口 HTTP 验收及重启持久化。专用测试容器、网络和数据卷已清理，构建缓存保留。本次未运行 Playwright、真实模型 API 或 Qdrant 专项验收。
+
 ### 验收结果（2026-09-18，macOS / OrbStack）
 
 `make check`、前端 lint/typecheck/build、`make compose-config` 及 `git diff --check` 通过。最终 `make smoke-objects` 从全新测试栈通过：3 项 PostgreSQL 集成测试、包含上述维护场景的真实 MinIO 测试，以及 Linux API/Web/Nginx 双入口导入、隔离和重启持久化回归。测试资源已清理，镜像缓存保留。
