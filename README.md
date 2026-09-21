@@ -1,11 +1,11 @@
 # Personal AI Augmentation System
 
-个人 AI 知识库，使用 Rust / Axum、Next.js 和 PostgreSQL。已实现导入、原文存储、向量索引、语义检索和引用问答 API；索引、检索与问答的页面交互尚未实现。
+个人 AI 知识库，使用 Rust / Axum、Next.js 和 PostgreSQL。已实现导入、原文存储、向量索引、语义检索和引用问答 API；页面支持索引提交与进度查看，检索与问答页面尚未实现。
 
 ## 当前能力
 
 - 账户：邮箱密码登录、持久化 Cookie 会话、退出及用户隔离。
-- Dashboard：服务状态、知识库统计、导入、分页列表、原文与分块预览。
+- Dashboard：服务状态、知识库统计、导入、分页列表、原文与分块预览，以及索引提交、进度和失败重试。
 - 导入：Markdown、可提取文字的 PDF（≤ 5 MiB，不含 OCR）、公开 UTF-8 静态网页（≤ 1 MiB，拒绝内网地址）。
 - 原文：默认保存在 PostgreSQL，可启用私有 MinIO / S3 桶；支持历史原文迁移与孤立对象清理，维护命令默认仅预览。
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
@@ -68,6 +68,7 @@ npm --prefix apps/web run build
 | `make smoke-objects` | 加测真实 MinIO、原文迁移与清理 |
 | `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答 |
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
+| `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引 UI、刷新恢复及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 
 自动验收不调用真实付费模型；历史通过记录不代表当前环境或最新 CI 状态。

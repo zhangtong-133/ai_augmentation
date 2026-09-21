@@ -64,3 +64,7 @@ smoke-objects: ## 在隔离 MinIO/PostgreSQL 中验证原文存储及 HTTP 流�
 .PHONY: smoke-index
 smoke-index: ## 验证隔离 Qdrant、Embedding HTTP 夹具和双入口文档索引
 	node scripts/smoke.mjs --index
+
+.PHONY: browser-test-index
+browser-test-index: ## 使用本地模型夹具验证索引任务及双入口无头 UI
+	node scripts/smoke.mjs --index --browser

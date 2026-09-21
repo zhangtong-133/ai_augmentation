@@ -26,10 +26,98 @@ async function login(page, account) {
 function metric(page, label) {
   return page.locator(".overviewMetrics > div").filter({ has: page.getByText(label, { exact: true }) }).locator("dd");
 }
+
+test("index controls require explicit submission, show progress and stop after logout", async ({ page }) => {
+  const account = await createAccount();
+  let current = null;
+  let mode = "normal";
+  let reads = 0;
+  let writes = 0;
+  await page.route("**/api/documents/*/index-job", async route => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      writes += 1;
+      expect(request.headers()["x-requested-with"]).toBe("personal-ai");
+      current = { document_id: request.url().split("/").at(-2), status: "queued", indexed_chunks: 0, total_chunks: 4, attempts: 0, error_code: null };
+      return route.fulfill({ status: 202, json: current });
+    }
+    reads += 1;
+    if (mode === "disabled") return route.fulfill({ status: 503, json: { error: { code: "indexing_disabled" } } });
+    if (mode === "unavailable") return route.fulfill({ status: 503, json: { error: { code: "storage_unavailable" } } });
+    if (mode === "expired") return route.fulfill({ status: 401, json: { error: { code: "unauthorized" } } });
+    return route.fulfill({ status: current ? 200 : 404, json: current ?? { error: { code: "index_job_not_found" } } });
+  });
+  await page.goto("/");
+  await login(page, account);
+  await upload(page, "index-controls.md", Buffer.from("# 索引\n\n" + "知识积累。".repeat(500)));
+  const panel = page.getByRole("region", { name: "index-controls.md的索引", exact: true });
+  await expect(panel).toContainText("当前目标暂无索引任务");
+  expect(writes).toBe(0);
+  await panel.getByRole("button", { name: "建立索引", exact: true }).click();
+  await expect(panel).toContainText("等待索引 · 0/4 块");
+  await expect(panel.getByRole("button", { name: "建立索引", exact: true })).toBeDisabled();
+  current = { ...current, status: "running", indexed_chunks: 2 };
+  await expect(panel).toContainText("正在索引 · 2/4 块");
+  current = { ...current, status: "retrying", attempts: 1, error_code: "embedding_unavailable" };
+  await expect(panel).toContainText("等待自动重试");
+  await expect(panel).toContainText("向量模型暂不可用");
+  current = { ...current, status: "failed", attempts: 3 };
+  await expect(panel.getByRole("button", { name: "重试索引", exact: true })).toBeEnabled();
+  expect(writes).toBe(1);
+  await panel.getByRole("button", { name: "重试索引", exact: true }).click();
+  await expect(panel).toContainText("等待索引");
+  current = { ...current, status: "completed", indexed_chunks: 4 };
+  await expect(panel).toContainText("索引完成 · 4/4 块");
+  await expect(panel.getByRole("button", { name: "建立索引", exact: true })).toBeDisabled();
+  const completedReads = reads;
+  await page.waitForTimeout(2500);
+  expect(reads).toBe(completedReads);
+  expect(writes).toBe(2);
+  for (const [nextMode, expected] of [["unavailable", "无法读取索引状态"], ["expired", "登录已失效"], ["disabled", "管理员尚未启用索引"]]) {
+    mode = nextMode;
+    await panel.getByRole("button", { name: "刷新索引状态" }).click();
+    await expect(panel).toContainText(expected);
+    await expect(panel.getByRole("button", { name: "建立索引", exact: true })).toBeDisabled();
+  }
+  mode = "normal";
+  current = { ...current, status: "running", indexed_chunks: 2 };
+  await panel.getByRole("button", { name: "刷新索引状态" }).click();
+  await expect(panel).toContainText("正在索引");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  const loggedOutReads = reads;
+  await page.waitForTimeout(2500);
+  expect(reads).toBe(loggedOutReads);
+});
 async function upload(page, name, buffer) {
   await page.getByLabel("Markdown / PDF 文件", { exact: false }).setInputFiles({ name, mimeType: "text/markdown", buffer });
   await page.getByRole("button", { name: "导入文档", exact: true }).click();
 }
+
+const indexTest = process.env.E2E_INDEX === "1" ? test : test.skip;
+indexTest("index submission completes and survives reload through real services", async ({ page }, testInfo) => {
+  const owner = await createAccount();
+  const other = await createAccount();
+  await page.goto("/");
+  await login(page, owner);
+  await upload(page, "index-live.md", Buffer.from("# 索引验收\n\n" + "知识积累。".repeat(500)));
+  const panel = page.getByRole("region", { name: "index-live.md的索引", exact: true });
+  await expect(panel).toContainText("当前目标暂无索引任务");
+  const submitted = page.waitForResponse(response => response.url().endsWith("/index-job") && response.request().method() === "POST");
+  await panel.getByRole("button", { name: "建立索引", exact: true }).click();
+  const response = await submitted;
+  expect(response.status()).toBe(202);
+  const job = await response.json();
+  await expect(panel).toContainText("索引完成 · 4/4 块", { timeout: 30000 });
+  await page.reload();
+  await expect(panel).toContainText("索引完成 · 4/4 块");
+  await expect(panel.getByRole("button", { name: "建立索引", exact: true })).toBeDisabled();
+  await panel.screenshot({ path: testInfo.outputPath("index-completed.png") });
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, other);
+  await expect(panel).toHaveCount(0);
+  expect(await page.evaluate(async id => (await fetch(`/api/documents/${id}/index-job`)).status, job.document_id)).toBe(404);
+});
 
 // 未启用公网检查时，在测试夹具启动前将用例注册为跳过。
 const publicWebTest = process.env.E2E_PUBLIC_WEB === "1" ? test : test.skip;

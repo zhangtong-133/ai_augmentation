@@ -18,6 +18,8 @@
 .overviewMetrics dd { margin: 12px 0 0; font-size: 32px; color: var(--acid); }
 .knowledgePanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; padding: 16px; background: var(--surface); }
 .knowledgePanel li { margin: 12px 0; overflow-wrap: anywhere; }
+.indexJobPanel { padding: 8px 0 16px; border-bottom: 1px solid var(--line); }
+.indexJobPanel button { margin: 0 8px 8px 0; }
 .pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .accountPanel input { min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); border-radius: 4px; }
 .accountPanel button { padding: 12px 24px; color: var(--surface); background: var(--acid); border: none; border-radius: 4px; cursor: pointer; }

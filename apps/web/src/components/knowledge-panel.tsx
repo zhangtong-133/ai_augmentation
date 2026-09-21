@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
+import { IndexJobPanel } from "./index-job-panel";
 
 type Summary = { source_type: "markdown" | "pdf" | "web_page"; id: string; title: string; source: string; tags: string[]; chunk_count: number; created_at_unix_ms: number };
 type Document = Summary & { markdown: string; chunks: string[] };
@@ -132,7 +133,8 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
 
   return <section className="knowledgePanel" aria-label="个人知识库">
     <h2>个人知识库</h2>
-    <p>导入 Markdown 或 PDF，保存原文件并提取文本。扫描 PDF 请先进行 OCR；知识问答尚未启用。</p>
+    <p>导入 Markdown 或 PDF，保存原文件并提取文本。扫描 PDF 请先进行 OCR；检索与问答页面尚未提供。</p>
+    <p>导入不会自动索引。点击「建立索引」或「重试索引」会调用模型，可能产生费用；超时或恢复可能重复计费。完成状态不是向量库实时健康检查。</p>
     <form onSubmit={event => void upload(event)}>
       <label htmlFor="document-file">Markdown / PDF 文件（Markdown 为 UTF-8，最多 256 KiB；PDF 最多 5 MiB）</label>
       <input id="document-file" name="file" type="file" accept=".md,.markdown,.pdf,text/markdown,application/pdf" required disabled={busy} />
@@ -159,6 +161,7 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
       <ul>{items.map(item => <li key={item.id}>
         <button disabled={busy} onClick={() => void open(item.id)}>{item.title}</button>
         <span> {item.chunk_count} 块 · {item.tags.join(" / ")} · {new Date(item.created_at_unix_ms).toLocaleDateString("zh-CN")}</span>
+        <IndexJobPanel documentId={item.id} title={item.title} />
       </li>)}</ul>}
     <div className="pagination">
       <button disabled={busy || loading || offset === 0} onClick={() => setOffset(value => Math.max(0, value - 20))}>上一页</button>

@@ -348,6 +348,7 @@ try {
       E2E_API_URL: browserApi, E2E_WEB_URL: web, E2E_GATEWAY_URL: gateway,
       E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
       E2E_PUBLIC_WEB: process.argv.includes("--public-web") ? "1" : "0",
+      E2E_INDEX: process.argv.includes("--index") ? "1" : "0",
     });
   }
 } catch (error) {
