@@ -32,7 +32,9 @@ Use Rust's test harness, Tokio async tests, and Tower route tests. Name tests af
 
 ## Commit & Pull Request Guidelines
 
-History uses imperative subjects, with optional scopes, such as `feat(knowledge): add Markdown import`. PRs should explain behavior, link issues/designs, report validation and skipped checks, describe migrations/configuration changes, and include screenshots for UI changes.
+提交信息使用 `type(scope): 中文描述` 格式，scope 可省略，例如 `feat(knowledge): 添加 Markdown 导入` 或 `docs: 更新开发文档`。type（如 `feat`、`fix`、`docs`、`test`、`refactor`、`chore`、`merge`）及 scope（如 `knowledge`、`storage`）保持英文，不翻译；使用英文括号、冒号及冒号后的空格。描述以中文动词开头，正文使用中文，技术名称和代码标识符保留原文。翻译已有提交信息时，只翻译描述和正文，保留原有 type、scope 及格式；原本没有前缀的历史提交不补加前缀。历史重写和强制推送必须事先获得用户明确授权，并先备份、验证代码内容不变，再使用带明确旧 SHA 的 `--force-with-lease` 推送。
+
+PRs should explain behavior, link issues/designs, report validation and skipped checks, describe migrations/configuration changes, and include screenshots for UI changes.
 
 ## Security & Configuration
 
