@@ -1,4 +1,12 @@
-# Delivery roadmap
+# 交付路线图
+
+当前已完成知识库导入、原文存储、索引任务、语义检索和引用问答 API。下一步是前端交互，不是重新实现后端检索链路。
+
+## 下一步
+
+- [ ] 文档列表增加索引提交按钮和任务进度/失败状态。
+- [ ] 增加检索与问答入口，展示引用原文，区分证据不足和服务故障。
+- [ ] 使用本地模型夹具补充无头 UI 验收；不在自动测试中调用付费模型。
 
 ## Foundation（已完成）
 
@@ -20,7 +28,7 @@
 - [x] Dashboard 账户面板及真实服务状态
 - [x] Dashboard 对接 `/api/healthz`、`/api/readyz` 与用户知识库今日概览（UTC）
 - [x] 真实 PostgreSQL 集成测试和核心 Compose HTTP smoke test（API/Web/Nginx，含重启持久化）
-- [x] WSL Chromium 浏览器交互验收（文件 input、面板刷新与退出清理；桌面/窄屏，独立于 HTTP smoke）
+- [x] macOS / WSL 无头 Chromium 交互验收（文件 input、面板刷新与退出清理；桌面/窄屏）
 
 ## Sprint 2
 
