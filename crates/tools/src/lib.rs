@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+mod executor;
+pub use executor::{ExecutionError, ToolExecutor};
+
 use personal_ai_domain::{ConversationId, UserId};
 use std::error::Error;
 use std::fmt::{self, Display};

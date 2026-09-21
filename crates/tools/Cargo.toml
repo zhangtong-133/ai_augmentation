@@ -7,6 +7,11 @@ rust-version.workspace = true
 
 [dependencies]
 personal-ai-domain.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["time", "sync"] }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

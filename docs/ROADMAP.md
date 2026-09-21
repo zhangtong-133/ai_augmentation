@@ -1,6 +1,6 @@
 # 交付路线图
 
-当前已完成知识库导入、原文存储、索引任务、语义检索和引用问答的 API 与页面闭环。下一阶段为 Sprint 3，先细化工具执行、记忆和调度的权限与验收边界。
+已完成知识库 API 与页面闭环；Sprint 3 已交付受限工具执行器及只读知识检索工具。下一步是用户显式管理长期记忆，阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
@@ -49,8 +49,11 @@
 
 ## Sprint 3
 
-- [ ] Tool executor、Memory 与 Scheduler
-- [ ] Redis short memory、PostgreSQL long memory
+- [x] 受限 Tool executor 与只读 `knowledge_search` API（白名单、会话隔离、超时和并发限制）
+- [ ] 用户显式管理 PostgreSQL 长期记忆
+- [ ] Agent 编排、工具审计与调用预算
+- [ ] Scheduler（授权、取消、租约与幂等）
+- [ ] Redis 短期记忆（用户/会话隔离、TTL 与容量限制）
 - [ ] MCP adapter 的首个只读工具
 
 ## Sprint 4

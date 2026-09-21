@@ -4,6 +4,7 @@ mod index_jobs;
 mod indexing;
 mod object_storage;
 mod retrieval;
+mod tool_execution;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Request, State, rejection::JsonRejection},
@@ -87,6 +88,7 @@ pub fn router(state: AppState) -> Router {
         .merge(retrieval::routes())
         .merge(answering::routes())
         .merge(index_jobs::routes())
+        .merge(tool_execution::routes(&state))
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))

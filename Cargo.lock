@@ -1460,6 +1460,8 @@ name = "personal-ai-tools"
 version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

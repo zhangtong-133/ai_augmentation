@@ -1271,6 +1271,169 @@ async fn retrieval_fixture() -> (
 
 #[tokio::test]
 #[allow(clippy::too_many_lines)]
+async fn tools_require_session_csrf_and_server_owned_context() {
+    use std::sync::atomic::Ordering;
+    let (state, _, dependencies, _, cookie, _) = retrieval_fixture().await;
+    let app = router(state.clone());
+    let path = "/api/tools/knowledge_search";
+    assert_eq!(
+        request(
+            app.clone(),
+            "POST",
+            path,
+            Some(TOKEN),
+            r#"{"query":"evidence"}"#
+        )
+        .await
+        .0,
+        StatusCode::UNAUTHORIZED
+    );
+    for (session, csrf, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                path,
+                session,
+                r#"{"query":"evidence"}"#,
+                csrf
+            )
+            .await
+            .status(),
+            expected
+        );
+    }
+    let manifest = auth_request(app.clone(), "GET", "/api/tools", Some(&cookie), "", false).await;
+    assert_eq!(manifest.status(), StatusCode::OK);
+    assert_eq!(manifest.headers()[header::CACHE_CONTROL], "no-store");
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&to_bytes(manifest.into_body(), 16384).await.unwrap()).unwrap();
+    assert_eq!(manifest["tools"][0]["name"], "knowledge_search");
+    assert_eq!(
+        manifest["tools"][0]["input_schema"]["additionalProperties"],
+        false
+    );
+    for input in [
+        json!({"query":""}),
+        json!({"query":"x","user_id":"forged"}),
+        json!({"query":"x","conversation_id":"forged"}),
+        json!({"query":"x","limit":6}),
+        json!({"query":"x".repeat(1001)}),
+        json!([]),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                path,
+                Some(&cookie),
+                &input.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(dependencies.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            "/api/tools/shell",
+            Some(&cookie),
+            "{}",
+            true
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    let response = auth_request(
+        app.clone(),
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"evidence"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 16384).await.unwrap()).unwrap();
+    assert_eq!(body["output"]["hits"][0]["text"], "verified evidence");
+    let indexing = state.indexing.as_ref().unwrap();
+    let permit = indexing.slots.acquire_many(2).await.unwrap();
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"evidence"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    drop(permit);
+    dependencies.mode.store(2, Ordering::SeqCst);
+    let response = auth_request(
+        app,
+        "POST",
+        path,
+        Some(&cookie),
+        r#"{"query":"evidence"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let body = to_bytes(response.into_body(), 16384).await.unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&body).unwrap(),
+        json!({"error":{"code":"tool_failed"}})
+    );
+    let disabled = router(AppState {
+        indexing: None,
+        ..state
+    });
+    let manifest = auth_request(
+        disabled.clone(),
+        "GET",
+        "/api/tools",
+        Some(&cookie),
+        "",
+        false,
+    )
+    .await;
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(manifest.into_body(), 16384).await.unwrap()
+        )
+        .unwrap(),
+        json!({"tools":[]})
+    );
+    assert_eq!(
+        auth_request(
+            disabled,
+            "POST",
+            path,
+            Some(&cookie),
+            r#"{"query":"evidence"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
 async fn search_revalidates_untrusted_vectors_and_rejects_unauthorized_and_invalid_requests() {
     use std::sync::atomic::Ordering;
     let (state, store, dependencies, owner, cookie, document) = retrieval_fixture().await;

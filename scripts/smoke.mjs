@@ -262,6 +262,29 @@ try {
       assert.equal(found.response.headers.get("cache-control"), "no-store");
       const isolated = await request(base, searchPath, 200, { method: "POST", cookie: otherCookie, body });
       assert.deepEqual(isolated.data.hits, []);
+      await request(base, "/api/tools", 401);
+      const manifest = await request(base, "/api/tools", 200, { cookie });
+      assert.equal(manifest.data.tools.length, 1);
+      assert.equal(manifest.data.tools[0].name, "knowledge_search");
+      assert.equal(manifest.data.tools[0].read_only, true);
+      assert.equal(manifest.data.tools[0].may_incur_cost, true);
+      const toolPath = "/api/tools/knowledge_search";
+      await request(base, toolPath, 401, { method: "POST", body });
+      await request(base, toolPath, 403, { method: "POST", cookie, body, csrf: false });
+      await request(base, toolPath, 400, { method: "POST", cookie, body: { ...body, user_id: "forged" } });
+      const toolResult = await request(base, toolPath, 200, { method: "POST", cookie, body });
+      assert.equal(toolResult.data.tool, "knowledge_search");
+      assert.equal(toolResult.data.output.hits.length, found.data.hits.length);
+      for (let index = 0; index < found.data.hits.length; index += 1) {
+        const { score: toolScore, ...toolHit } = toolResult.data.output.hits[index];
+        const { score: searchScore, ...searchHit } = found.data.hits[index];
+        assert.deepEqual(toolHit, searchHit);
+        // 工具 JSON 的二次序列化可能改变浮点末位；身份与正文仍严格相等。
+        assert.ok(Number.isFinite(toolScore) && Math.abs(toolScore - searchScore) < 1e-6);
+      }
+      assert.equal(toolResult.response.headers.get("cache-control"), "no-store");
+      const toolIsolated = await request(base, toolPath, 200, { method: "POST", cookie: otherCookie, body });
+      assert.deepEqual(toolIsolated.data.output.hits, []);
       const answerPath = "/api/knowledge/answer";
       const question = { query: searchable.chunks[0] };
       await request(base, answerPath, 401, { method: "POST", body: question });

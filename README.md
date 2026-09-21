@@ -11,7 +11,7 @@
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
 
-导入不会自动索引或调用模型。聊天历史、工具执行、记忆和定时任务尚未实现。下一步见 [路线图](docs/ROADMAP.md)。
+导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API；聊天历史、模型自动工具调用、记忆和定时任务尚未实现。下一步见 [路线图](docs/ROADMAP.md)。
 
 ## 快速开始
 
@@ -50,6 +50,10 @@ cargo run -p api-server
 | 引用问答 | 已启用索引，再设置 `KNOWLEDGE_ANSWER_ENABLED=true` 和 `OPENAI_CHAT_MODEL` | `POST /api/knowledge/answer`；模型须支持严格结构化输出 |
 
 知识库接口需要登录会话；POST 还需 `X-Requested-With: personal-ai`。同步分批索引接口仍保留，但不更新异步任务进度。协议和限制见 [索引任务](docs/design/sprint-2-index-jobs.md)、[检索与问答](docs/design/sprint-2-retrieval-qa.md)。模型超时或任务恢复可能重复计费，真实模型需单独评估。
+
+## 工具接口
+
+Sprint 3 工具入口：登录后 `GET /api/tools` 查看可用工具，`POST /api/tools/knowledge_search` 显式检索（沿用索引配置与 CSRF 要求，可能产生模型费用）。这是内部 REST 接口，不是 MCP 服务；边界见 [工具设计](docs/design/sprint-3-tools-memory-scheduler.md)。
 
 ## 验证
 
