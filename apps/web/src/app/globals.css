@@ -20,6 +20,12 @@
 .knowledgePanel li { margin: 12px 0; overflow-wrap: anywhere; }
 .indexJobPanel { padding: 8px 0 16px; border-bottom: 1px solid var(--line); }
 .indexJobPanel button { margin: 0 8px 8px 0; }
+.retrievalPanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 16px; overflow-wrap: anywhere; }
+.retrievalPanel textarea { width: 100%; min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; resize: vertical; }
+.retrievalPanel textarea:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }
+.retrievalActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.retrievalPanel pre, .answerText { white-space: pre-wrap; overflow-wrap: anywhere; }
+.retrievalPanel pre { max-height: 360px; overflow: auto; background: var(--surface); padding: 12px; }
 .pagination { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .accountPanel input { min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); border-radius: 4px; }
 .accountPanel button { padding: 12px 24px; color: var(--surface); background: var(--acid); border: none; border-radius: 4px; cursor: pointer; }

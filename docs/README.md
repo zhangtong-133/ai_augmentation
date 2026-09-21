@@ -13,7 +13,7 @@
 - 导入：[Markdown](design/sprint-2-markdown.md)、[PDF](design/sprint-2-pdf.md)、[公开网页](design/sprint-2-web-import.md)。
 - 原文：[MinIO / S3 存储](design/sprint-2-object-storage.md)、[迁移与孤立对象清理](design/sprint-2-original-maintenance.md)。
 - 索引：[Embedding / Qdrant](design/sprint-2-vector-index.md)、[持久化任务与重试](design/sprint-2-index-jobs.md)。
-- [语义检索与引用问答](design/sprint-2-retrieval-qa.md)：已实现 API、配置、引用校验和安全边界；UI 待实现。
+- [语义检索与引用问答](design/sprint-2-retrieval-qa.md)：API 与页面交互、引用核对、配置和安全边界。
 
 ## 验收与架构
 

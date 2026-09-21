@@ -133,7 +133,7 @@ export function KnowledgePanel({ onImported }: { onImported: () => void }) {
 
   return <section className="knowledgePanel" aria-label="个人知识库">
     <h2>个人知识库</h2>
-    <p>导入 Markdown 或 PDF，保存原文件并提取文本。扫描 PDF 请先进行 OCR；检索与问答页面尚未提供。</p>
+    <p>导入 Markdown 或 PDF，保存原文件并提取文本。扫描 PDF 请先进行 OCR；建立索引后可在下方检索与问答。</p>
     <p>导入不会自动索引。点击「建立索引」或「重试索引」会调用模型，可能产生费用；超时或恢复可能重复计费。完成状态不是向量库实时健康检查。</p>
     <form onSubmit={event => void upload(event)}>
       <label htmlFor="document-file">Markdown / PDF 文件（Markdown 为 UTF-8，最多 256 KiB；PDF 最多 5 MiB）</label>

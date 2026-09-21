@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { KnowledgePanel } from "./knowledge-panel";
 import { OverviewPanel } from "./overview-panel";
 import { ServiceStatus } from "./service-status";
+import { RetrievalPanel } from "./retrieval-panel";
 
 type User = { id: string; email: string; display_name: string };
 
@@ -92,6 +93,7 @@ export function AccountPanel() {
       {error && <p role="alert">{error}</p>}
       {user && <OverviewPanel key={`overview-${user.id}`} revision={revision} />}
       {user && <KnowledgePanel key={user.id} onImported={() => setRevision(value => value + 1)} />}
+      {user && <RetrievalPanel key={`retrieval-${user.id}`} />}
     </section>
   );
 }

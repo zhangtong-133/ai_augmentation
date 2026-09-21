@@ -30,6 +30,7 @@ make browser-install
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-09-21，macOS / OrbStack | Rust、前端检查及 `make browser-test-index`，16 项 UI 测试 | 索引/检索/引用问答、真实 PostgreSQL/Qdrant、本地模型夹具；一次服务错误重跑未复现，详见检索问答记录 |
 | 2026-09-20，macOS / OrbStack | Rust 检查、前端 lint/typecheck/build、完整 `make smoke-objects` | 含事务锁竞争回归、真实 PostgreSQL/MinIO 和重启持久化；未重跑浏览器、Qdrant 专项或真实模型 |
 | 2026-09-19，WSL / Docker | 检索/问答检查及 `make smoke-index` | 真实 Qdrant、本地 Embedding/聊天夹具；不验证付费模型质量 |
 | 2026-09-16，macOS / OrbStack | `make browser-test-public` | 无头 UI 与公网网页成功导入；PDF 使用 Linux 容器 |
