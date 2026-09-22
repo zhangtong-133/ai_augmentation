@@ -110,3 +110,17 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 }
 
 .knowledgePanel a { overflow-wrap: anywhere; }
+
+.conversationPanel { border-top: 1px solid var(--line); margin-top: 32px; padding-top: 24px; overflow-wrap: anywhere; }
+.conversationPanel form { display: grid; gap: 10px; max-width: 650px; }
+.conversationPanel textarea { width: 100%; box-sizing: border-box; resize: vertical; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; }
+.conversationPanel button { margin: 6px 8px 6px 0; white-space: normal; overflow-wrap: anywhere; }
+.conversationList { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; list-style: none; }
+.conversationList button[aria-pressed="true"] { outline: 2px solid var(--warm); outline-offset: 2px; }
+.messageThread { border: 1px solid var(--line); border-radius: 6px; padding: 18px; margin-top: 18px; min-width: 0; }
+.messageList { max-height: 480px; overflow: auto; padding-left: 26px; }
+.messageList li { border-bottom: 1px solid var(--line); padding: 10px 4px; }
+.messageList p { white-space: pre-wrap; overflow-wrap: anywhere; }
+.messageList span { font-size: 12px; color: var(--muted); }
+.pendingRequest { padding: 12px; border: 1px solid var(--warm); margin: 12px 0; }
+.conversationPanel :focus-visible { outline: 2px solid var(--warm); outline-offset: 3px; }

@@ -100,6 +100,125 @@ async function upload(page, name, buffer) {
 }
 
 const indexTest = process.env.E2E_INDEX === "1" ? test : test.skip;
+test("conversation UI retries committed requests without duplicates and isolates accounts", async ({ page }, testInfo) => {
+  const owner = await createAccount();
+  const other = await createAccount();
+  const createBodies = [];
+  const messageBodies = [];
+  await page.route("**/api/conversations", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    createBodies.push(route.request().postDataJSON());
+    if (createBodies.length === 1) {
+      expect((await route.fetch()).status()).toBe(200);
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.route("**/api/conversations/*/messages", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    messageBodies.push(route.request().postDataJSON());
+    if (messageBodies.length === 1) {
+      expect((await route.fetch()).status()).toBe(200);
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.goto("/"); await login(page, owner);
+  const panel = page.getByRole("region", { name: "对话与消息", exact: true });
+  await expect(panel).toContainText("暂无对话");
+  await panel.getByLabel("新对话标题", { exact: false }).fill("学习计划");
+  await panel.getByRole("button", { name: "创建对话", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("结果未确认");
+  await expect(panel.getByLabel("新对话标题", { exact: false })).toBeDisabled();
+  await panel.getByRole("button", { name: "重试创建原请求" }).click();
+  await expect(panel.getByRole("heading", { name: "学习计划" })).toBeVisible();
+  expect(createBodies).toHaveLength(2); expect(createBodies[0]).toEqual(createBodies[1]);
+  await expect(panel.locator(".conversationList li")).toHaveCount(1);
+  const thread = panel.getByRole("region", { name: "当前对话消息" });
+  await expect(thread).toContainText("暂无消息");
+  const text = '<img src=x onerror="window.messageInjected=true">\n中文消息';
+  await thread.getByLabel("用户消息", { exact: false }).fill(text);
+  await thread.getByRole("button", { name: "发送用户消息", exact: true }).click();
+  await expect(thread.getByRole("alert")).toContainText("结果未确认");
+  await expect(thread.getByLabel("用户消息", { exact: false })).toHaveValue(text);
+  await thread.getByRole("button", { name: "刷新消息" }).click();
+  await expect(thread.locator(".messageList li")).toHaveCount(1);
+  await thread.getByRole("button", { name: "重试发送原请求" }).click();
+  await expect(thread.getByLabel("用户消息", { exact: false })).toHaveValue("");
+  await expect(thread.locator(".messageList li")).toHaveCount(1);
+  expect(messageBodies).toHaveLength(2); expect(messageBodies[0]).toEqual(messageBodies[1]);
+  await expect(thread.locator(".messageList p")).toHaveText(text);
+  await expect(thread.locator("img")).toHaveCount(0);
+  await panel.screenshot({ path: testInfo.outputPath("conversations.png") });
+  await page.reload();
+  await panel.getByRole("button", { name: "学习计划", exact: true }).click();
+  await expect(thread.locator(".messageList li")).toHaveCount(1);
+  await thread.getByLabel("用户消息", { exact: false }).fill("未发送的私有草稿");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(panel).toHaveCount(0); await login(page, other);
+  await expect(panel).toContainText("暂无对话");
+  await expect(panel).not.toContainText("学习计划");
+  await expect(panel.getByLabel("新对话标题", { exact: false })).toHaveValue("");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, owner);
+  await panel.getByRole("button", { name: "学习计划", exact: true }).click();
+  await expect(thread.getByLabel("用户消息", { exact: false })).toHaveValue("");
+  await panel.getByRole("button", { name: "删除当前对话" }).click();
+  await panel.getByRole("button", { name: "取消删除对话" }).click();
+  await expect(thread.locator(".messageList li")).toHaveCount(1);
+  await panel.getByRole("button", { name: "删除当前对话" }).click();
+  await panel.getByRole("button", { name: "确认删除对话" }).click();
+  await expect(panel).toContainText("暂无对话");
+  await expect(thread).toHaveCount(0);
+});
+
+test("conversation UI rejects oversized messages and discards late reads when switching", async ({ page }) => {
+  const owner = await createAccount();
+  await page.goto("/"); await login(page, owner);
+  const panel = page.getByRole("region", { name: "对话与消息", exact: true });
+  for (const title of ["对话甲", "对话乙"]) {
+    await panel.getByLabel("新对话标题", { exact: false }).fill(title);
+    await panel.getByRole("button", { name: "创建对话", exact: true }).click();
+    await expect(panel.getByRole("heading", { name: title })).toBeVisible();
+    await expect(panel.getByRole("button", { name: "发送用户消息" })).toBeEnabled();
+  }
+  const thread = panel.getByRole("region", { name: "当前对话消息" });
+  let writes = 0;
+  let release;
+  let failedRead = true;
+  let delayRead = false;
+  await page.route("**/api/conversations/*/messages", async route => {
+    if (route.request().method() === "POST") { writes += 1; return route.continue(); }
+    if (failedRead) return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
+    if (delayRead) {
+      delayRead = false;
+      await new Promise(resolve => { release = resolve; });
+      return route.fulfill({ json: { revision:1,deleted:false,messages:[{id:randomUUID(),sequence:1,content:"不应显示的旧消息"}] } }).catch(() => {});
+    }
+    return route.continue();
+  });
+  await thread.getByRole("button", { name: "刷新消息" }).click();
+  await expect(thread.getByRole("alert")).toContainText("服务暂不可用");
+  await expect(thread).not.toContainText("暂无消息");
+  await expect(thread.getByRole("button", { name: "发送用户消息" })).toBeDisabled();
+  failedRead = false;
+  await thread.getByRole("button", { name: "刷新消息" }).click();
+  await expect(thread).toContainText("暂无消息");
+  await thread.getByLabel("用户消息", { exact: false }).fill("中".repeat(1366));
+  await thread.getByRole("button", { name: "发送用户消息" }).click();
+  await expect(thread.getByRole("alert")).toContainText("4096 UTF-8 字节");
+  expect(writes).toBe(0);
+  delayRead = true;
+  await thread.getByRole("button", { name: "刷新消息" }).click();
+  await expect.poll(() => typeof release).toBe("function");
+  await panel.getByRole("button", { name: "对话甲", exact: true }).click();
+  await expect(thread.getByRole("heading", { name: "对话甲" })).toBeVisible();
+  await expect(thread).toContainText("暂无消息");
+  release();
+  await expect(thread).not.toContainText("不应显示的旧消息");
+  await expect(thread.getByLabel("用户消息", { exact: false })).toHaveValue("");
+});
+
 test("long memory supports explicit edits, conflicts, deletion and account isolation", async ({ page }, testInfo) => {
   const owner = await createAccount();
   const other = await createAccount();

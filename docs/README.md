@@ -21,6 +21,7 @@
 - [Redis 短期记忆](design/sprint-3-short-memory.md)：存储适配器、TTL、条目/活跃对话配额；尚未接入 API。
 - [对话归属与元数据 API](design/sprint-3-conversations.md)：持久化所有者、创建幂等、额度与删除墓碑。
 - [用户消息与 Redis 快照](design/sprint-3-messages.md)：持久化消息、幂等重放、删除栅栏、缓存故障回退及清理恢复。
+- [对话与消息页面](design/sprint-3-conversation-ui.md)：显式创建/发送、原请求重试、删除确认与账户清理；不生成模型回复。
 
 - [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：工具、记忆、对话/消息，以及后续页面、调度与 MCP 边界。
 

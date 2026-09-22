@@ -2,7 +2,7 @@
 
 ## 范围
 
-新增 `0010_conversations.sql` 和 `ConversationStore`：PostgreSQL 持久化用户归属、标题、创建请求 ID、创建时间及删除墓碑。API 启动时迁移，无新增配置。本文描述元数据接口；后续已交付[持久化用户消息与 Redis 快照](sprint-3-messages.md)。仍无聊天 UI 或模型调用，不把对话 ID 当作登录凭据。
+新增 `0010_conversations.sql` 和 `ConversationStore`：PostgreSQL 持久化用户归属、标题、创建请求 ID、创建时间及删除墓碑。API 启动时迁移，无新增配置。本文描述元数据接口；后续已交付[持久化用户消息与 Redis 快照](sprint-3-messages.md)及[管理页面](sprint-3-conversation-ui.md)。不调用模型，不把对话 ID 当作登录凭据。
 
 ## 协议
 
@@ -31,7 +31,7 @@
 
 Rust 路由测试覆盖认证、CSRF、参数/身份伪造和故障；真实 PostgreSQL 测试覆盖并发幂等、所有者隔离、重连、并发配额、删除不重置额度、墓碑清理及用户级联删除。`make smoke` 在 Next.js/Nginx 两入口验证创建重放、冲突、隔离、重启持久化、撤销会话与删除。
 
-消息接口已使用数据库行锁串行化追加/删除，并增加持久化缓存清理待办，见[消息设计](sprint-3-messages.md)。没有直接复用非幂等 Redis `append`。下一步是对话/消息管理页面；模型、Agent 和 Scheduler 另行交付。
+消息接口已使用数据库行锁串行化追加/删除，并增加持久化缓存清理待办，见[消息设计](sprint-3-messages.md)。没有直接复用非幂等 Redis `append`。管理页面已交付；模型、Agent 和 Scheduler 另行交付。
 
 ### 验收记录（2026-09-22，macOS / Docker）
 
