@@ -122,13 +122,13 @@ async function request(base, path, expected, { method = "GET", body, cookie, adm
   const headers = { "content-type": "application/json" };
   if (cookie) headers.cookie = cookie;
   if (admin) headers.authorization = `Bearer ${env.SMOKE_TOKEN}`;
-  if (method === "POST" && csrf) headers["x-requested-with"] = "personal-ai";
+  if (method !== "GET" && csrf) headers["x-requested-with"] = "personal-ai";
   const response = await fetch(base + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(10000), redirect: "error",
   });
   assert.equal(response.status, expected, `${method} ${path}`);
-  const data = await response.json();
+  const data = response.status === 204 ? null : await response.json();
   return { response, data };
 }
 
@@ -218,6 +218,25 @@ try {
   await request(web, "/api/overview", 401);
   const empty = await request(web, "/api/overview", 200, { cookie });
   assert.equal(empty.data.knowledge.total_documents, 0);
+  const persistedMemories = [];
+  for (const base of [web, gateway]) {
+    const input = { title: "沟通偏好", content: "请使用中文" };
+    await request(base, "/api/memories", 401);
+    await request(base, "/api/memories", 403, { method: "POST", cookie, body: input, csrf: false });
+    const saved = await request(base, "/api/memories", 201, { method: "POST", cookie, body: input });
+    assert.equal(saved.response.headers.get("cache-control"), "no-store");
+    const memoryPath = `/api/memories/${saved.data.id}`;
+    const edit = { ...input, content: "中文且简洁", version: saved.data.version };
+    await request(base, memoryPath, 403, { method: "PUT", cookie, body: edit, csrf: false });
+    await request(base, memoryPath, 404, { method: "PUT", cookie: otherCookie, body: edit });
+    const updated = await request(base, memoryPath, 200, { method: "PUT", cookie, body: edit });
+    await request(base, memoryPath, 409, { method: "PUT", cookie, body: edit });
+    await request(base, memoryPath, 403, { method: "DELETE", cookie, body: { version: 2 }, csrf: false });
+    await request(base, memoryPath, 404, { method: "DELETE", cookie: otherCookie, body: { version: 2 } });
+    await request(base, memoryPath, 409, { method: "DELETE", cookie, body: { version: 1 } });
+    assert.deepEqual((await request(base, "/api/memories", 200, { cookie: otherCookie })).data, []);
+    persistedMemories.push(updated.data);
+  }
   const body = { title: "验收笔记", markdown: "# 验收\n\n" + "知识积累。".repeat(500), tags: ["smoke"] };
   await request(web, "/api/documents", 403, { method: "POST", cookie, body, csrf: false });
   const { data: document } = await request(web, "/api/documents", 201, { method: "POST", cookie, body });
@@ -357,6 +376,12 @@ try {
   await request(gateway, "/api/auth/me", 401, { cookie });
   await request(web, "/api/documents", 401, { cookie });
   const renewed = await login(web, owner);
+  for (const base of [web, gateway]) {
+    const memories = (await request(base, "/api/memories", 200, { cookie: renewed })).data;
+    for (const fact of persistedMemories) assert.deepEqual(memories.find(item => item.id === fact.id), fact);
+  }
+  for (const fact of persistedMemories) await request(web, `/api/memories/${fact.id}`, 204, { method: "DELETE", cookie: renewed, body: { version: fact.version } });
+  assert.deepEqual((await request(gateway, "/api/memories", 200, { cookie: renewed })).data, []);
   assert.equal((await request(web, path, 200, { cookie: renewed })).data.id, document.id);
   if (process.argv.includes("--index")) {
     await verifyIndex(document);

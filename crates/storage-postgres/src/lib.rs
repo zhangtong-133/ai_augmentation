@@ -1,6 +1,7 @@
 //! `PostgreSQL` 适配器，厂商特有类型不进入存储接口。
 mod documents;
 mod index_jobs;
+mod long_memory;
 mod originals;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};

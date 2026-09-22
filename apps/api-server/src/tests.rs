@@ -11,6 +11,38 @@ use tower::ServiceExt;
 
 const TOKEN: &str = "test-only-token-01234567890123456789";
 
+// 此夹具仅验证存储失败不会被伪装成空列表；成功持久化由真实数据库验收。
+impl personal_ai_storage::long_memory::LongMemoryStore for MemoryStore {
+    fn list_facts(
+        &self,
+        _: &UserId,
+        _: i64,
+    ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::long_memory::MemoryFact>>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn create_fact(
+        &self,
+        _: &UserId,
+        _: &str,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::long_memory::MemoryFact>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn update_fact(
+        &self,
+        _: &UserId,
+        _: &str,
+        _: i64,
+        _: &str,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::long_memory::MemoryFact>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn delete_fact(&self, _: &UserId, _: &str, _: i64) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+}
+
 #[derive(Default)]
 struct MemoryStore {
     documents: Mutex<HashMap<String, (String, String, StoredDocument)>>,
@@ -139,6 +171,7 @@ fn app() -> Router {
     router(AppState {
         answering: None,
         indexing: None,
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
@@ -248,6 +281,7 @@ async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
         store: Arc::new(MemoryStore {
@@ -598,6 +632,7 @@ async fn documents_are_private_deduplicated_and_validated() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store,
@@ -795,6 +830,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
             unavailable: true,
@@ -865,6 +901,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        memories: Arc::new(MemoryStore::default()),
         web_importer: importer.clone(),
         documents: store.clone(),
         store,
@@ -1085,6 +1122,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store: store.clone(),
@@ -1260,6 +1298,7 @@ async fn retrieval_fixture() -> (
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
         store: store.clone(),
@@ -1267,6 +1306,98 @@ async fn retrieval_fixture() -> (
         auth: Arc::new(AuthConfig::new(false)),
     };
     (state, store, dependencies, owner.id, cookie, document)
+}
+
+#[tokio::test]
+async fn memory_routes_require_session_csrf_and_valid_inputs() {
+    let (state, _, _, _, cookie, _) = retrieval_fixture().await;
+    let app = router(state);
+    assert_eq!(
+        auth_request(app.clone(), "GET", "/api/memories", None, "", false)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "GET",
+            "/api/memories",
+            Some(&cookie),
+            "",
+            false
+        )
+        .await
+        .status(),
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    assert_eq!(
+        auth_request(
+            app.clone(),
+            "GET",
+            "/api/memories?offset=-1",
+            Some(&cookie),
+            "",
+            false
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    let key = format!("/api/memories/{}", Uuid::new_v4());
+    for (method, path, body) in [
+        ("POST", "/api/memories", r#"{"title":"a","content":"b"}"#),
+        (
+            "PUT",
+            key.as_str(),
+            r#"{"title":"a","content":"b","version":1}"#,
+        ),
+        ("DELETE", key.as_str(), r#"{"version":1}"#),
+    ] {
+        assert_eq!(
+            auth_request(app.clone(), method, path, None, body, true)
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            auth_request(app.clone(), method, path, Some(&cookie), body, false)
+                .await
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+    }
+    for input in [
+        json!({"title":"", "content":"x"}),
+        json!({"title":"x", "content":"x".repeat(2001)}),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                "/api/memories",
+                Some(&cookie),
+                &input.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(
+        auth_request(
+            app,
+            "POST",
+            "/api/memories",
+            Some(&cookie),
+            r#"{"title":"x","content":"y","user_id":"forged"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
 }
 
 #[tokio::test]

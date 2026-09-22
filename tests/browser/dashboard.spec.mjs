@@ -17,7 +17,12 @@ async function createAccount() {
   expect(updated.status).toBe(200);
   return { email, password };
 }
+let lastLoginAt = 0;
 async function login(page, account) {
+  // 串行验收主动遵守每分钟 20 次的真实登录限流，不关闭保护或重试失败请求。
+  const delay = Math.max(0, 3500 - (Date.now() - lastLoginAt));
+  if (delay) await new Promise(resolve => setTimeout(resolve, delay));
+  lastLoginAt = Date.now();
   await page.getByLabel("邮箱", { exact: true }).fill(account.email);
   await page.getByLabel("密码", { exact: true }).fill(account.password);
   await page.getByRole("button", { name: "登录", exact: true }).click();
@@ -95,6 +100,56 @@ async function upload(page, name, buffer) {
 }
 
 const indexTest = process.env.E2E_INDEX === "1" ? test : test.skip;
+test("long memory supports explicit edits, conflicts, deletion and account isolation", async ({ page }, testInfo) => {
+  const owner = await createAccount();
+  const other = await createAccount();
+  await page.goto("/");
+  await login(page, owner);
+  const panel = page.getByRole("region", { name: "长期记忆", exact: true });
+  await expect(panel).toContainText("暂无记忆");
+  await panel.getByLabel("记忆标题", { exact: false }).fill("回答偏好");
+  await panel.getByLabel("记忆内容", { exact: false }).fill('<img src=x onerror="window.memoryInjected=true">');
+  const created = page.waitForResponse(response => response.url().endsWith("/api/memories") && response.request().method() === "POST");
+  await panel.getByRole("button", { name: "保存记忆", exact: true }).click();
+  const response = await created;
+  expect(response.status()).toBe(201);
+  await expect(panel.locator("li .memoryText")).toHaveText('<img src=x onerror="window.memoryInjected=true">');
+  // 页面无需消费创建响应体；通过实际列表读取持久化记录，避免依赖 CDP 响应体缓存。
+  const fact = await page.evaluate(async () => (await (await fetch("/api/memories", { cache: "no-store" })).json())[0]);
+  expect(fact.title).toBe("回答偏好");
+  await expect(panel.locator("img")).toHaveCount(0);
+  await page.reload();
+  await panel.getByRole("button", { name: "编辑", exact: true }).click();
+  await panel.getByLabel("记忆内容", { exact: false }).fill("中文且简洁");
+  // 模拟另一个页面先完成修改，当前页面不得覆盖新版本。
+  expect(await page.evaluate(async item => (await fetch(`/api/memories/${item.id}`, { method: "PUT", headers: { "content-type": "application/json", "x-requested-with": "personal-ai" }, body: JSON.stringify({ title: item.title, content: "其他页面的新版本", version: item.version }) })).status, fact)).toBe(200);
+  await panel.getByRole("button", { name: "保存记忆", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("记录已被修改");
+  await expect(panel.getByLabel("记忆内容", { exact: false })).toHaveValue("中文且简洁");
+  await panel.getByRole("button", { name: "刷新记忆", exact: true }).click();
+  await expect(panel.locator("li .memoryText")).toHaveText("其他页面的新版本");
+  await panel.getByRole("button", { name: "编辑", exact: true }).click();
+  await panel.getByLabel("记忆内容", { exact: false }).fill("中文且简洁");
+  await panel.getByRole("button", { name: "保存记忆", exact: true }).click();
+  await expect(panel.locator("li .memoryText")).toHaveText("中文且简洁");
+  await panel.screenshot({ path: testInfo.outputPath("long-memory.png") });
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await login(page, other);
+  await expect(panel).toContainText("暂无记忆");
+  await expect(panel.getByLabel("记忆内容", { exact: false })).toHaveValue("");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, owner);
+  await panel.getByRole("button", { name: "删除", exact: true }).click();
+  await panel.getByRole("button", { name: "取消删除", exact: true }).click();
+  await expect(panel.locator("li")).toHaveCount(1);
+  await panel.getByRole("button", { name: "删除", exact: true }).click();
+  await panel.getByRole("button", { name: "确认删除", exact: true }).click();
+  await expect(panel).toContainText("暂无记忆");
+  await page.reload();
+  await expect(panel).toContainText("暂无记忆");
+});
+
 test("retrieval UI separates failures, renders untrusted text and discards cancelled results", async ({ page }) => {
   const owner = await createAccount();
   const other = await createAccount();

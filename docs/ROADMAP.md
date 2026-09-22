@@ -1,6 +1,6 @@
 # 交付路线图
 
-已完成知识库 API 与页面闭环；Sprint 3 已交付受限工具执行器及只读知识检索工具。下一步是用户显式管理长期记忆，阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、受限工具执行器及用户手动管理长期记忆。下一步细化 Redis 短期记忆的会话归属、TTL 和容量限制，阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
@@ -50,7 +50,7 @@
 ## Sprint 3
 
 - [x] 受限 Tool executor 与只读 `knowledge_search` API（白名单、会话隔离、超时和并发限制）
-- [ ] 用户显式管理 PostgreSQL 长期记忆
+- [x] 用户显式管理 PostgreSQL 长期记忆（CRUD、页面、版本冲突、配额与隔离）
 - [ ] Agent 编排、工具审计与调用预算
 - [ ] Scheduler（授权、取消、租约与幂等）
 - [ ] Redis 短期记忆（用户/会话隔离、TTL 与容量限制）

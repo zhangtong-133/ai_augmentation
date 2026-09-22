@@ -17,7 +17,9 @@
 
 ## 验收与架构
 
-- [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：已实现受限工具执行器与只读检索；记忆、调度和 MCP 分步交付。
+- [用户长期记忆](design/sprint-3-long-memory.md)：手动 CRUD、版本冲突、配额、数据隔离及页面操作。
+
+- [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：已实现受限工具与长期记忆；短期记忆、调度和 MCP 分步交付。
 
 - [数据库与部署验收](design/sprint-1-acceptance.md)：隔离 Compose、双入口 HTTP 和资源清理。
 - [无头浏览器验收](design/sprint-1-browser-acceptance.md)：macOS / WSL / Linux 页面交互测试。

@@ -5,6 +5,94 @@ use uuid::Uuid;
 
 #[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
+#[allow(clippy::too_many_lines)]
+async fn long_memory_is_owner_scoped_versioned_bounded_and_durable() {
+    use personal_ai_storage::long_memory::LongMemoryStore;
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let store = PostgresStore::connect(&url).await.unwrap();
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: format!("{}@memory.example", Uuid::new_v4()),
+        display_name: "Memory".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    let foreign = UserId::new(Uuid::new_v4().to_string());
+    for (title, content) in [("", "x"), ("x", " "), ("x", "\0")] {
+        assert!(matches!(
+            store.create_fact(&owner.id, title, content).await,
+            Err(StorageError::InvalidData(_))
+        ));
+    }
+    let first = store
+        .create_fact(&owner.id, "偏好", "中文回答")
+        .await
+        .unwrap();
+    assert_eq!(first.version, 1);
+    assert!(store.list_facts(&foreign, 0).await.unwrap().is_empty());
+    assert!(matches!(
+        store.update_fact(&foreign, &first.id, 1, "x", "y").await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        store.delete_fact(&foreign, &first.id, 1).await,
+        Err(StorageError::NotFound)
+    ));
+    let (a, b) = tokio::join!(
+        store.update_fact(&owner.id, &first.id, 1, "偏好", "A"),
+        store.update_fact(&owner.id, &first.id, 1, "偏好", "B")
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert!(matches!(
+        a.as_ref().err().or(b.as_ref().err()),
+        Some(StorageError::Conflict(_))
+    ));
+    let reopened = PostgresStore::connect(&url).await.unwrap();
+    let stored = reopened.list_facts(&owner.id, 0).await.unwrap();
+    assert_eq!(stored[0].version, 2);
+    assert_eq!(stored[0].created_at_unix_ms, first.created_at_unix_ms);
+    assert!(matches!(
+        store.delete_fact(&owner.id, &first.id, 1).await,
+        Err(StorageError::Conflict(_))
+    ));
+    store.delete_fact(&owner.id, &first.id, 2).await.unwrap();
+    assert!(matches!(
+        store.delete_fact(&owner.id, &first.id, 2).await,
+        Err(StorageError::NotFound)
+    ));
+    for index in 0..99 {
+        store
+            .create_fact(&owner.id, &format!("记忆{index}"), "内容")
+            .await
+            .unwrap();
+    }
+    let (a, b) = tokio::join!(
+        store.create_fact(&owner.id, "最后一条", "A"),
+        store.create_fact(&owner.id, "最后一条", "B")
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert!(matches!(
+        a.as_ref().err().or(b.as_ref().err()),
+        Some(StorageError::Conflict(_))
+    ));
+    let mut ids = std::collections::HashSet::new();
+    for offset in [0, 20, 40, 60, 80] {
+        for entry in store.list_facts(&owner.id, offset).await.unwrap() {
+            assert!(ids.insert(entry.id));
+        }
+    }
+    assert_eq!(ids.len(), 100);
+    assert!(store.list_facts(&owner.id, 100).await.unwrap().is_empty());
+    let pool = sqlx::PgPool::connect(&url).await.unwrap();
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(Uuid::parse_str(owner.id.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(store.list_facts(&owner.id, 0).await.unwrap().is_empty());
+}
+
+#[tokio::test]
+#[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
 #[allow(clippy::too_many_lines)] // 同一生命周期覆盖并发领取、故障恢复、重试上限与隔离。
 async fn index_jobs_are_durable_fenced_bounded_and_owner_scoped() {
     use personal_ai_storage::{

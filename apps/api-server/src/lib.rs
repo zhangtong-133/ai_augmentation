@@ -24,6 +24,7 @@ use subtle::ConstantTimeEq;
 use uuid::Uuid;
 mod auth;
 mod documents;
+mod memories;
 mod overview;
 pub use auth::AuthConfig;
 
@@ -64,6 +65,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub memories: Arc<dyn personal_ai_storage::long_memory::LongMemoryStore>,
     pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
     pub indexing: Option<Arc<Indexing>>,
     pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,
@@ -84,6 +86,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
+        .merge(memories::routes())
         .merge(indexing::routes())
         .merge(retrieval::routes())
         .merge(answering::routes())

@@ -6,16 +6,17 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const { path } = await context.params;
   const endpoint = path.join("/");
   const allowed = request.method === "GET"
-    ? ["healthz", "readyz", "auth/me", "documents", "overview", "tools"]
-    : ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer", "tools/knowledge_search"];
+    ? ["healthz", "readyz", "auth/me", "documents", "overview", "tools", "memories"]
+    : request.method === "POST" ? ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer", "tools/knowledge_search", "memories"] : [];
+  const memoryMutation = ["PUT", "DELETE"].includes(request.method) && /^memories\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
-  if (request.method === "POST" && request.headers.get("x-requested-with") !== "personal-ai") {
+  if (request.method !== "GET" && request.headers.get("x-requested-with") !== "personal-ai") {
     return Response.json({ error: { code: "csrf_rejected" } }, { status: 403 });
   }
   const headers = new Headers();
@@ -26,7 +27,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   try {
     const limit = endpoint === "documents" ? 8 * 1024 * 1024 : 16384;
     let body: string | undefined;
-    if (request.method === "POST" && request.body) {
+    if (request.method !== "GET" && request.body) {
       const reader = request.body.getReader();
       const decoder = new TextDecoder("utf-8", { fatal: true });
       let size = 0;
@@ -58,3 +59,5 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
 export const GET = proxy;
 export const POST = proxy;
+export const PUT = proxy;
+export const DELETE = proxy;

@@ -27,6 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            memories: store.clone(),
             indexing,
             answering,
             web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
