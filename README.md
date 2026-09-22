@@ -11,7 +11,7 @@
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
 
-导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复 API](docs/design/sprint-3-model-replies.md)默认关闭，仅可启用内置测试夹具，不调用真实模型；回复页面尚未接入。不自动调用工具，也无定时任务。下一步见 [路线图](docs/ROADMAP.md)。
+导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[测试回复页面](docs/design/sprint-3-reply-ui.md)支持显式请求、历史、轮询与取消；执行默认关闭，仅可启用内置夹具，不调用真实模型。不自动调用工具，也无定时任务。下一步见 [路线图](docs/ROADMAP.md)。
 
 ## 快速开始
 

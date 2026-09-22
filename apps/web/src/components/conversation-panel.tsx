@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { requestError, useIdempotentPost } from "./use-idempotent-post";
+import { ReplyPanel } from "./reply-panel";
 
 type Conversation = { id: string; title: string };
 type Message = { id: string; sequence: number; content: string };
@@ -73,7 +74,7 @@ export function ConversationPanel() {
 
   return <section className="conversationPanel" aria-label="对话与消息">
     <h2>对话与消息</h2>
-    <p>仅保存你发送的用户消息，不生成模型回复。消息持久保存至删除对话，每个对话最多 100 条；请勿保存敏感凭据。</p>
+    <p>发送仅保存用户消息；测试回复需要单独请求，不调用真实模型。消息持久保存至删除对话，每个对话最多 100 条；请勿保存敏感凭据。</p>
     <p>切换对话或退出会清空草稿。每账户最多 100 个对话，24 小时最多创建 100 个。</p>
     <form onSubmit={submit}>
       <label htmlFor="conversation-title">新对话标题（1–80 字）</label>
@@ -105,6 +106,7 @@ export function ConversationPanel() {
 }
 
 function MessageThread({ conversation, onLock, disabled }: { conversation: Conversation; onLock: (value: boolean) => void; disabled: boolean }) {
+  const [replyLocked, setReplyLocked] = useState(false);
   const [content, setContent] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [revision, setRevision] = useState(0);
@@ -113,7 +115,7 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
   const [inputError, setInputError] = useState("");
   const post = useIdempotentPost<Message>(`/api/conversations/${conversation.id}/messages`, () => { setContent(""); setRevision(value => value + 1); });
   const bytes = new TextEncoder().encode(content).length;
-  useEffect(() => { onLock(post.busy || !!post.pending); return () => onLock(false); }, [onLock, post.busy, post.pending]);
+  useEffect(() => { onLock(post.busy || !!post.pending || replyLocked); return () => onLock(false); }, [onLock, post.busy, post.pending, replyLocked]);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
@@ -143,9 +145,9 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
     </>}
     <form onSubmit={submit}>
       <label htmlFor="conversation-message">用户消息（最多 4096 字节）</label>
-      <textarea id="conversation-message" rows={4} value={content} onChange={event => setContent(event.target.value)} disabled={post.busy || !!post.pending || disabled} required />
+      <textarea id="conversation-message" rows={4} value={content} onChange={event => setContent(event.target.value)} disabled={post.busy || !!post.pending || disabled || replyLocked} required />
       <p>{bytes}/4096 字节；仅保存，不会调用模型。</p>
-      <button disabled={post.busy || !!post.pending || disabled || loading || !snapshot || snapshot.messages.length >= 100}>发送用户消息</button>
+      <button disabled={post.busy || !!post.pending || disabled || replyLocked || loading || !snapshot || snapshot.messages.length >= 100}>发送用户消息</button>
     </form>
     {inputError && <p role="alert">{inputError}</p>}
     {post.error && <p role="alert">{post.error}</p>}
@@ -154,5 +156,6 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
       <button disabled={disabled} onClick={() => void post.submit({ content })}>重试发送原请求</button>
       <PendingWarning busy={post.busy || disabled} discard={post.discard} />
     </>}
+    <ReplyPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending} onLock={setReplyLocked} />
   </section>;
 }

@@ -100,6 +100,43 @@ async function upload(page, name, buffer) {
 }
 
 const indexTest = process.env.E2E_INDEX === "1" ? test : test.skip;
+test("reply UI explicitly requests fixture output and restores history after reload", async ({ page }, testInfo) => {
+  const account = await createAccount();
+  let writes = 0;
+  await page.route("**/api/conversations/*/replies", async route => {
+    if (route.request().method() === "POST") writes += 1;
+    return route.continue();
+  });
+  await page.goto("/"); await login(page, account);
+  const panel = page.getByRole("region", { name: "对话与消息", exact: true });
+  await panel.getByLabel("新对话标题", { exact: false }).fill("回复验收");
+  await panel.getByRole("button", { name: "创建对话", exact: true }).click();
+  const replies = panel.getByRole("region", { name: "显式回复", exact: true });
+  await expect(replies).toContainText("暂无回复请求");
+  await expect(replies.getByRole("button", { name: "请求测试回复", exact: true })).toBeDisabled();
+  const text = '<img src=x onerror="window.replyInjected=true">\n测试回复';
+  await panel.getByLabel("用户消息", { exact: false }).fill(text);
+  await panel.getByRole("button", { name: "发送用户消息", exact: true }).click();
+  await expect(replies.getByRole("button", { name: "请求测试回复", exact: true })).toBeEnabled();
+  expect(writes).toBe(0);
+  await replies.getByRole("button", { name: "请求测试回复", exact: true }).click();
+  expect(writes).toBe(0);
+  await replies.getByRole("button", { name: "确认请求测试回复", exact: true }).click();
+  await expect(replies).toContainText("消息版本 1 · 已完成");
+  await expect(replies.locator(".replyOutput")).toHaveText(`本地测试回复（非模型生成）：${text}`);
+  await expect(replies.locator("img")).toHaveCount(0);
+  expect(writes).toBe(1);
+  await replies.screenshot({ path: testInfo.outputPath("replies.png") });
+  await page.reload();
+  await panel.getByRole("button", { name: "回复验收", exact: true }).click();
+  await expect(replies.locator(".replyList li")).toHaveCount(1);
+  await expect(replies).toContainText("已完成");
+  expect(writes).toBe(1);
+  await panel.getByRole("button", { name: "删除当前对话", exact: true }).click();
+  await panel.getByRole("button", { name: "确认删除对话", exact: true }).click();
+  await expect(replies).toHaveCount(0);
+});
+
 test("conversation UI retries committed requests without duplicates and isolates accounts", async ({ page }, testInfo) => {
   const owner = await createAccount();
   const other = await createAccount();

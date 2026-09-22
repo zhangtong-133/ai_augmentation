@@ -13,13 +13,13 @@ export function requestError(status: number) {
 
 // 未确认的写入冻结原始请求；只有显式重试才再次发送，不生成新请求 ID。
 export function useIdempotentPost<T>(path: string, onSuccess: (value: T) => void) {
-  const [pending, setPending] = useState<Record<string, string> | null>(null);
+  const [pending, setPending] = useState<Record<string, string | number> | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => { controller.current?.abort(); controller.current = null; }, []);
 
-  async function submit(input: Record<string, string>) {
+  async function submit(input: Record<string, string | number>) {
     if (controller.current) return;
     const payload = pending ?? { ...input, request_id: crypto.randomUUID() };
     setPending(payload); setBusy(true); setError("");

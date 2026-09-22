@@ -124,3 +124,8 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .messageList span { font-size: 12px; color: var(--muted); }
 .pendingRequest { padding: 12px; border: 1px solid var(--warm); margin: 12px 0; }
 .conversationPanel :focus-visible { outline: 2px solid var(--warm); outline-offset: 3px; }
+.replyPanel { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 12px; }
+.replyList { max-height: 480px; overflow: auto; padding-left: 24px; }
+.replyList li { border-bottom: 1px solid var(--line); padding: 10px 4px; }
+.replyList small { overflow-wrap: anywhere; color: var(--muted); }
+.replyOutput { white-space: pre-wrap; overflow-wrap: anywhere; }
