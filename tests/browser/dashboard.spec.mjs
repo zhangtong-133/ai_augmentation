@@ -209,6 +209,157 @@ test("conversation UI retries committed requests without duplicates and isolates
   await expect(thread).toHaveCount(0);
 });
 
+async function prepareReplyConversation(page, title = "回复故障验收") {
+  const panel = page.getByRole("region", { name: "对话与消息", exact: true });
+  await panel.getByLabel("新对话标题", { exact: false }).fill(title);
+  await panel.getByRole("button", { name: "创建对话", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await expect(panel.getByRole("button", { name: "发送用户消息", exact: true })).toBeEnabled();
+  await panel.getByLabel("用户消息", { exact: false }).fill("需要隔离的回复内容");
+  await panel.getByRole("button", { name: "发送用户消息", exact: true }).click();
+  await expect(panel.locator(".messageList li")).toHaveCount(1);
+  const replies = panel.getByRole("region", { name: "显式回复", exact: true });
+  await expect(replies.getByRole("button", { name: "刷新回复历史" })).toBeEnabled();
+  return { panel, replies };
+}
+
+test("reply UI retries a committed request with the original ID and isolates accounts", async ({ page }) => {
+  const owner = await createAccount();
+  const other = await createAccount();
+  const bodies = [];
+  await page.route("**/api/conversations/*/replies", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    bodies.push(route.request().postDataJSON());
+    if (bodies.length === 1) {
+      expect((await route.fetch()).status()).toBe(202);
+      return route.abort("failed");
+    }
+    return route.continue();
+  });
+  await page.goto("/"); await login(page, owner);
+  const { panel, replies } = await prepareReplyConversation(page);
+  await replies.getByRole("button", { name: "请求测试回复", exact: true }).click();
+  await replies.getByRole("button", { name: "确认请求测试回复", exact: true }).click();
+  await expect(replies.getByRole("alert")).toContainText("结果未确认");
+  await expect(panel.getByRole("button", { name: "发送用户消息", exact: true })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "删除当前对话", exact: true })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "回复故障验收", exact: true })).toBeDisabled();
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies.locator(".replyList li")).toHaveCount(1);
+  expect(bodies).toHaveLength(1);
+  await replies.getByRole("button", { name: "重试回复原请求" }).click();
+  await expect(replies).toContainText("消息版本 1 · 已完成");
+  await expect(replies.getByRole("button", { name: "重试回复原请求" })).toHaveCount(0);
+  expect(bodies).toHaveLength(2); expect(bodies[0]).toEqual(bodies[1]);
+  await expect(replies.locator(".replyList li")).toHaveCount(1);
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, other);
+  await expect(panel).toContainText("暂无对话");
+  await expect(page.getByRole("region", { name: "显式回复", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, owner);
+  await panel.getByRole("button", { name: "回复故障验收", exact: true }).click();
+  await expect(replies.locator(".replyList li")).toHaveCount(1);
+  await expect(replies).toContainText("需要隔离的回复内容");
+  expect(bodies).toHaveLength(2);
+});
+
+test("reply UI stops polling on failure and terminal states and retries cancellation explicitly", async ({ page }) => {
+  const owner = await createAccount();
+  let current = null;
+  let mode = "disabled";
+  let reads = 0;
+  let writes = 0;
+  let cancellations = 0;
+  await page.route("**/api/conversations/*/replies", async route => {
+    if (route.request().method() === "POST") {
+      writes += 1;
+      const body = route.request().postDataJSON();
+      expect(body.expected_revision).toBe(1);
+      current = { request_id: body.request_id, revision: 1, status: "queued", output: null, mode: "fixture" };
+      return route.fulfill({ status: 202, json: current });
+    }
+    reads += 1;
+    if (mode === "unavailable" || mode === "expired") return route.fulfill({ status: mode === "expired" ? 401 : 503, json: { error: { code: "unavailable" } } });
+    return route.fulfill({ json: { enabled: mode !== "disabled", mode: "fixture", items: current ? [current] : [] } });
+  });
+  await page.route("**/api/conversations/*/replies/*/cancel", async route => {
+    cancellations += 1;
+    expect(route.request().headers()["x-requested-with"]).toBe("personal-ai");
+    if (cancellations === 1) return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
+    current = { ...current, status: "cancelled" };
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/"); await login(page, owner);
+  const { replies } = await prepareReplyConversation(page);
+  await expect(replies).toContainText("管理员尚未启用测试回复");
+  await expect(replies.getByRole("button", { name: "请求测试回复", exact: true })).toBeDisabled();
+  mode = "normal";
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await replies.getByRole("button", { name: "请求测试回复", exact: true }).click();
+  await replies.getByRole("button", { name: "确认请求测试回复", exact: true }).click();
+  await expect(replies).toContainText("消息版本 1 · 等待执行");
+  current = { ...current, status: "dispatching" };
+  await expect(replies).toContainText("消息版本 1 · 正在执行");
+  await replies.getByRole("button", { name: "取消此回复" }).click();
+  await expect(replies.getByRole("alert")).toContainText("服务暂不可用");
+  expect(cancellations).toBe(1);
+  await replies.getByRole("button", { name: "取消此回复" }).click();
+  await expect(replies).toContainText("消息版本 1 · 已取消");
+  const stopped = reads;
+  await page.waitForTimeout(2300);
+  expect(reads).toBe(stopped); expect(cancellations).toBe(2);
+  for (const [status, label] of [["failed", "执行失败"], ["unknown", "结果未知"]]) {
+    current = { ...current, status };
+    await replies.getByRole("button", { name: "刷新回复历史" }).click();
+    await expect(replies).toContainText(`消息版本 1 · ${label}`);
+  }
+  await expect(replies).toContainText("不会自动重发");
+  expect(writes).toBe(1);
+  mode = "unavailable";
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies.getByRole("alert")).toContainText("已停止自动刷新");
+  await expect(replies.getByRole("button", { name: "请求测试回复", exact: true })).toBeDisabled();
+  await expect(replies).not.toContainText("暂无回复请求");
+  const failedReads = reads;
+  await page.waitForTimeout(2300);
+  expect(reads).toBe(failedReads);
+  mode = "expired";
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies.getByRole("alert")).toContainText("登录已失效");
+  mode = "normal"; current = { ...current, status: "queued" };
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies).toContainText("消息版本 1 · 等待执行");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(replies).toHaveCount(0);
+  const loggedOutReads = reads;
+  await page.waitForTimeout(2300);
+  expect(reads).toBe(loggedOutReads); expect(writes).toBe(1);
+});
+
+test("reply UI discards delayed history after switching conversations", async ({ page }) => {
+  const owner = await createAccount();
+  await page.goto("/"); await login(page, owner);
+  await prepareReplyConversation(page, "回复对话甲");
+  const { panel, replies } = await prepareReplyConversation(page, "回复对话乙");
+  let release;
+  let delayRead = true;
+  await page.route("**/api/conversations/*/replies", async route => {
+    if (route.request().method() !== "GET") return route.continue();
+    if (!delayRead) return route.continue();
+    delayRead = false;
+    await new Promise(resolve => { release = resolve; });
+    return route.fulfill({ json: { enabled: true, mode: "fixture", items: [{ request_id: randomUUID(), revision: 1, status: "succeeded", output: "不得跨对话显示的晚到回复" }] } }).catch(() => {});
+  });
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect.poll(() => typeof release).toBe("function");
+  await panel.getByRole("button", { name: "回复对话甲", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "回复对话甲", exact: true })).toBeVisible();
+  await expect(replies).toContainText("暂无回复请求");
+  release();
+  await expect(replies).not.toContainText("不得跨对话显示");
+});
+
 test("conversation UI rejects oversized messages and discards late reads when switching", async ({ page }) => {
   const owner = await createAccount();
   await page.goto("/"); await login(page, owner);
