@@ -123,7 +123,7 @@ struct Input {
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/conversations/{id}/replies", post(create))
+        .route("/api/conversations/{id}/replies", get(list).post(create))
         .route("/api/conversations/{id}/replies/{request}", get(read))
         .route(
             "/api/conversations/{id}/replies/{request}/cancel",
@@ -153,6 +153,21 @@ fn public(reply: &Reply) -> serde_json::Value {
     };
     // 不暴露冻结的系统提示、其他历史正文或内部配置。
     json!({"request_id":reply.request_id,"revision":reply.revision,"status":status,"output":reply.output,"mode":"fixture"})
+}
+async fn list(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    let runtime = runtime(&state)?;
+    let items = runtime.store.list_replies(&user.id, &key(&id)?).await?;
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(
+            json!({"enabled":runtime.enabled,"mode":"fixture","items":items.iter().map(public).collect::<Vec<_>>()}),
+        ),
+    ))
 }
 async fn create(
     State(state): State<AppState>,

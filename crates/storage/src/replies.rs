@@ -51,6 +51,12 @@ pub struct PendingReply {
 }
 
 pub trait ReplyStore: Send + Sync {
+    /// 按创建顺序列出当前用户对话的最多 100 项回复，不返回冻结上下文。
+    fn list_replies(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+    ) -> BoxFuture<'_, StorageResult<Vec<Reply>>>;
     /// 内部后台扫描，最多 20 项，优先返回过期派发；不得作为用户列表接口。
     fn pending_replies(&self) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>>;
     fn reserve_reply(

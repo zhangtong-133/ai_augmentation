@@ -6,6 +6,7 @@
 
 ## HTTP 与后台执行（已实现）
 
+- `GET /api/conversations/{id}/replies`：返回 `{enabled, mode, items}`，按创建顺序列出最多 100 个请求（对话本身最多 100 个），不返回冻结上下文。空列表也先核验归属，关闭夹具时仍可查询历史；供刷新页面后恢复历史与确认未收到响应的请求。无新迁移。
 - `POST /api/conversations/{id}/replies`：正文 `{"request_id":"UUID","expected_revision":1}`，返回 202 和请求状态。同键重放仍返回 202（可能已是终态），不会再次执行；未知字段或客户端模型配置均拒绝。
 - `GET /api/conversations/{id}/replies/{request}`：返回 200，字段为 `request_id`、`revision`、`status`、`output` 和 `mode: "fixture"`；不返回冻结上下文或系统提示。首次请求 ID 应由客户端保留，用于查询和原请求重试。
 - `POST /api/conversations/{id}/replies/{request}/cancel`：返回当前状态，终态不撤销。全部操作要求登录，写操作还要求 CSRF 请求头；成功响应 no-store。未登录 401、CSRF 403、无归属/已删除 404、版本/额度冲突 409、非法版本 400、JSON 非法或未知字段按解析状态返回，创建未启用 503。Next.js 与 Nginx 两入口均可用。
@@ -58,3 +59,5 @@ HTTP 创建要求 Cookie 会话和 CSRF，正文仅接受请求 UUID、目标消
 ### 夹具执行器与 HTTP 验收（2026-09-22）
 
 `make check`、前端 lint/typecheck/build、Compose 与脚本语法检查通过。`make smoke` 通过 15 项 PostgreSQL、1 项执行器集成、4 项 Redis 及双入口 HTTP 验收。新增覆盖默认禁用、拒绝供应商配置、响应不泄露上下文、多实例领取、重连恢复、过期不重发、HTTP 身份/CSRF/归属/参数和终态幂等。测试容器、网络与数据已清理；本轮未运行浏览器、MinIO/Qdrant 专项、公网抓取或真实模型，远端 CI 未确认。
+
+回复列表增量：`make check`、前端检查和核心 smoke 通过，覆盖空列表归属、上下文脱敏及双代理历史读取；为后续页面刷新恢复提供入口。无新迁移，未运行浏览器或真实模型。

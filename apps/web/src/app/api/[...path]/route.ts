@@ -11,7 +11,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const conversationDetail = ["GET", "DELETE"].includes(request.method) && /^conversations\/[a-f0-9-]{36}$/i.test(endpoint);
   const conversationMessages = ["GET", "POST"].includes(request.method) && /^conversations\/[a-f0-9-]{36}\/messages$/i.test(endpoint);
   const conversationReplies = (request.method === "POST" && /^conversations\/[a-f0-9-]{36}\/replies(?:\/[a-f0-9-]{36}\/cancel)?$/i.test(endpoint))
-    || (request.method === "GET" && /^conversations\/[a-f0-9-]{36}\/replies\/[a-f0-9-]{36}$/i.test(endpoint));
+    || (request.method === "GET" && /^conversations\/[a-f0-9-]{36}\/replies(?:\/[a-f0-9-]{36})?$/i.test(endpoint));
   const memoryMutation = ["PUT", "DELETE"].includes(request.method) && /^memories\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);

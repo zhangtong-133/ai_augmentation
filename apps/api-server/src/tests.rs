@@ -180,6 +180,7 @@ async fn replies_require_session_csrf_valid_body_and_explicit_enablement() {
     let body = json!({"request_id":Uuid::new_v4(),"expected_revision":1}).to_string();
     let detail = format!("{path}/{}", Uuid::new_v4());
     for (method, endpoint) in [
+        ("GET", path.as_str()),
         ("POST", path.as_str()),
         ("GET", detail.as_str()),
         ("POST", format!("{detail}/cancel").as_str()),

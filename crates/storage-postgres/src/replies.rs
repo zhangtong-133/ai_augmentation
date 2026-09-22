@@ -138,6 +138,31 @@ impl PostgresStore {
 }
 
 impl ReplyStore for PostgresStore {
+    fn list_replies(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+    ) -> BoxFuture<'_, StorageResult<Vec<Reply>>> {
+        let ids = ids(owner, conversation, &Uuid::nil().to_string());
+        Box::pin(async move {
+            let (owner, conversation, _) = ids?;
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            let result = async {
+                // 与删除互斥，空列表也不能绕过归属检查。
+                sqlx::query("SELECT id FROM conversations WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE")
+                    .bind(owner).bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
+                let rows = sqlx::query("SELECT request_id,revision,status,output,NULL::text AS context_text FROM conversation_replies WHERE conversation_id=$1 ORDER BY created_at,request_id LIMIT 100")
+                    .bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
+                rows.iter().map(record).collect::<StorageResult<Vec<_>>>()
+            }.await;
+            if result.is_ok() {
+                tx.commit().await.map_err(map_error)?;
+            } else {
+                tx.rollback().await.map_err(map_error)?;
+            }
+            result
+        })
+    }
     fn pending_replies(&self) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>> {
         Box::pin(async move {
             let rows = sqlx::query("SELECT c.user_id,r.conversation_id,r.request_id,r.status FROM conversation_replies r JOIN conversations c ON c.id=r.conversation_id WHERE c.deleted_at IS NULL AND (r.status='queued' OR (r.status='dispatching' AND r.dispatched_at+interval '120 seconds' <= clock_timestamp())) ORDER BY (r.status='dispatching') DESC,r.created_at,r.conversation_id,r.request_id LIMIT 20")

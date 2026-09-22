@@ -251,6 +251,9 @@ try {
     const replyBody = { request_id: randomUUID(), expected_revision: 1 };
     const replyPath = `${path}/replies`;
     const replyDetail = `${replyPath}/${replyBody.request_id}`;
+    await request(base, replyPath, 401);
+    await request(base, replyPath, 404, { cookie: otherCookie });
+    assert.deepEqual((await request(base, replyPath, 200, { cookie })).data, { enabled: true, mode: "fixture", items: [] });
     await request(base, replyPath, 401, { method: "POST", body: replyBody });
     await request(base, replyPath, 403, { method: "POST", cookie, body: replyBody, csrf: false });
     await request(base, replyPath, 404, { method: "POST", cookie: otherCookie, body: replyBody });
@@ -271,6 +274,7 @@ try {
       await delay(200);
     }
     assert.equal(finished.status, "succeeded");
+    assert.deepEqual((await request(base, replyPath, 200, { cookie })).data.items, [finished]);
     assert.equal(finished.output, `本地测试回复（非模型生成）：${messageBody.content}`);
     assert.deepEqual((await request(base, replyPath, 202, { method: "POST", cookie, body: replyBody })).data, finished);
     await request(base, replyPath, 409, { method: "POST", cookie, body: { ...replyBody, expected_revision: 2 } });

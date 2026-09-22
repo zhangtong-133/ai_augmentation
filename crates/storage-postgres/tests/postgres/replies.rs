@@ -72,6 +72,10 @@ async fn replies_freeze_context_replay_and_isolate_owners() {
     let first = a.unwrap();
     assert_eq!(first, b.unwrap());
     assert_eq!(budget(&pool, &owner).await, 1);
+    let listed = store.list_replies(&owner, &conversation).await.unwrap();
+    assert_eq!(listed.len(), 1);
+    assert!(listed[0].context.is_none());
+    assert_eq!(listed[0].request_id, request);
     assert_eq!(first.context.as_ref().unwrap().user_messages, vec!["问题"]);
     assert_eq!(first.context.as_ref().unwrap().max_output_tokens, 1024);
     store
@@ -158,6 +162,10 @@ async fn assert_foreign_denied(
     request: &str,
 ) {
     let config = configuration();
+    assert!(matches!(
+        store.list_replies(foreign, conversation).await,
+        Err(StorageError::NotFound)
+    ));
     assert!(matches!(
         store.get_reply(foreign, conversation, request).await,
         Err(StorageError::NotFound)
