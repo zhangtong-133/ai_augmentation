@@ -1,6 +1,6 @@
 # 交付路线图
 
-已完成知识库闭环、受限工具执行器及用户手动管理长期记忆。下一步细化 Redis 短期记忆的会话归属、TTL 和容量限制，阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、受限工具、手动长期记忆及 Redis 短期记忆存储适配器。下一步实现持久化对话归属与显式 API，再接入短期记忆；当前尚无聊天入口。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
@@ -53,7 +53,8 @@
 - [x] 用户显式管理 PostgreSQL 长期记忆（CRUD、页面、版本冲突、配额与隔离）
 - [ ] Agent 编排、工具审计与调用预算
 - [ ] Scheduler（授权、取消、租约与幂等）
-- [ ] Redis 短期记忆（用户/会话隔离、TTL 与容量限制）
+- [x] Redis 短期记忆适配器（用户/对话键隔离、TTL、条目/活跃对话配额及真实 Redis 测试）
+- [ ] 对话归属与显式 API（认证、CSRF、撤销/删除、限流与幂等），接入短期记忆
 - [ ] MCP adapter 的首个只读工具
 
 ## Sprint 4

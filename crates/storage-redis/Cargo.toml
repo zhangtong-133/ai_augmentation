@@ -1,0 +1,20 @@
+[package]
+name = "personal-ai-storage-redis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+personal-ai-storage.workspace = true
+personal-ai-domain.workspace = true
+redis = { version = "1.0", default-features = false, features = ["tokio-comp", "script"] }
+serde_json.workspace = true
+sha2.workspace = true
+tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+uuid.workspace = true
+
+[lints]
+workspace = true

@@ -18,8 +18,9 @@
 ## 验收与架构
 
 - [用户长期记忆](design/sprint-3-long-memory.md)：手动 CRUD、版本冲突、配额、数据隔离及页面操作。
+- [Redis 短期记忆](design/sprint-3-short-memory.md)：存储适配器、TTL、条目/活跃对话配额；尚未接入 API。
 
-- [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：已实现受限工具与长期记忆；短期记忆、调度和 MCP 分步交付。
+- [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：受限工具、长期记忆、短期记忆适配器，以及后续对话 API、调度与 MCP 边界。
 
 - [数据库与部署验收](design/sprint-1-acceptance.md)：隔离 Compose、双入口 HTTP 和资源清理。
 - [无头浏览器验收](design/sprint-1-browser-acceptance.md)：macOS / WSL / Linux 页面交互测试。

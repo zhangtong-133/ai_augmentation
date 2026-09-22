@@ -22,6 +22,10 @@ test: ## 运行 Rust 工作区测试
 test-postgres: ## 使用 TEST_DATABASE_URL 运行 PostgreSQL 集成测试
 	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
 
+.PHONY: test-redis
+test-redis: ## 使用一次性 TEST_REDIS_URL 验证短期记忆隔离、配额与 TTL
+	cargo test -p personal-ai-storage-redis --test redis -- --ignored
+
 smoke: ## 构建隔离 Compose 环境，验证持久化与 HTTP 流程，并清理测试数据
 	node scripts/smoke.mjs
 

@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/storage-redis",
   "crates/storage-postgres",
   "crates/storage-s3",
   "crates/storage-qdrant",

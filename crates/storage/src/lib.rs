@@ -53,7 +53,7 @@ pub struct VectorMatch {
     pub score: f32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MemoryEntry {
     pub key: String,
     pub value: String,
