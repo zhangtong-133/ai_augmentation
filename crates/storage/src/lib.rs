@@ -3,6 +3,7 @@ pub mod conversations;
 pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;
+pub mod messages;
 
 use personal_ai_domain::{ConversationId, User, UserId};
 use std::error::Error;

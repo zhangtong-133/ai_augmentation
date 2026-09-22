@@ -43,6 +43,7 @@ dependencies = [
  "personal-ai-storage",
  "personal-ai-storage-postgres",
  "personal-ai-storage-qdrant",
+ "personal-ai-storage-redis",
  "personal-ai-storage-s3",
  "personal-ai-tools",
  "personal-ai-web-import",

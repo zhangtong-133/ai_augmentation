@@ -7,6 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+personal-ai-storage-redis = { path = "../../crates/storage-redis" }
 personal-ai-llm-openai = { path = "../../crates/llm-openai" }
 personal-ai-storage-qdrant = { path = "../../crates/storage-qdrant" }
 personal-ai-storage-s3 = { path = "../../crates/storage-s3" }

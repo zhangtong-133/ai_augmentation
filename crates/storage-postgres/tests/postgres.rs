@@ -2,6 +2,8 @@ use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{MetadataStore, StorageError};
 use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
+#[path = "postgres/messages.rs"]
+mod messages;
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]

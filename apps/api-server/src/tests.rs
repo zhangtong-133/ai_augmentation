@@ -79,6 +79,99 @@ impl personal_ai_storage::conversations::ConversationStore for MemoryStore {
     }
 }
 
+impl personal_ai_storage::messages::MessageStore for MemoryStore {
+    fn append_message(
+        &self,
+        _: &UserId,
+        _: &str,
+        _: &str,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::messages::Message>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn message_revision(&self, _: &UserId, _: &str) -> BoxFuture<'_, StorageResult<i64>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn message_snapshot(
+        &self,
+        _: &UserId,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::messages::MessageSnapshot>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn pending_cache_deletions(
+        &self,
+    ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::messages::CacheDeletion>>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn acknowledge_cache_deletion(
+        &self,
+        _: &personal_ai_storage::messages::CacheDeletion,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+}
+
+#[tokio::test]
+async fn messages_require_session_csrf_and_server_controlled_roles() {
+    let (state, _, _, _, cookie, _) = retrieval_fixture().await;
+    let app = router(state);
+    let path = format!("/api/conversations/{}/messages", Uuid::new_v4());
+    let input = json!({"request_id":Uuid::new_v4(), "content":"消息"}).to_string();
+    for method in ["GET", "POST"] {
+        assert_eq!(
+            auth_request(app.clone(), method, &path, None, &input, true)
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            auth_request(app.clone(), method, &path, Some(&cookie), &input, true)
+                .await
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    assert_eq!(
+        auth_request(app.clone(), "POST", &path, Some(&cookie), &input, false)
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    for (content, expected) in [
+        (
+            json!({"request_id":Uuid::new_v4(),"content":" "}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"content":"x".repeat(4097)}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"content":"hi","role":"assistant"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"content":"hi","user_id":"other"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                &path,
+                Some(&cookie),
+                &content.to_string(),
+                true
+            )
+            .await
+            .status(),
+            expected
+        );
+    }
+}
+
 #[tokio::test]
 async fn conversation_routes_validate_identity_csrf_and_inputs() {
     let (state, _, _, _, cookie, _) = retrieval_fixture().await;
@@ -278,6 +371,8 @@ fn app() -> Router {
     router(AppState {
         answering: None,
         indexing: None,
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
@@ -389,6 +484,8 @@ async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
@@ -741,6 +838,8 @@ async fn documents_are_private_deduplicated_and_validated() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
@@ -940,6 +1039,8 @@ async fn overview_storage_failure_is_not_an_empty_library() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
@@ -1012,6 +1113,8 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: importer.clone(),
@@ -1234,6 +1337,8 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
@@ -1411,6 +1516,8 @@ async fn retrieval_fixture() -> (
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        messages: Arc::new(MemoryStore::default()),
+        message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),

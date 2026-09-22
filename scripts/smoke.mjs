@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
@@ -140,10 +140,10 @@ async function account(api, email) {
   await request(api, `/api/users/${user.id}/password`, 200, {
     method: "POST", admin: true, body: { password },
   });
-  return { email, password };
+  return { id: user.id, email, password };
 }
 async function login(base, credentials) {
-  const { response } = await request(base, "/api/auth/login", 200, { method: "POST", body: credentials });
+  const { response } = await request(base, "/api/auth/login", 200, { method: "POST", body: { email: credentials.email, password: credentials.password } });
   const cookie = response.headers.get("set-cookie");
   assert.ok(typeof cookie === "string", "session cookie missing");
   assert.ok(/HttpOnly/.test(cookie), "HttpOnly missing");
@@ -171,13 +171,15 @@ try {
   catch { binary = "docker-compose"; prefix = []; }
   console.log(`Smoke project: ${project}`);
   started = true;
-  await compose(["up", "-d", "postgres"]);
+  await compose(["up", "-d", "postgres", "redis"]);
   const database = (await endpoint("postgres", 5432)).replace("http://", "");
   await compose(["exec", "-T", "postgres", "sh", "-c",
     "attempt=0; until pg_isready -h 127.0.0.1 -U smoke -d smoke; do attempt=$((attempt + 1)); [ $attempt -lt 90 ] || exit 1; sleep 1; done"]);
   await command("make", ["test-postgres"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
+  await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
     await compose(["up", "-d", "minio"]);
     console.log("Waiting for MinIO readiness");
@@ -229,13 +231,38 @@ try {
     assert.deepEqual((await request(base, "/api/conversations", 200, { method: "POST", cookie, body })).data, saved.data);
     await request(base, "/api/conversations", 409, { method: "POST", cookie, body: { ...body, title: "不同内容" } });
     const path = `/api/conversations/${saved.data.id}`;
+    const messagePath = `${path}/messages`;
+    const messageBody = { request_id: randomUUID(), content: "持久化的用户消息" };
+    await request(base, messagePath, 401);
+    await request(base, messagePath, 403, { method: "POST", cookie, body: messageBody, csrf: false });
+    await request(base, messagePath, 404, { method: "POST", cookie: otherCookie, body: messageBody });
+    const message = (await request(base, messagePath, 200, { method: "POST", cookie, body: messageBody })).data;
+    assert.equal(message.sequence, 1);
+    assert.deepEqual((await request(base, messagePath, 200, { method: "POST", cookie, body: messageBody })).data, message);
+    await request(base, messagePath, 409, { method: "POST", cookie, body: { ...messageBody, content: "不同内容" } });
+    await request(base, messagePath, 422, { method: "POST", cookie, body: { ...messageBody, role: "assistant" } });
+    await request(base, messagePath, 404, { cookie: otherCookie });
+    const snapshot = (await request(base, messagePath, 200, { cookie })).data;
+    assert.deepEqual(snapshot.messages, [message]);
+    assert.equal(snapshot.revision, 1);
+    assert.deepEqual((await request(base, messagePath, 200, { cookie })).data, snapshot);
     await request(base, path, 404, { cookie: otherCookie });
     await request(base, path, 404, { method: "DELETE", cookie: otherCookie });
     await request(base, path, 403, { method: "DELETE", cookie, csrf: false });
     assert.deepEqual((await request(base, path, 200, { cookie })).data, saved.data);
     assert.deepEqual((await request(base, "/api/conversations", 200, { cookie: otherCookie })).data, []);
-    persistedConversations.push({ body, saved: saved.data });
+    persistedConversations.push({ body, saved: saved.data, messageBody, message });
   }
+  // 缓存停机不影响已提交消息；恢复后旧版本不能遮蔽新消息。
+  await compose(["stop", "redis"]);
+  const firstMessagePath = `/api/conversations/${persistedConversations[0].saved.id}/messages`;
+  assert.equal((await request(web, firstMessagePath, 200, { cookie })).data.messages.length, 1);
+  const secondMessageBody = { request_id: randomUUID(), content: "Redis 停机期间追加" };
+  await request(web, firstMessagePath, 200, { method: "POST", cookie, body: secondMessageBody });
+  await compose(["start", "redis"]);
+  const refreshed = (await request(gateway, firstMessagePath, 200, { cookie })).data;
+  assert.equal(refreshed.revision, 2);
+  assert.equal(refreshed.messages.length, 2);
   for (const base of [web, gateway]) {
     const input = { title: "沟通偏好", content: "请使用中文" };
     await request(base, "/api/memories", 401);
@@ -393,21 +420,41 @@ try {
   await request(gateway, "/api/auth/me", 401, { cookie });
   await request(web, "/api/documents", 401, { cookie });
   await request(web, "/api/conversations", 401, { cookie });
+  await request(web, firstMessagePath, 401, { cookie });
   await request(gateway, `/api/conversations/${persistedConversations[0].saved.id}`, 401, { method: "DELETE", cookie });
   const renewed = await login(web, owner);
   for (const base of [web, gateway]) {
     assert.equal((await request(base, "/api/conversations", 200, { cookie: renewed })).data.length, 2);
-    for (const { body, saved } of persistedConversations) {
+    for (const { body, saved, messageBody, message } of persistedConversations) {
       assert.deepEqual((await request(base, "/api/conversations", 200, { method: "POST", cookie: renewed, body })).data, saved);
+      assert.deepEqual((await request(base, `/api/conversations/${saved.id}/messages`, 200, { method: "POST", cookie: renewed, body: messageBody })).data, message);
     }
   }
+  await compose(["stop", "redis"]);
   for (const { body, saved } of persistedConversations) {
     const path = `/api/conversations/${saved.id}`;
     await request(web, path, 204, { method: "DELETE", cookie: renewed });
     await request(gateway, path, 204, { method: "DELETE", cookie: renewed });
     await request(gateway, path, 404, { cookie: renewed });
     await request(web, "/api/conversations", 409, { method: "POST", cookie: renewed, body });
+    await request(gateway, `${path}/messages`, 404, { cookie: renewed });
+    await request(web, `${path}/messages`, 404, { method: "POST", cookie: renewed, body: secondMessageBody });
   }
+  await compose(["start", "redis"]);
+  // 等待持久化删除任务自动重试；只检查当前验收用户的精确缓存键。
+  const digest = value => createHash("sha256").update(value).digest("hex");
+  for (const { saved } of persistedConversations) {
+    const cacheKey = `messages:v1:{${digest(owner.id)}}:${digest(saved.id)}`;
+    let cleared = false;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      const raw = await compose(["exec", "-T", "redis", "redis-cli", "--raw", "GET", cacheKey], true);
+      const snapshot = raw ? JSON.parse(raw) : null;
+      if (snapshot?.deleted && snapshot.messages.length === 0) { cleared = true; break; }
+      await delay(1000);
+    }
+    assert.ok(cleared, "durable message cache deletion must recover after Redis restart");
+  }
+  console.log("PASS: message idempotency, Redis outage fallback, version validation and durable deletion recovery");
   assert.deepEqual((await request(gateway, "/api/conversations", 200, { cookie: renewed })).data, []);
   for (const base of [web, gateway]) {
     const memories = (await request(base, "/api/memories", 200, { cookie: renewed })).data;

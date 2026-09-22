@@ -15,6 +15,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         store = store.with_object_storage(objects);
     }
     let store = Arc::new(store);
+    let message_cache = api_server::message_cache_from_env().map_err(std::io::Error::other)?;
+    let cleanup_task = message_cache.as_ref().map(|cache| {
+        let cache = cache.clone();
+        let store = store.clone();
+        tokio::spawn(async move {
+            loop {
+                api_server::reconcile_message_deletions(store.as_ref(), cache.as_ref()).await;
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            }
+        })
+    });
     let indexing = api_server::indexing_from_env(store.clone()).await?;
     let answering = api_server::answering_from_env(indexing.is_some())?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
@@ -27,6 +38,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            messages: store.clone(),
+            message_cache,
             conversations: store.clone(),
             memories: store.clone(),
             indexing,
@@ -43,6 +56,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .with_graceful_shutdown(shutdown())
     .await?;
     if let Some(task) = index_task {
+        task.abort();
+        let _ = task.await;
+    }
+    if let Some(task) = cleanup_task {
         task.abort();
         let _ = task.await;
     }

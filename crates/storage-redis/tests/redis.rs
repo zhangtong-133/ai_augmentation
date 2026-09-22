@@ -12,6 +12,52 @@ fn entry(value: &str) -> MemoryEntry {
 }
 
 #[tokio::test]
+#[ignore = "需要一次性 TEST_REDIS_URL"]
+async fn message_cache_rejects_stale_snapshots_and_preserves_deletion_fences() {
+    use personal_ai_storage::messages::{Message, MessageCache, MessageSnapshot};
+    use personal_ai_storage_redis::RedisMessageCache;
+    let url = std::env::var("TEST_REDIS_URL").unwrap();
+    let cache = RedisMessageCache::new(&url).unwrap();
+    let owner = UserId::new(uuid::Uuid::new_v4().to_string());
+    let conversation = uuid::Uuid::new_v4().to_string();
+    let first = MessageSnapshot {
+        revision: 1,
+        deleted: false,
+        messages: vec![Message {
+            id: uuid::Uuid::new_v4().to_string(),
+            sequence: 1,
+            content: "消息".into(),
+            created_at_unix_ms: 1,
+        }],
+    };
+    cache.put(&owner, &conversation, &first).await.unwrap();
+    assert_eq!(
+        cache.get(&owner, &conversation).await.unwrap(),
+        Some(first.clone())
+    );
+    assert!(
+        cache
+            .get(&UserId::new("other"), &conversation)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let deleted = MessageSnapshot {
+        revision: 2,
+        deleted: true,
+        messages: vec![],
+    };
+    cache.put(&owner, &conversation, &deleted).await.unwrap();
+    cache.put(&owner, &conversation, &first).await.unwrap();
+    let reopened = RedisMessageCache::new(&url).unwrap();
+    assert_eq!(
+        reopened.get(&owner, &conversation).await.unwrap(),
+        Some(deleted)
+    );
+    // 仅剩无正文的短期删除栅栏；一次性 Redis 由验收环境负责销毁。
+}
+
+#[tokio::test]
 #[ignore = "需要一次性 TEST_REDIS_URL；仅写入随机用户命名空间"]
 async fn isolation_capacity_and_expiration() {
     let url = std::env::var("TEST_REDIS_URL").expect("TEST_REDIS_URL required");

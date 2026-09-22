@@ -11,7 +11,7 @@
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
 
-导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API，以及用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)（不自动用于问答）。[对话元数据 API](docs/design/sprint-3-conversations.md)和 [Redis 适配器](docs/design/sprint-3-short-memory.md)已实现，尚未接入消息。聊天历史、模型自动工具调用和定时任务尚未实现。下一步见 [路线图](docs/ROADMAP.md)。
+导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息 API](docs/design/sprint-3-messages.md)（持久化消息、可选 Redis 快照缓存）。尚无对话页面、模型回复、自动工具调用或定时任务。下一步见 [路线图](docs/ROADMAP.md)。
 
 ## 快速开始
 
@@ -48,6 +48,7 @@ cargo run -p api-server
 | 外部原文存储 | `OBJECT_STORE_ENABLED=true`，配置桶及凭据 | [存储](docs/design/sprint-2-object-storage.md)、[迁移与清理](docs/design/sprint-2-original-maintenance.md)；不自动搬迁旧数据 |
 | 索引与检索 | `KNOWLEDGE_INDEX_ENABLED=true`，配置模型、维度及 Qdrant | `POST/GET /api/documents/{id}/index-job`、`POST /api/knowledge/search` |
 | 引用问答 | 已启用索引，再设置 `KNOWLEDGE_ANSWER_ENABLED=true` 和 `OPENAI_CHAT_MODEL` | `POST /api/knowledge/answer`；模型须支持严格结构化输出 |
+| 消息快照缓存 | `MESSAGE_CACHE_ENABLED=true`，配置 `REDIS_URL` | 固定 30 分钟 TTL；关闭或故障时从 PostgreSQL 读取，不丢失消息 |
 
 知识库接口需要登录会话；POST 还需 `X-Requested-With: personal-ai`。同步分批索引接口仍保留，但不更新异步任务进度。协议和限制见 [索引任务](docs/design/sprint-2-index-jobs.md)、[检索与问答](docs/design/sprint-2-retrieval-qa.md)。模型超时或任务恢复可能重复计费，真实模型需单独评估。
 
@@ -68,7 +69,7 @@ npm --prefix apps/web run build
 
 | 命令 | 范围 |
 |---|---|
-| `make smoke` | PostgreSQL、双入口 HTTP、用户隔离及重启持久化 |
+| `make smoke` | PostgreSQL/Redis、双入口 HTTP、消息幂等、缓存故障恢复及重启持久化 |
 | `make smoke-objects` | 加测真实 MinIO、原文迁移与清理 |
 | `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答 |
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |

@@ -96,9 +96,10 @@ impl ConversationStore for PostgresStore {
             let result = async {
                 sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE").bind(owner).fetch_one(&mut *tx).await.map_err(map_error)?;
                 // 删除即清空标题；保留短期墓碑，避免重试复活，重复删除不延长保留期。
-                let changed = sqlx::query("UPDATE conversations SET title='deleted',deleted_at=COALESCE(deleted_at,clock_timestamp()) WHERE user_id=$1 AND id=$2")
+                let changed = sqlx::query("UPDATE conversations SET title='deleted',message_revision=message_revision+CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END,cache_delete_pending=true,deleted_at=COALESCE(deleted_at,clock_timestamp()) WHERE user_id=$1 AND id=$2")
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 if changed.rows_affected() == 0 { return Err(StorageError::NotFound); }
+                sqlx::query("DELETE FROM conversation_messages WHERE conversation_id=$1").bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 Ok(())
             }.await;
             if result.is_ok() {

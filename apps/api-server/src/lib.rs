@@ -26,6 +26,8 @@ mod auth;
 mod conversations;
 mod documents;
 mod memories;
+mod messages;
+pub use messages::{message_cache_from_env, reconcile_message_deletions};
 mod overview;
 pub use auth::AuthConfig;
 
@@ -66,6 +68,8 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub messages: Arc<dyn personal_ai_storage::messages::MessageStore>,
+    pub message_cache: Option<Arc<dyn personal_ai_storage::messages::MessageCache>>,
     pub conversations: Arc<dyn personal_ai_storage::conversations::ConversationStore>,
     pub memories: Arc<dyn personal_ai_storage::long_memory::LongMemoryStore>,
     pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
@@ -89,6 +93,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
         .merge(memories::routes())
+        .merge(messages::routes())
         .merge(conversations::routes())
         .merge(indexing::routes())
         .merge(retrieval::routes())

@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+mod message_cache;
+pub use message_cache::RedisMessageCache;
 
 use personal_ai_domain::{ConversationId, UserId};
 use personal_ai_storage::{BoxFuture, MemoryEntry, MemoryStore, StorageError, StorageResult};

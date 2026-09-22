@@ -3,6 +3,7 @@ mod conversations;
 mod documents;
 mod index_jobs;
 mod long_memory;
+mod messages;
 mod originals;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};

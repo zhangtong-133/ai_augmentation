@@ -1,5 +1,14 @@
 # Sprint 1 隔离验收环境，凭据仅由 scripts/smoke.mjs 提供。
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1::6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
   postgres:
     image: postgres:16-alpine
     environment:
@@ -31,9 +40,13 @@ services:
       API_AUTH_TOKEN: ${SMOKE_TOKEN:?run make smoke}
       DATABASE_URL: postgres://smoke:${SMOKE_PASSWORD}@postgres:5432/smoke
       SESSION_COOKIE_SECURE: "false"
+      MESSAGE_CACHE_ENABLED: "true"
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1::8080"
     depends_on:
+      redis:
+        condition: service_healthy
       postgres:
         condition: service_healthy
   web:
