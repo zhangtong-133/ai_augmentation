@@ -52,6 +52,113 @@ struct MemoryStore {
     unavailable: bool,
 }
 
+impl personal_ai_storage::conversations::ConversationStore for MemoryStore {
+    fn create_conversation(
+        &self,
+        _: &UserId,
+        _: &str,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::conversations::Conversation>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn list_conversations(
+        &self,
+        _: &UserId,
+    ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::conversations::Conversation>>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn get_conversation(
+        &self,
+        _: &UserId,
+        _: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::conversations::Conversation>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+    fn delete_conversation(&self, _: &UserId, _: &str) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async { Err(StorageError::Unavailable("test".into())) })
+    }
+}
+
+#[tokio::test]
+async fn conversation_routes_validate_identity_csrf_and_inputs() {
+    let (state, _, _, _, cookie, _) = retrieval_fixture().await;
+    let app = router(state);
+    let detail = format!("/api/conversations/{}", Uuid::new_v4());
+    let body = json!({"request_id":Uuid::new_v4(),"title":"对话"}).to_string();
+    for (method, path) in [
+        ("GET", "/api/conversations"),
+        ("GET", detail.as_str()),
+        ("POST", "/api/conversations"),
+        ("DELETE", detail.as_str()),
+    ] {
+        assert_eq!(
+            auth_request(app.clone(), method, path, None, &body, true)
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        if method != "GET" {
+            assert_eq!(
+                auth_request(app.clone(), method, path, Some(&cookie), &body, false)
+                    .await
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+        assert_eq!(
+            auth_request(app.clone(), method, path, Some(&cookie), &body, true)
+                .await
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+    for (input, status) in [
+        (
+            json!({"request_id":Uuid::new_v4(),"title":" "}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"title":"x".repeat(81)}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"request_id":"invalid","title":"x"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"title":"x","user_id":"forged"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                "/api/conversations",
+                Some(&cookie),
+                &input.to_string(),
+                true
+            )
+            .await
+            .status(),
+            status
+        );
+    }
+    assert_eq!(
+        auth_request(
+            app,
+            "GET",
+            "/api/conversations/invalid",
+            Some(&cookie),
+            "",
+            false
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+}
+
 impl MetadataStore for MemoryStore {
     fn password_hash(&self, email: &str) -> BoxFuture<'_, StorageResult<(UserId, String)>> {
         let result = self
@@ -171,6 +278,7 @@ fn app() -> Router {
     router(AppState {
         answering: None,
         indexing: None,
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -281,6 +389,7 @@ async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore::default()),
@@ -632,6 +741,7 @@ async fn documents_are_private_deduplicated_and_validated() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -830,6 +940,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: Arc::new(MemoryStore {
@@ -901,6 +1012,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     let app = router(AppState {
         answering: None,
         indexing: None,
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: importer.clone(),
         documents: store.clone(),
@@ -1122,6 +1234,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),
@@ -1298,6 +1411,7 @@ async fn retrieval_fixture() -> (
     let state = AppState {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
+        conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
         web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
         documents: store.clone(),

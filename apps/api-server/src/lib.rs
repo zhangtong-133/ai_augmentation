@@ -23,6 +23,7 @@ use std::{net::SocketAddr, sync::Arc};
 use subtle::ConstantTimeEq;
 use uuid::Uuid;
 mod auth;
+mod conversations;
 mod documents;
 mod memories;
 mod overview;
@@ -65,6 +66,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub conversations: Arc<dyn personal_ai_storage::conversations::ConversationStore>,
     pub memories: Arc<dyn personal_ai_storage::long_memory::LongMemoryStore>,
     pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
     pub indexing: Option<Arc<Indexing>>,
@@ -87,6 +89,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
         .merge(memories::routes())
+        .merge(conversations::routes())
         .merge(indexing::routes())
         .merge(retrieval::routes())
         .merge(answering::routes())

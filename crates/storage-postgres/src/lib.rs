@@ -1,4 +1,5 @@
 //! `PostgreSQL` 适配器，厂商特有类型不进入存储接口。
+mod conversations;
 mod documents;
 mod index_jobs;
 mod long_memory;

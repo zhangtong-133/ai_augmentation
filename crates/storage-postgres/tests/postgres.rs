@@ -4,6 +4,164 @@ use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
 
 #[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn conversations_are_private_idempotent_and_deleted_without_resurrection() {
+    use personal_ai_storage::conversations::ConversationStore;
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let store = PostgresStore::connect(&url).await.unwrap();
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: format!("{}@conversation.example", Uuid::new_v4()),
+        display_name: "对话测试".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    let foreign = UserId::new(Uuid::new_v4().to_string());
+    let request = Uuid::new_v4().to_string();
+    let (a, b) = tokio::join!(
+        store.create_conversation(&owner.id, &request, "学习"),
+        store.create_conversation(&owner.id, &request, "学习")
+    );
+    let first = a.unwrap();
+    assert_eq!(first, b.unwrap());
+    assert_eq!(
+        store.list_conversations(&owner.id).await.unwrap(),
+        vec![first.clone()]
+    );
+    assert!(store.list_conversations(&foreign).await.unwrap().is_empty());
+    assert!(matches!(
+        store.get_conversation(&foreign, &first.id).await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        store.delete_conversation(&foreign, &first.id).await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        store
+            .create_conversation(&owner.id, &request, "不同标题")
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    let reopened = PostgresStore::connect(&url).await.unwrap();
+    assert_eq!(
+        reopened
+            .create_conversation(&owner.id, &request, "学习")
+            .await
+            .unwrap(),
+        first
+    );
+    store
+        .delete_conversation(&owner.id, &first.id)
+        .await
+        .unwrap();
+    store
+        .delete_conversation(&owner.id, &first.id)
+        .await
+        .unwrap();
+    assert!(matches!(
+        store.get_conversation(&owner.id, &first.id).await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        store.create_conversation(&owner.id, &request, "学习").await,
+        Err(StorageError::Conflict(_))
+    ));
+    assert!(
+        store
+            .list_conversations(&owner.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let pool = sqlx::PgPool::connect(&url).await.unwrap();
+    let title: String = sqlx::query_scalar("SELECT title FROM conversations WHERE id=$1")
+        .bind(Uuid::parse_str(&first.id).unwrap())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(title, "deleted");
+    // 模拟超过保留期；下次创建时清理该用户的过期墓碑。
+    sqlx::query("UPDATE conversations SET deleted_at=clock_timestamp()-interval '25 hours',created_at=clock_timestamp()-interval '26 hours' WHERE id=$1").bind(Uuid::parse_str(&first.id).unwrap()).execute(&pool).await.unwrap();
+    let next = store
+        .create_conversation(&owner.id, &request, "学习")
+        .await
+        .unwrap();
+    assert_ne!(first.id, next.id);
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(Uuid::parse_str(owner.id.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(
+        store
+            .list_conversations(&owner.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn conversation_quota_is_concurrent_durable_and_not_reset_by_delete() {
+    use personal_ai_storage::conversations::ConversationStore;
+    let url = std::env::var("TEST_DATABASE_URL").unwrap();
+    let store = PostgresStore::connect(&url).await.unwrap();
+    let owner = User {
+        id: UserId::new(Uuid::new_v4().to_string()),
+        email: format!("{}@quota.example", Uuid::new_v4()),
+        display_name: "配额测试".into(),
+    };
+    store.save_user(&owner).await.unwrap();
+    for title in [" ", "\0", &"中".repeat(81)] {
+        assert!(matches!(
+            store
+                .create_conversation(&owner.id, &Uuid::new_v4().to_string(), title)
+                .await,
+            Err(StorageError::InvalidData(_))
+        ));
+    }
+    for _ in 0..99 {
+        store
+            .create_conversation(&owner.id, &Uuid::new_v4().to_string(), "对话")
+            .await
+            .unwrap();
+    }
+    let key_a = Uuid::new_v4().to_string();
+    let key_b = Uuid::new_v4().to_string();
+    let (a, b) = tokio::join!(
+        store.create_conversation(&owner.id, &key_a, "最后一个"),
+        store.create_conversation(&owner.id, &key_b, "最后一个")
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    assert!(matches!(
+        a.as_ref().err().or(b.as_ref().err()),
+        Some(StorageError::Conflict(_))
+    ));
+    let records = store.list_conversations(&owner.id).await.unwrap();
+    assert_eq!(records.len(), 100);
+    for record in records {
+        store
+            .delete_conversation(&owner.id, &record.id)
+            .await
+            .unwrap();
+    }
+    let reopened = PostgresStore::connect(&url).await.unwrap();
+    assert!(matches!(
+        reopened
+            .create_conversation(&owner.id, &Uuid::new_v4().to_string(), "删除不重置额度")
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    let pool = sqlx::PgPool::connect(&url).await.unwrap();
+    sqlx::query("DELETE FROM users WHERE id=$1")
+        .bind(Uuid::parse_str(owner.id.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 #[ignore = "requires TEST_DATABASE_URL pointing at a disposable PostgreSQL database"]
 #[allow(clippy::too_many_lines)]
 async fn long_memory_is_owner_scoped_versioned_bounded_and_durable() {

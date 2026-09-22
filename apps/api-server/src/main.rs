@@ -27,6 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            conversations: store.clone(),
             memories: store.clone(),
             indexing,
             answering,

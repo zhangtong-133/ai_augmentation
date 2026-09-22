@@ -19,6 +19,7 @@
 
 - [用户长期记忆](design/sprint-3-long-memory.md)：手动 CRUD、版本冲突、配额、数据隔离及页面操作。
 - [Redis 短期记忆](design/sprint-3-short-memory.md)：存储适配器、TTL、条目/活跃对话配额；尚未接入 API。
+- [对话归属与元数据 API](design/sprint-3-conversations.md)：持久化所有者、创建幂等、额度与删除墓碑；尚无消息。
 
 - [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：受限工具、长期记忆、短期记忆适配器，以及后续对话 API、调度与 MCP 边界。
 

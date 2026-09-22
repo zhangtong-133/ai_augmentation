@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+pub mod conversations;
 pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;

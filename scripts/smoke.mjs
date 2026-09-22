@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
@@ -219,6 +219,23 @@ try {
   const empty = await request(web, "/api/overview", 200, { cookie });
   assert.equal(empty.data.knowledge.total_documents, 0);
   const persistedMemories = [];
+  const persistedConversations = [];
+  for (const base of [web, gateway]) {
+    const body = { request_id: randomUUID(), title: "显式创建的对话" };
+    await request(base, "/api/conversations", 401);
+    await request(base, "/api/conversations", 403, { method: "POST", cookie, body, csrf: false });
+    const saved = await request(base, "/api/conversations", 200, { method: "POST", cookie, body });
+    assert.equal(saved.response.headers.get("cache-control"), "no-store");
+    assert.deepEqual((await request(base, "/api/conversations", 200, { method: "POST", cookie, body })).data, saved.data);
+    await request(base, "/api/conversations", 409, { method: "POST", cookie, body: { ...body, title: "不同内容" } });
+    const path = `/api/conversations/${saved.data.id}`;
+    await request(base, path, 404, { cookie: otherCookie });
+    await request(base, path, 404, { method: "DELETE", cookie: otherCookie });
+    await request(base, path, 403, { method: "DELETE", cookie, csrf: false });
+    assert.deepEqual((await request(base, path, 200, { cookie })).data, saved.data);
+    assert.deepEqual((await request(base, "/api/conversations", 200, { cookie: otherCookie })).data, []);
+    persistedConversations.push({ body, saved: saved.data });
+  }
   for (const base of [web, gateway]) {
     const input = { title: "沟通偏好", content: "请使用中文" };
     await request(base, "/api/memories", 401);
@@ -375,7 +392,23 @@ try {
   await request(web, "/api/auth/logout", 200, { method: "POST", cookie });
   await request(gateway, "/api/auth/me", 401, { cookie });
   await request(web, "/api/documents", 401, { cookie });
+  await request(web, "/api/conversations", 401, { cookie });
+  await request(gateway, `/api/conversations/${persistedConversations[0].saved.id}`, 401, { method: "DELETE", cookie });
   const renewed = await login(web, owner);
+  for (const base of [web, gateway]) {
+    assert.equal((await request(base, "/api/conversations", 200, { cookie: renewed })).data.length, 2);
+    for (const { body, saved } of persistedConversations) {
+      assert.deepEqual((await request(base, "/api/conversations", 200, { method: "POST", cookie: renewed, body })).data, saved);
+    }
+  }
+  for (const { body, saved } of persistedConversations) {
+    const path = `/api/conversations/${saved.id}`;
+    await request(web, path, 204, { method: "DELETE", cookie: renewed });
+    await request(gateway, path, 204, { method: "DELETE", cookie: renewed });
+    await request(gateway, path, 404, { cookie: renewed });
+    await request(web, "/api/conversations", 409, { method: "POST", cookie: renewed, body });
+  }
+  assert.deepEqual((await request(gateway, "/api/conversations", 200, { cookie: renewed })).data, []);
   for (const base of [web, gateway]) {
     const memories = (await request(base, "/api/memories", 200, { cookie: renewed })).data;
     for (const fact of persistedMemories) assert.deepEqual(memories.find(item => item.id === fact.id), fact);

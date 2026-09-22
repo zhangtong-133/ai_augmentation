@@ -26,7 +26,7 @@ TEST_REDIS_URL=redis://127.0.0.1:6379/ make test-redis
 
 测试使用随机用户命名空间，不执行 `FLUSHDB`；覆盖用户/对话隔离、顺序/裁剪、重连、读不续期、写续期、并发配额和清空释放。CI 的 Rust job 提供 Redis 7 服务并运行此命令。
 
-下一阶段先设计并实现持久化对话归属与显式 API，再接入适配器：包括认证/CSRF、会话撤销后的不可访问、删除流程、限流与请求幂等。Scheduler、模型自动记忆和 Agent 工具循环仍独立交付。
+已交付[对话归属与元数据 API](sprint-3-conversations.md)，含认证/CSRF、撤销会话拒绝访问、删除墓碑、创建额度与幂等。下一步明确消息去重和跨存储删除并发保护，再接入适配器。Scheduler、模型自动记忆和 Agent 工具循环仍独立交付。
 
 实现参考：[redis-rs 异步连接](https://docs.rs/redis/latest/redis/aio/struct.MultiplexedConnection.html)、[Redis EVAL](https://redis.io/docs/latest/commands/eval/)。
 
