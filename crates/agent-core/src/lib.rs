@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod reply;
+
 use personal_ai_domain::{ConversationId, UserId};
 use personal_ai_llm::ChatMessage;
 use std::error::Error;
