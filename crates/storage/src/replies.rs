@@ -43,7 +43,16 @@ pub enum ReplyOutcome {
     Unknown,
 }
 
+pub struct PendingReply {
+    pub owner: UserId,
+    pub conversation: String,
+    pub request: String,
+    pub status: ReplyStatus,
+}
+
 pub trait ReplyStore: Send + Sync {
+    /// 内部后台扫描，最多 20 项，优先返回过期派发；不得作为用户列表接口。
+    fn pending_replies(&self) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>>;
     fn reserve_reply(
         &self,
         owner: &UserId,

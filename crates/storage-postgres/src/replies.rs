@@ -4,7 +4,10 @@ use personal_ai_domain::UserId;
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
     messages::{Message, MessageSnapshot},
-    replies::{Reply, ReplyConfiguration, ReplyContext, ReplyOutcome, ReplyStatus, ReplyStore},
+    replies::{
+        PendingReply, Reply, ReplyConfiguration, ReplyContext, ReplyOutcome, ReplyStatus,
+        ReplyStore,
+    },
 };
 use sqlx::{PgConnection, Row, postgres::PgRow};
 use uuid::Uuid;
@@ -135,6 +138,25 @@ impl PostgresStore {
 }
 
 impl ReplyStore for PostgresStore {
+    fn pending_replies(&self) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>> {
+        Box::pin(async move {
+            let rows = sqlx::query("SELECT c.user_id,r.conversation_id,r.request_id,r.status FROM conversation_replies r JOIN conversations c ON c.id=r.conversation_id WHERE c.deleted_at IS NULL AND (r.status='queued' OR (r.status='dispatching' AND r.dispatched_at+interval '120 seconds' <= clock_timestamp())) ORDER BY (r.status='dispatching') DESC,r.created_at,r.conversation_id,r.request_id LIMIT 20")
+                .fetch_all(&self.pool).await.map_err(map_error)?;
+            Ok(rows
+                .iter()
+                .map(|row| PendingReply {
+                    owner: UserId::new(row.get::<Uuid, _>("user_id").to_string()),
+                    conversation: row.get::<Uuid, _>("conversation_id").to_string(),
+                    request: row.get::<Uuid, _>("request_id").to_string(),
+                    status: if row.get::<&str, _>("status") == "queued" {
+                        ReplyStatus::Queued
+                    } else {
+                        ReplyStatus::Dispatching
+                    },
+                })
+                .collect())
+        })
+    }
     fn reserve_reply(
         &self,
         owner: &UserId,

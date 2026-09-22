@@ -28,7 +28,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     let indexing = api_server::indexing_from_env(store.clone()).await?;
     let answering = api_server::answering_from_env(indexing.is_some())?;
+    let replies =
+        api_server::ReplyRuntime::from_env(store.clone()).map_err(std::io::Error::other)?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
+    let reply_task = {
+        let replies = replies.clone();
+        tokio::spawn(async move { replies.run().await })
+    };
     let index_task = indexing.as_ref().map(|indexing| {
         let indexing = indexing.clone();
         let documents = store.clone();
@@ -38,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            replies: Some(replies),
             messages: store.clone(),
             message_cache,
             conversations: store.clone(),
@@ -55,6 +62,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )
     .with_graceful_shutdown(shutdown())
     .await?;
+    reply_task.abort();
+    let _ = reply_task.await;
     if let Some(task) = index_task {
         task.abort();
         let _ = task.await;

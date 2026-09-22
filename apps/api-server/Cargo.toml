@@ -37,4 +37,5 @@ personal-ai-tools.workspace = true
 workspace = true
 
 [dev-dependencies]
+sqlx.workspace = true
 tower.workspace = true

@@ -173,6 +173,65 @@ async fn messages_require_session_csrf_and_server_controlled_roles() {
 }
 
 #[tokio::test]
+async fn replies_require_session_csrf_valid_body_and_explicit_enablement() {
+    let (state, _, _, _, cookie, _) = retrieval_fixture().await;
+    let app = router(state);
+    let path = format!("/api/conversations/{}/replies", Uuid::new_v4());
+    let body = json!({"request_id":Uuid::new_v4(),"expected_revision":1}).to_string();
+    let detail = format!("{path}/{}", Uuid::new_v4());
+    for (method, endpoint) in [
+        ("POST", path.as_str()),
+        ("GET", detail.as_str()),
+        ("POST", format!("{detail}/cancel").as_str()),
+    ] {
+        assert_eq!(
+            auth_request(app.clone(), method, endpoint, None, &body, true)
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            auth_request(app.clone(), method, endpoint, Some(&cookie), &body, true)
+                .await
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+        if method == "POST" {
+            assert_eq!(
+                auth_request(app.clone(), method, endpoint, Some(&cookie), &body, false)
+                    .await
+                    .status(),
+                StatusCode::FORBIDDEN
+            );
+        }
+    }
+    for (body, status) in [
+        (
+            json!({"request_id":Uuid::new_v4(),"expected_revision":0}),
+            StatusCode::BAD_REQUEST,
+        ),
+        (
+            json!({"request_id":Uuid::new_v4(),"expected_revision":1,"model":"external"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+    ] {
+        assert_eq!(
+            auth_request(
+                app.clone(),
+                "POST",
+                &path,
+                Some(&cookie),
+                &body.to_string(),
+                true
+            )
+            .await
+            .status(),
+            status
+        );
+    }
+}
+
+#[tokio::test]
 async fn conversation_routes_validate_identity_csrf_and_inputs() {
     let (state, _, _, _, cookie, _) = retrieval_fixture().await;
     let app = router(state);
@@ -372,6 +431,7 @@ fn app() -> Router {
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -485,6 +545,7 @@ async fn readiness_checks_storage_but_liveness_does_not() {
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -839,6 +900,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -1040,6 +1102,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -1114,6 +1177,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -1338,6 +1402,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),
@@ -1517,6 +1582,7 @@ async fn retrieval_fixture() -> (
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
+        replies: None,
         message_cache: None,
         conversations: Arc::new(MemoryStore::default()),
         memories: Arc::new(MemoryStore::default()),

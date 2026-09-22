@@ -178,6 +178,9 @@ try {
   await command("make", ["test-postgres"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("cargo", ["test", "-p", "api-server", "--test", "replies", "--", "--ignored"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
@@ -245,6 +248,33 @@ try {
     const snapshot = (await request(base, messagePath, 200, { cookie })).data;
     assert.deepEqual(snapshot.messages, [message]);
     assert.equal(snapshot.revision, 1);
+    const replyBody = { request_id: randomUUID(), expected_revision: 1 };
+    const replyPath = `${path}/replies`;
+    const replyDetail = `${replyPath}/${replyBody.request_id}`;
+    await request(base, replyPath, 401, { method: "POST", body: replyBody });
+    await request(base, replyPath, 403, { method: "POST", cookie, body: replyBody, csrf: false });
+    await request(base, replyPath, 404, { method: "POST", cookie: otherCookie, body: replyBody });
+    await request(base, replyPath, 422, { method: "POST", cookie, body: { ...replyBody, model: "external" } });
+    await request(base, replyPath, 400, { method: "POST", cookie, body: { ...replyBody, expected_revision: 0 } });
+    const submitted = await request(base, replyPath, 202, { method: "POST", cookie, body: replyBody });
+    assert.equal(submitted.response.headers.get("cache-control"), "no-store");
+    assert.equal(submitted.data.mode, "fixture");
+    assert.equal(submitted.data.context, undefined);
+    await request(base, replyDetail, 401);
+    await request(base, replyDetail, 404, { cookie: otherCookie });
+    await request(base, `${replyDetail}/cancel`, 403, { method: "POST", cookie, csrf: false });
+    await request(base, `${replyDetail}/cancel`, 404, { method: "POST", cookie: otherCookie });
+    let finished;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      finished = (await request(base, replyDetail, 200, { cookie })).data;
+      if (finished.status === "succeeded") break;
+      await delay(200);
+    }
+    assert.equal(finished.status, "succeeded");
+    assert.equal(finished.output, `本地测试回复（非模型生成）：${messageBody.content}`);
+    assert.deepEqual((await request(base, replyPath, 202, { method: "POST", cookie, body: replyBody })).data, finished);
+    await request(base, replyPath, 409, { method: "POST", cookie, body: { ...replyBody, expected_revision: 2 } });
+    assert.deepEqual((await request(base, `${replyDetail}/cancel`, 200, { method: "POST", cookie })).data, finished);
     assert.deepEqual((await request(base, messagePath, 200, { cookie })).data, snapshot);
     await request(base, path, 404, { cookie: otherCookie });
     await request(base, path, 404, { method: "DELETE", cookie: otherCookie });

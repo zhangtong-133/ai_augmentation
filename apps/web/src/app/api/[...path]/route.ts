@@ -10,11 +10,13 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     : request.method === "POST" ? ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer", "tools/knowledge_search", "memories", "conversations"] : [];
   const conversationDetail = ["GET", "DELETE"].includes(request.method) && /^conversations\/[a-f0-9-]{36}$/i.test(endpoint);
   const conversationMessages = ["GET", "POST"].includes(request.method) && /^conversations\/[a-f0-9-]{36}\/messages$/i.test(endpoint);
+  const conversationReplies = (request.method === "POST" && /^conversations\/[a-f0-9-]{36}\/replies(?:\/[a-f0-9-]{36}\/cancel)?$/i.test(endpoint))
+    || (request.method === "GET" && /^conversations\/[a-f0-9-]{36}\/replies\/[a-f0-9-]{36}$/i.test(endpoint));
   const memoryMutation = ["PUT", "DELETE"].includes(request.method) && /^memories\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
