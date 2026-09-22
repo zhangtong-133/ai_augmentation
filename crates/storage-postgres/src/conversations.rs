@@ -94,11 +94,17 @@ impl ConversationStore for PostgresStore {
             let (owner, id) = ids?;
             let mut tx = self.pool.begin().await.map_err(map_error)?;
             let result = async {
+                sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED").execute(&mut *tx).await.map_err(map_error)?;
                 sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE").bind(owner).fetch_one(&mut *tx).await.map_err(map_error)?;
                 // 删除即清空标题；保留短期墓碑，避免重试复活，重复删除不延长保留期。
                 let changed = sqlx::query("UPDATE conversations SET title='deleted',message_revision=message_revision+CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END,cache_delete_pending=true,deleted_at=COALESCE(deleted_at,clock_timestamp()) WHERE user_id=$1 AND id=$2")
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 if changed.rows_affected() == 0 { return Err(StorageError::NotFound); }
+                // 未派发的额度可释放；派发后的次数留在独立账本，不因删除而退款。
+                sqlx::query("UPDATE reply_daily_budgets b SET reserved=b.reserved-r.count FROM (SELECT budget_day,count(*)::integer AS count FROM conversation_replies WHERE conversation_id=$2 AND status='queued' GROUP BY budget_day) r WHERE b.user_id=$1 AND b.day=r.budget_day")
+                    .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
+                sqlx::query("UPDATE conversation_replies SET context=NULL,output=NULL,status=CASE WHEN status IN ('queued','dispatching') THEN 'cancelled' ELSE status END WHERE conversation_id=$1")
+                    .bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 sqlx::query("DELETE FROM conversation_messages WHERE conversation_id=$1").bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 Ok(())
             }.await;

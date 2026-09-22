@@ -8,6 +8,8 @@ rust-version.workspace = true
 [dependencies]
 personal-ai-domain.workspace = true
 personal-ai-storage.workspace = true
+personal-ai-agent-core.workspace = true
+serde_json.workspace = true
 sqlx.workspace = true
 uuid.workspace = true
 

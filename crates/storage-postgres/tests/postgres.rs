@@ -4,6 +4,8 @@ use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
 #[path = "postgres/messages.rs"]
 mod messages;
+#[path = "postgres/replies.rs"]
+mod replies;
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]

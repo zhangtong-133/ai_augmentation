@@ -5,6 +5,7 @@ mod index_jobs;
 mod long_memory;
 mod messages;
 mod originals;
+mod replies;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};

@@ -1463,9 +1463,11 @@ dependencies = [
 name = "personal-ai-storage-postgres"
 version = "0.1.0"
 dependencies = [
+ "personal-ai-agent-core",
  "personal-ai-domain",
  "personal-ai-storage",
  "personal-ai-storage-s3",
+ "serde_json",
  "sqlx",
  "tokio",
  "uuid",
