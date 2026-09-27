@@ -23,6 +23,7 @@
 - [用户消息与 Redis 快照](design/sprint-3-messages.md)：持久化消息、幂等重放、删除栅栏、缓存故障回退及清理恢复。
 - [对话与消息页面](design/sprint-3-conversation-ui.md)：显式创建/发送、原请求重试、删除确认与账户清理；不生成模型回复。
 - [显式模型回复](design/sprint-3-model-replies.md)：上下文、请求仓储、次数额度、HTTP 与内置夹具执行器；货币预算和真实模型待接入。
+- [固定模型回复适配](design/sprint-3-reply-provider.md)：离线文本计数、保守费用上界和禁止重试的 HTTP 适配器；执行器待接入。
 - [回复货币预算](design/sprint-3-reply-budget.md)：整数费用规划、PostgreSQL 事务账本与保守结算、供应商启用门槛。
 - [显式测试回复页面](design/sprint-3-reply-ui.md)：创建确认、原请求重试、历史恢复、状态轮询与取消；不调用真实模型。
 
