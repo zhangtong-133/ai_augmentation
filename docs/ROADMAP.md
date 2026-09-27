@@ -1,6 +1,6 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收；默认关闭，不调用真实模型。下一步设计货币预算与供应商接入边界。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收；默认关闭，不调用真实模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，下一步落地金额账本与事务预留。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
@@ -62,6 +62,7 @@
 - [x] 内置夹具执行器、过期恢复与显式回复 HTTP 操作（无模型调用）
 - [x] 测试回复页面（显式请求、历史、轮询、取消与原请求重试）
 - [x] 回复页面故障验收（丢失响应、取消重试、轮询停止、账户与晚到数据隔离）
+- [x] 费用预留/结算纯规划与供应商接入边界设计（尚未接入运行时）
 - [ ] 货币预算与真实供应商适配
 - [ ] MCP adapter 的首个只读工具
 

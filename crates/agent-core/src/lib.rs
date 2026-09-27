@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod budget;
 pub mod reply;
 
 use personal_ai_domain::{ConversationId, UserId};
