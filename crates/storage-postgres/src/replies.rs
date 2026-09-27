@@ -1,6 +1,7 @@
 use crate::{PostgresStore, map_error};
 use personal_ai_agent_core::reply::plan_reply;
 use personal_ai_domain::UserId;
+use personal_ai_storage::reply_budgets::{BudgetedReplyStore, ReplyBudgetPlanner, ReplyUsage};
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
     messages::{Message, MessageSnapshot},
@@ -10,6 +11,7 @@ use personal_ai_storage::{
     },
 };
 use sqlx::{PgConnection, Row, postgres::PgRow};
+use std::sync::Arc;
 use uuid::Uuid;
 
 fn ids(owner: &UserId, conversation: &str, request: &str) -> StorageResult<(Uuid, Uuid, Uuid)> {
@@ -71,7 +73,7 @@ async fn read(tx: &mut PgConnection, conversation: Uuid, request: Uuid) -> Stora
 enum Action {
     Claim,
     Cancel,
-    Finish(ReplyOutcome),
+    Finish(ReplyOutcome, Option<ReplyUsage>),
     Expire,
 }
 
@@ -86,7 +88,7 @@ impl PostgresStore {
         let ids = ids(owner, conversation, request);
         Box::pin(async move {
             let (owner, conversation, request) = ids?;
-            if let Action::Finish(ReplyOutcome::Succeeded(text)) = &action
+            if let Action::Finish(ReplyOutcome::Succeeded(text), _) = &action
                 && (text.trim().is_empty() || text.len() > 16384 || text.contains('\0'))
             {
                 return Err(StorageError::InvalidData("invalid reply output".into()));
@@ -95,6 +97,7 @@ impl PostgresStore {
             let result = async {
                 lock(&mut tx, owner, conversation).await?;
                 let reply = read(&mut tx, conversation, request).await?;
+                let usage = match &action { Action::Finish(_, usage) => *usage, _ => None };
                 match action {
                     Action::Claim => {
                         if reply.status != ReplyStatus::Queued { return Err(StorageError::Conflict("reply already claimed or terminal".into())); }
@@ -109,7 +112,7 @@ impl PostgresStore {
                         sqlx::query("UPDATE conversation_replies SET status='cancelled',context=NULL WHERE conversation_id=$1 AND request_id=$2 AND status IN ('queued','dispatching')")
                             .bind(conversation).bind(request).execute(&mut *tx).await.map_err(map_error)?;
                     }
-                    Action::Finish(outcome) => {
+                    Action::Finish(outcome, _) => {
                         if reply.status == ReplyStatus::Queued { return Err(StorageError::Conflict("reply not claimed".into())); }
                         let (status, output) = match outcome {
                             ReplyOutcome::Succeeded(text) => ("succeeded", Some(text)),
@@ -125,7 +128,14 @@ impl PostgresStore {
                             .bind(conversation).bind(request).execute(&mut *tx).await.map_err(map_error)?;
                     }
                 }
-                read(&mut tx, conversation, request).await
+                let updated = read(&mut tx, conversation, request).await?;
+                if matches!(reply.status, ReplyStatus::Queued | ReplyStatus::Dispatching)
+                    && !matches!(updated.status, ReplyStatus::Queued | ReplyStatus::Dispatching) {
+                    crate::reply_money::settle(&mut tx, owner, conversation, request,
+                        reply.status == ReplyStatus::Queued,
+                        if updated.status == ReplyStatus::Succeeded { usage } else { None }).await?;
+                }
+                Ok(updated)
             }.await;
             if result.is_ok() {
                 tx.commit().await.map_err(map_error)?;
@@ -190,52 +200,13 @@ impl ReplyStore for PostgresStore {
         revision: i64,
         configuration: &ReplyConfiguration,
     ) -> BoxFuture<'_, StorageResult<Reply>> {
-        let ids = ids(owner, conversation, request);
-        let configuration = configuration.clone();
-        Box::pin(async move {
-            let (owner, conversation, request) = ids?;
-            let mut tx = self.pool.begin().await.map_err(map_error)?;
-            let result = async {
-                let current = lock(&mut tx, owner, conversation).await?;
-                if let Some(row) = sqlx::query("SELECT *,context::text AS context_text FROM conversation_replies WHERE conversation_id=$1 AND request_id=$2")
-                    .bind(conversation).bind(request).fetch_optional(&mut *tx).await.map_err(map_error)? {
-                    let reply = record(&row)?;
-                    if reply.revision != revision { return Err(StorageError::Conflict("reply request already used".into())); }
-                    return Ok(reply);
-                }
-                for value in [&configuration.model, &configuration.revision] {
-                    if value.trim().is_empty() || value.len() > 128 || value.contains('\0') { return Err(StorageError::InvalidData("invalid reply configuration".into())); }
-                }
-                if current != revision { return Err(StorageError::Conflict("stale reply revision".into())); }
-                let count: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_replies WHERE conversation_id=$1")
-                    .bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
-                let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM conversation_replies WHERE conversation_id=$1 AND status IN ('queued','dispatching'))")
-                    .bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
-                if count >= 100 || active { return Err(StorageError::Conflict("reply quota reached".into())); }
-                let rows = sqlx::query("SELECT id,sequence,content,(extract(epoch FROM created_at)*1000)::bigint AS created_ms FROM conversation_messages WHERE conversation_id=$1 ORDER BY sequence")
-                    .bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
-                let snapshot = MessageSnapshot { revision: current, deleted: false, messages: rows.iter().map(|row| Message {
-                    id: row.get::<Uuid,_>("id").to_string(), sequence: row.get("sequence"), content: row.get("content"), created_at_unix_ms: row.get("created_ms"),
-                }).collect() };
-                let plan = plan_reply(&snapshot, revision).map_err(|_| StorageError::InvalidData("invalid reply snapshot".into()))?;
-                let context = ReplyContext { system: plan.request.messages[0].content.clone(), user_messages: plan.request.messages[1..].iter().map(|message| message.content.clone()).collect(), first_sequence: plan.first_sequence, max_output_tokens: plan.request.max_output_tokens.unwrap_or(1024), configuration };
-                let context = serde_json::to_string(&context).map_err(|_| StorageError::InvalidData("invalid reply context".into()))?;
-                // 在取得用户锁之后读取时钟；跨 UTC 午夜等待不会使用事务开始时的旧日期。
-                let day: String = sqlx::query_scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text").fetch_one(&mut *tx).await.map_err(map_error)?;
-                let reserved = sqlx::query("INSERT INTO reply_daily_budgets(user_id,day,reserved) VALUES($1,$2::text::date,1) ON CONFLICT(user_id,day) DO UPDATE SET reserved=reply_daily_budgets.reserved+1 WHERE reply_daily_budgets.reserved < 20")
-                    .bind(owner).bind(&day).execute(&mut *tx).await.map_err(map_error)?;
-                if reserved.rows_affected() == 0 { return Err(StorageError::Conflict("daily reply quota reached".into())); }
-                sqlx::query("INSERT INTO conversation_replies(conversation_id,request_id,revision,budget_day,status,context) VALUES($1,$2,$3,$4::text::date,'queued',$5::text::jsonb)")
-                    .bind(conversation).bind(request).bind(revision).bind(day).bind(context).execute(&mut *tx).await.map_err(map_error)?;
-                read(&mut tx, conversation, request).await
-            }.await;
-            if result.is_ok() {
-                tx.commit().await.map_err(map_error)?;
-            } else {
-                tx.rollback().await.map_err(map_error)?;
-            }
-            result
-        })
+        self.reserve_reply_with_policy(
+            owner,
+            conversation,
+            request,
+            revision,
+            (configuration, None),
+        )
     }
     fn get_reply(
         &self,
@@ -274,7 +245,7 @@ impl ReplyStore for PostgresStore {
         request: &str,
         outcome: ReplyOutcome,
     ) -> BoxFuture<'_, StorageResult<Reply>> {
-        self.change_reply(owner, conversation, request, Action::Finish(outcome))
+        self.change_reply(owner, conversation, request, Action::Finish(outcome, None))
     }
     fn expire_reply(
         &self,
@@ -283,5 +254,100 @@ impl ReplyStore for PostgresStore {
         request: &str,
     ) -> BoxFuture<'_, StorageResult<Reply>> {
         self.change_reply(owner, conversation, request, Action::Expire)
+    }
+}
+
+impl PostgresStore {
+    fn reserve_reply_with_policy(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        revision: i64,
+        policy: (&ReplyConfiguration, Option<Arc<dyn ReplyBudgetPlanner>>),
+    ) -> BoxFuture<'_, StorageResult<Reply>> {
+        let ids = ids(owner, conversation, request);
+        let configuration = policy.0.clone();
+        let planner = policy.1;
+        Box::pin(async move {
+            let (owner, conversation, request) = ids?;
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            let result = async {
+                let current = lock(&mut tx, owner, conversation).await?;
+                if let Some(row) = sqlx::query("SELECT *,context::text AS context_text FROM conversation_replies WHERE conversation_id=$1 AND request_id=$2")
+                    .bind(conversation).bind(request).fetch_optional(&mut *tx).await.map_err(map_error)? {
+                    let reply = record(&row)?;
+                    if reply.revision != revision { return Err(StorageError::Conflict("reply request already used".into())); }
+                    return Ok(reply);
+                }
+                for value in [&configuration.model, &configuration.revision] {
+                    if value.trim().is_empty() || value.len() > 128 || value.contains('\0') { return Err(StorageError::InvalidData("invalid reply configuration".into())); }
+                }
+                if current != revision { return Err(StorageError::Conflict("stale reply revision".into())); }
+                let count: i64 = sqlx::query_scalar("SELECT count(*) FROM conversation_replies WHERE conversation_id=$1")
+                    .bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
+                let active: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM conversation_replies WHERE conversation_id=$1 AND status IN ('queued','dispatching'))")
+                    .bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
+                if count >= 100 || active { return Err(StorageError::Conflict("reply quota reached".into())); }
+                let rows = sqlx::query("SELECT id,sequence,content,(extract(epoch FROM created_at)*1000)::bigint AS created_ms FROM conversation_messages WHERE conversation_id=$1 ORDER BY sequence")
+                    .bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
+                let snapshot = MessageSnapshot { revision: current, deleted: false, messages: rows.iter().map(|row| Message {
+                    id: row.get::<Uuid,_>("id").to_string(), sequence: row.get("sequence"), content: row.get("content"), created_at_unix_ms: row.get("created_ms"),
+                }).collect() };
+                let plan = plan_reply(&snapshot, revision).map_err(|_| StorageError::InvalidData("invalid reply snapshot".into()))?;
+                let context = ReplyContext { system: plan.request.messages[0].content.clone(), user_messages: plan.request.messages[1..].iter().map(|message| message.content.clone()).collect(), first_sequence: plan.first_sequence, max_output_tokens: plan.request.max_output_tokens.unwrap_or(1024), configuration };
+                let money = planner.as_ref().map(|planner| planner.plan(&context)).transpose()?;
+                let money = money.map(|budget| crate::reply_money::validate(budget, &context)).transpose()?;
+                let money_configuration = context.configuration.clone();
+                let context = serde_json::to_string(&context).map_err(|_| StorageError::InvalidData("invalid reply context".into()))?;
+                // 在取得用户锁之后读取时钟；跨 UTC 午夜等待不会使用事务开始时的旧日期。
+                let day: String = sqlx::query_scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text").fetch_one(&mut *tx).await.map_err(map_error)?;
+                if let Some((budget, quote)) = money {
+                    crate::reply_money::reserve(&mut tx, owner, (conversation, request), &day, &money_configuration, budget, quote).await?;
+                }
+                let reserved = sqlx::query("INSERT INTO reply_daily_budgets(user_id,day,reserved) VALUES($1,$2::text::date,1) ON CONFLICT(user_id,day) DO UPDATE SET reserved=reply_daily_budgets.reserved+1 WHERE reply_daily_budgets.reserved < 20")
+                    .bind(owner).bind(&day).execute(&mut *tx).await.map_err(map_error)?;
+                if reserved.rows_affected() == 0 { return Err(StorageError::Conflict("daily reply quota reached".into())); }
+                sqlx::query("INSERT INTO conversation_replies(conversation_id,request_id,revision,budget_day,status,context) VALUES($1,$2,$3,$4::text::date,'queued',$5::text::jsonb)")
+                    .bind(conversation).bind(request).bind(revision).bind(day).bind(context).execute(&mut *tx).await.map_err(map_error)?;
+                read(&mut tx, conversation, request).await
+            }.await;
+            if result.is_ok() {
+                tx.commit().await.map_err(map_error)?;
+            } else {
+                tx.rollback().await.map_err(map_error)?;
+            }
+            result
+        })
+    }
+}
+
+impl BudgetedReplyStore for PostgresStore {
+    fn reserve_budgeted_reply(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        revision: i64,
+        configuration: &ReplyConfiguration,
+        planner: Arc<dyn ReplyBudgetPlanner>,
+    ) -> BoxFuture<'_, StorageResult<Reply>> {
+        self.reserve_reply_with_policy(
+            owner,
+            conversation,
+            request,
+            revision,
+            (configuration, Some(planner)),
+        )
+    }
+    fn finish_budgeted_reply(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        outcome: ReplyOutcome,
+        usage: Option<ReplyUsage>,
+    ) -> BoxFuture<'_, StorageResult<Reply>> {
+        self.change_reply(owner, conversation, request, Action::Finish(outcome, usage))
     }
 }

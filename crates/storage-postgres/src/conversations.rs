@@ -100,6 +100,7 @@ impl ConversationStore for PostgresStore {
                 let changed = sqlx::query("UPDATE conversations SET title='deleted',message_revision=message_revision+CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END,cache_delete_pending=true,deleted_at=COALESCE(deleted_at,clock_timestamp()) WHERE user_id=$1 AND id=$2")
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 if changed.rows_affected() == 0 { return Err(StorageError::NotFound); }
+                crate::reply_money::delete_conversation(&mut tx, owner, id).await?;
                 // 未派发的额度可释放；派发后的次数留在独立账本，不因删除而退款。
                 sqlx::query("UPDATE reply_daily_budgets b SET reserved=b.reserved-r.count FROM (SELECT budget_day,count(*)::integer AS count FROM conversation_replies WHERE conversation_id=$2 AND status='queued' GROUP BY budget_day) r WHERE b.user_id=$1 AND b.day=r.budget_day")
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;

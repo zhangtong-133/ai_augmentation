@@ -5,6 +5,7 @@ pub mod index_jobs;
 pub mod long_memory;
 pub mod messages;
 pub mod replies;
+pub mod reply_budgets;
 
 use personal_ai_domain::{ConversationId, User, UserId};
 use std::error::Error;

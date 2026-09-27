@@ -577,3 +577,6 @@ async fn reply_output_limits_and_dispatched_cancellation_are_enforced() {
     );
     cleanup(&pool, &owner).await;
 }
+
+#[path = "reply_money.rs"]
+mod money;
