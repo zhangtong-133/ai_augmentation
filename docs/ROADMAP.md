@@ -1,6 +1,6 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收；默认关闭，不调用真实模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，下一步接入预算凭据领取、持久化配置停用与执行器。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收；默认关闭，不调用真实模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，下一步接入执行器、显式启用配置与金额提示。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
@@ -65,6 +65,7 @@
 - [x] 费用预留/结算纯规划与供应商接入边界设计（尚未接入运行时）
 - [x] PostgreSQL 金额账本、事务预留与一次性结算（内部端口，尚未接入 HTTP/执行器）
 - [x] 固定模型正文计数、保守上下文上界与供应商单次发送适配（本地夹具验收，未启用付费入口）
+- [x] 预算凭据一次性事务领取、不可变配置登记、价格有效期与持久化停用（内部端口，未接入执行器）
 - [ ] 货币预算与真实供应商适配
 - [ ] MCP adapter 的首个只读工具
 

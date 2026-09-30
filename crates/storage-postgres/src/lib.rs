@@ -6,6 +6,7 @@ mod long_memory;
 mod messages;
 mod originals;
 mod replies;
+mod reply_dispatch;
 mod reply_money;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};

@@ -59,3 +59,41 @@ pub trait BudgetedReplyStore: ReplyStore {
         usage: Option<ReplyUsage>,
     ) -> BoxFuture<'_, StorageResult<Reply>>;
 }
+
+/// 已提交的一次性领取结果。仅内部执行器使用，不得序列化给客户端。
+/// 领取后仍须在发送前复核配置；取消/停用无法撤回已发出的网络请求。
+pub struct BudgetedReplyClaim {
+    pub reply: Reply,
+    pub budget: ReplyBudget,
+    pub reserved: i64,
+}
+
+/// 部署端内部端口。配置版本不可变，停用不可逆，禁止接入用户 HTTP 参数。
+pub trait ReplyDispatchStore: BudgetedReplyStore {
+    /// 注册显式审核过的价格配置及有效期（Unix 毫秒）。同版本只允许完全相同重放。
+    fn register_reply_configuration(
+        &self,
+        configuration: &ReplyConfiguration,
+        budget: &ReplyBudget,
+        valid_until_unix_ms: i64,
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
+    /// 持久化停用，重复调用安全；不得通过重新注册恢复。
+    fn disable_reply_configuration(&self, revision: &str) -> BoxFuture<'_, StorageResult<()>>;
+
+    /// 检查数据库时钟下的有效性；供发送前复核，不能替代一次性领取。
+    fn check_reply_configuration(
+        &self,
+        configuration: &ReplyConfiguration,
+        budget: &ReplyBudget,
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
+    /// 原子核验未结算预算及有效配置，并只领取一次；提交确认后才返回凭据。
+    /// 无金额的历史请求、已取消或已领取请求均拒绝。
+    fn claim_budgeted_reply(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<BudgetedReplyClaim>>;
+}

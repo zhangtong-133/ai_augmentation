@@ -14,7 +14,11 @@ use sqlx::{PgConnection, Row, postgres::PgRow};
 use std::sync::Arc;
 use uuid::Uuid;
 
-fn ids(owner: &UserId, conversation: &str, request: &str) -> StorageResult<(Uuid, Uuid, Uuid)> {
+pub(super) fn ids(
+    owner: &UserId,
+    conversation: &str,
+    request: &str,
+) -> StorageResult<(Uuid, Uuid, Uuid)> {
     let parse = |value: &str| {
         Uuid::parse_str(value).map_err(|_| StorageError::InvalidData("invalid reply id".into()))
     };
@@ -49,7 +53,11 @@ fn record(row: &PgRow) -> StorageResult<Reply> {
     })
 }
 
-async fn lock(tx: &mut PgConnection, owner: Uuid, conversation: Uuid) -> StorageResult<i64> {
+pub(super) async fn lock(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    conversation: Uuid,
+) -> StorageResult<i64> {
     // 所有回复写入与删除采用同一锁序：用户、对话、回复。
     sqlx::query("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
         .execute(&mut *tx)
@@ -64,7 +72,11 @@ async fn lock(tx: &mut PgConnection, owner: Uuid, conversation: Uuid) -> Storage
         .bind(owner).bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)
 }
 
-async fn read(tx: &mut PgConnection, conversation: Uuid, request: Uuid) -> StorageResult<Reply> {
+pub(super) async fn read(
+    tx: &mut PgConnection,
+    conversation: Uuid,
+    request: Uuid,
+) -> StorageResult<Reply> {
     let row = sqlx::query("SELECT *,context::text AS context_text FROM conversation_replies WHERE conversation_id=$1 AND request_id=$2")
         .bind(conversation).bind(request).fetch_one(tx).await.map_err(map_error)?;
     record(&row)

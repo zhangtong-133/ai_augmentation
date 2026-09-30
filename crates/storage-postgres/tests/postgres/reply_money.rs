@@ -487,3 +487,6 @@ async fn monetary_invalid_configuration_and_foreign_access_leave_no_ledger() {
     cleanup(&pool, &owner).await;
     cleanup(&foreign_pool, &foreign).await;
 }
+
+#[path = "reply_dispatch.rs"]
+mod dispatch;
