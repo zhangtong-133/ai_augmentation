@@ -7,7 +7,7 @@
 3. **已实现对话/用户消息 API、页面与 Redis 快照缓存。** [对话 API](sprint-3-conversations.md)提供归属与创建幂等；[消息设计](sprint-3-messages.md)提供持久化消息、删除互斥与缓存恢复；[管理页面](sprint-3-conversation-ui.md)支持显式操作和原请求重试。原[追加式短期记忆适配器](sprint-3-short-memory.md)保持独立；调度另需授权、租约及费用上限。
 4. **已实现显式回复的仓储、次数额度、HTTP、夹具执行器与[测试页面](sprint-3-reply-ui.md)，已提供固定供应商显式付费模式。** [回复设计](sprint-3-model-replies.md)说明单次领取、过期恢复及取消/删除保护；[货币预算仓储](sprint-3-reply-budget.md)已实现内部事务预留/结算，[固定模型计数与单次发送适配](sprint-3-reply-provider.md)已有本地夹具验收，已接入[执行器及显式金额确认入口](sprint-3-paid-replies.md)，默认关闭。
 5. **已实现：[工具调用次数预算与持久化审计](sprint-3-tool-call-audit.md)。** 知识检索工具需提供一次性请求 ID，先登记次数，再执行并记录元数据；失败和结果未知保留尝试次数。
-6. **已实现：[固定只读 Agent 计划与用户授权](sprint-3-agent-plans.md)。** 显式提供查询并预览计划，精确确认指纹、次数及费用后，最多顺序调用三次知识检索，支持取消、版本保护、删除清除和重启查重。计划页面与模型规划另行交付。
+6. **已实现：[固定只读 Agent 计划与用户授权](sprint-3-agent-plans.md)及[计划页面](sprint-3-agent-plan-ui.md)。** 显式提供查询并预览计划，精确确认指纹、次数及费用后，最多顺序调用三次知识检索，支持取消、版本保护、删除清除和重启查重。已提供[模型建议纯规划与两阶段费用授权](sprint-3-model-agent-budget.md)；模型请求仓储、供应商、执行器及对应页面仍待实现。
 7. **待实现：MCP 传输适配器与 Scheduler。** 复用内部工具，不绕过权限。当前 REST 接口不是 MCP 服务；不会让模型自动调用工具。
 
 ## 首个工具：knowledge_search

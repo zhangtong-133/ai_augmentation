@@ -1440,6 +1440,7 @@ dependencies = [
  "personal-ai-llm",
  "personal-ai-storage",
  "personal-ai-tools",
+ "serde",
  "serde_json",
  "sha2",
  "tokio",

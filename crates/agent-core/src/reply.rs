@@ -37,6 +37,20 @@ pub fn plan_reply(
     snapshot: &MessageSnapshot,
     expected_revision: i64,
 ) -> Result<ReplyPlan, ReplyPlanError> {
+    plan_context(
+        snapshot,
+        expected_revision,
+        SYSTEM_PROMPT,
+        MAX_OUTPUT_TOKENS,
+    )
+}
+
+pub(crate) fn plan_context(
+    snapshot: &MessageSnapshot,
+    expected_revision: i64,
+    system: &str,
+    max_output_tokens: u32,
+) -> Result<ReplyPlan, ReplyPlanError> {
     if snapshot.deleted {
         return Err(ReplyPlanError::Deleted);
     }
@@ -61,7 +75,7 @@ pub fn plan_reply(
         return Err(ReplyPlanError::EmptyConversation);
     }
 
-    let mut input_bytes = SYSTEM_PROMPT.len();
+    let mut input_bytes = system.len();
     let mut start = snapshot.messages.len();
     for message in snapshot.messages.iter().rev().take(MAX_CONTEXT_MESSAGES) {
         if input_bytes + message.content.len() > MAX_CONTEXT_BYTES {
@@ -72,7 +86,7 @@ pub fn plan_reply(
     }
     let mut messages = vec![ChatMessage {
         role: Role::System,
-        content: SYSTEM_PROMPT.to_owned(),
+        content: system.to_owned(),
     }];
     messages.extend(
         snapshot.messages[start..]
@@ -90,7 +104,7 @@ pub fn plan_reply(
         request: ChatRequest {
             messages,
             temperature: None,
-            max_output_tokens: Some(MAX_OUTPUT_TOKENS),
+            max_output_tokens: Some(max_output_tokens),
         },
     })
 }

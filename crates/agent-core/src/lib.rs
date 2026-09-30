@@ -2,6 +2,7 @@
 
 pub mod budget;
 pub mod knowledge_plan;
+pub mod model_plan;
 pub mod reply;
 pub mod reply_executor;
 pub mod tool_execution;

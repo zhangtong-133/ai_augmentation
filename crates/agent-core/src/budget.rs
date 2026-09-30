@@ -52,6 +52,40 @@ fn cost(prices: TokenPrices, input: u64, output: u64) -> Result<i64, BudgetError
 }
 
 impl CostReservation {
+    /// 为只有输入 token 费用的向量化调用计算预留；不虚构输出费用。
+    ///
+    /// # Errors
+    /// 输入价格、上界和单次额度必须为正；拒绝溢出或超过额度。
+    pub fn quote_input(
+        input_price_per_million: u64,
+        input_bound: u64,
+        request_limit: i64,
+    ) -> Result<Self, BudgetError> {
+        if input_price_per_million == 0 {
+            return Err(BudgetError::InvalidPrices);
+        }
+        if input_bound == 0 {
+            return Err(BudgetError::InvalidTokenBounds);
+        }
+        if request_limit <= 0 {
+            return Err(BudgetError::InvalidLimit);
+        }
+        let prices = TokenPrices {
+            input_per_million: input_price_per_million,
+            output_per_million: 0,
+        };
+        let amount = cost(prices, input_bound, 0)?;
+        if amount > request_limit {
+            return Err(BudgetError::RequestLimitExceeded);
+        }
+        Ok(Self {
+            prices,
+            input_bound,
+            output_bound: 0,
+            amount,
+        })
+    }
+
     /// 使用已验证的模型输入上界和硬输出上限计算保守预留。
     ///
     /// # Errors
@@ -150,6 +184,72 @@ mod tests {
                 .unwrap()
                 .amount(),
             7644
+        );
+    }
+
+    #[test]
+    fn input_only_quote_rounds_without_output_fees_and_settles_verified_usage() {
+        let quote = CostReservation::quote_input(1, 1, 1).unwrap();
+        assert_eq!(quote.amount(), 1);
+        assert_eq!(
+            quote.settle(Some(BillableUsage {
+                input_tokens: 0,
+                output_tokens: 0
+            })),
+            Settlement::Verified {
+                charged: 0,
+                released: 1
+            }
+        );
+        assert_eq!(
+            quote.settle(Some(BillableUsage {
+                input_tokens: 1,
+                output_tokens: 0
+            })),
+            Settlement::Verified {
+                charged: 1,
+                released: 0
+            }
+        );
+        for usage in [
+            None,
+            Some(BillableUsage {
+                input_tokens: 2,
+                output_tokens: 0,
+            }),
+            Some(BillableUsage {
+                input_tokens: 0,
+                output_tokens: 1,
+            }),
+        ] {
+            assert_eq!(
+                quote.settle(usage),
+                Settlement::RetainReservation { charged: 1 }
+            );
+        }
+    }
+
+    #[test]
+    fn input_only_quote_rejects_zero_inputs_limits_over_budget_and_overflow() {
+        assert_eq!(
+            CostReservation::quote_input(0, 1, 1),
+            Err(BudgetError::InvalidPrices)
+        );
+        assert_eq!(
+            CostReservation::quote_input(1, 0, 1),
+            Err(BudgetError::InvalidTokenBounds)
+        );
+        assert_eq!(
+            CostReservation::quote_input(1, 1, 0),
+            Err(BudgetError::InvalidLimit)
+        );
+        assert_eq!(
+            CostReservation::quote_input(1_000_000, 2, 1),
+            Err(BudgetError::RequestLimitExceeded)
+        );
+        assert_eq!(
+            CostReservation::quote_input(u64::MAX, u64::MAX, i64::MAX),
+            Err(BudgetError::AmountOverflow)
         );
     }
 

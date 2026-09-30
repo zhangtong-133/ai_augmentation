@@ -15,6 +15,8 @@
 
 显式回复支持本地夹具和管理员配置的固定模型付费模式；使用前需设置价格有效期及额度，用户在页面确认金额。配置见 [付费回复部署设计](docs/design/sprint-3-paid-replies.md)；管理员可使用 [reply-operations](docs/design/sprint-3-reply-operations.md)查询配置、显式停用及核对用户日账本。
 
+已提供[模型 Agent 纯规划与两阶段费用授权](docs/design/sprint-3-model-agent-budget.md)：严格校验只读检索建议，分别确认规划、检索与回答的金额及次数。当前为纯领域模块，模型请求仓储和执行入口尚待接入。
+
 ## 快速开始
 
 需要 Rust 1.96+、Node.js 20.9+、npm 和可用的 Docker / Compose。macOS 的 PDF 提取使用 Linux API 容器；浏览器验收使用无头 Chromium，不占用前台。详见 [环境说明](docs/ENVIRONMENT.md)。
