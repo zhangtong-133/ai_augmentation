@@ -76,6 +76,20 @@ impl ReplyRuntime {
             if !self.enabled {
                 continue;
             }
+            let Ok(queued) = self
+                .store
+                .get_reply(&item.owner, &item.conversation, &item.request)
+                .await
+            else {
+                continue;
+            };
+            if queued
+                .context
+                .as_ref()
+                .is_none_or(|context| context.configuration != configuration())
+            {
+                continue;
+            }
             let Ok(reply) = self
                 .store
                 .claim_reply(&item.owner, &item.conversation, &item.request)

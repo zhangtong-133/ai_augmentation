@@ -124,7 +124,7 @@ async fn fixture_worker_recovers_queue_and_expires_without_redispatch() {
             .await
             .unwrap()
             .status,
-        ReplyStatus::Failed
+        ReplyStatus::Queued
     );
     sqlx::query("DELETE FROM users WHERE id=$1")
         .bind(Uuid::parse_str(owner.id.as_str()).unwrap())
@@ -132,3 +132,6 @@ async fn fixture_worker_recovers_queue_and_expires_without_redispatch() {
         .await
         .unwrap();
 }
+
+#[path = "replies/budgeted.rs"]
+mod budgeted;

@@ -38,3 +38,4 @@
 详细设计保留各迭代协议和带日期的验收记录；当前进度以路线图为准。
 
 - [回复预算领取与持久化配置停用](design/sprint-3-reply-dispatch.md)
+- [预算回复供应商执行器](design/sprint-3-reply-executor.md)

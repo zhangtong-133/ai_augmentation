@@ -2,7 +2,7 @@ use crate::{PostgresStore, map_error, replies, reply_money};
 use personal_ai_domain::UserId;
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
-    replies::{ReplyConfiguration, ReplyContext, ReplyStatus},
+    replies::{PendingReply, ReplyConfiguration, ReplyContext, ReplyStatus},
     reply_budgets::{BudgetedReplyClaim, ReplyBudget, ReplyDispatchStore},
 };
 use sqlx::{PgConnection, Row};
@@ -42,6 +42,30 @@ async fn check(
 }
 
 impl ReplyDispatchStore for PostgresStore {
+    fn pending_budgeted_replies(
+        &self,
+        configuration: &ReplyConfiguration,
+    ) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>> {
+        let configuration = configuration.clone();
+        Box::pin(async move {
+            let rows = sqlx::query("SELECT c.user_id,r.conversation_id,r.request_id,r.status FROM conversation_replies r JOIN conversations c ON c.id=r.conversation_id JOIN reply_money_reservations b ON b.conversation_id=r.conversation_id AND b.request_id=r.request_id AND b.user_id=c.user_id WHERE c.deleted_at IS NULL AND b.model=$1 AND b.configuration_revision=$2 AND b.charged IS NULL AND (r.status='queued' OR (r.status='dispatching' AND r.dispatched_at+interval '120 seconds' <= clock_timestamp())) ORDER BY (r.status='dispatching') DESC,r.created_at,r.conversation_id,r.request_id LIMIT 20")
+                .bind(configuration.model).bind(configuration.revision).fetch_all(&self.pool).await.map_err(map_error)?;
+            Ok(rows
+                .iter()
+                .map(|row| PendingReply {
+                    owner: UserId::new(row.get::<uuid::Uuid, _>("user_id").to_string()),
+                    conversation: row.get::<uuid::Uuid, _>("conversation_id").to_string(),
+                    request: row.get::<uuid::Uuid, _>("request_id").to_string(),
+                    status: if row.get::<&str, _>("status") == "queued" {
+                        ReplyStatus::Queued
+                    } else {
+                        ReplyStatus::Dispatching
+                    },
+                })
+                .collect())
+        })
+    }
+
     fn register_reply_configuration(
         &self,
         configuration: &ReplyConfiguration,

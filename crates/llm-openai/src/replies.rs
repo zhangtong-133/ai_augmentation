@@ -152,23 +152,7 @@ impl ReplyBudgetPlanner for OpenAiReplyPolicy {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ReplySendError {
-    /// 尚未发送：配置已停用、不匹配或请求/预算无效。
-    InvalidConfiguration,
-    /// 发送后结果不确定；不能推断未计费，禁止自动重发。
-    Unknown,
-    /// 响应不能作为有效回复或可信结算依据，保留全部预留。
-    InvalidResponse,
-    /// 模型/服务等级/费用上界契约异常，当前 policy 已停用。
-    ContractViolation,
-}
-#[derive(Debug, PartialEq, Eq)]
-pub struct ReplyCompletion {
-    pub content: String,
-    /// 缺失或不完整的 usage 不允许退差额。
-    pub usage: Option<ReplyUsage>,
-}
+pub use personal_ai_agent_core::reply_executor::{ReplyCompletion, ReplySendError};
 
 pub struct OpenAiReplies {
     client: Client,
@@ -411,3 +395,13 @@ fn decode_usage(
 #[cfg(test)]
 #[path = "reply_tests.rs"]
 mod tests;
+
+impl personal_ai_agent_core::reply_executor::ReplySender for OpenAiReplies {
+    fn send<'a>(
+        &'a self,
+        context: &'a ReplyContext,
+        budget: &'a ReplyBudget,
+    ) -> personal_ai_agent_core::BoxFuture<'a, Result<ReplyCompletion, ReplySendError>> {
+        Box::pin(self.send_once(context, budget))
+    }
+}

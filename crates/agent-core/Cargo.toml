@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+tokio = { workspace = true, features = ["time"] }
+tracing.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-llm.workspace = true
 personal-ai-storage.workspace = true

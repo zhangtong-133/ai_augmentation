@@ -1,7 +1,7 @@
 //! 内部货币预算端口；不直接接受 HTTP 客户端提供的价格或计数。
 use crate::{
     BoxFuture, StorageResult,
-    replies::{Reply, ReplyConfiguration, ReplyContext, ReplyOutcome, ReplyStore},
+    replies::{PendingReply, Reply, ReplyConfiguration, ReplyContext, ReplyOutcome, ReplyStore},
 };
 use personal_ai_domain::UserId;
 use std::sync::Arc;
@@ -70,6 +70,12 @@ pub struct BudgetedReplyClaim {
 
 /// 部署端内部端口。配置版本不可变，停用不可逆，禁止接入用户 HTTP 参数。
 pub trait ReplyDispatchStore: BudgetedReplyStore {
+    /// 仅扫描指定配置的金额请求，避免旧夹具或其他配置队列阻塞执行器。
+    fn pending_budgeted_replies(
+        &self,
+        configuration: &ReplyConfiguration,
+    ) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>>;
+
     /// 注册显式审核过的价格配置及有效期（Unix 毫秒）。同版本只允许完全相同重放。
     fn register_reply_configuration(
         &self,
