@@ -1,9 +1,10 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。下一步提供计划预览与授权页面。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。下一步完善模型规划的调用次数与金额授权设计。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
+- [x] Agent 检索计划页面：固定步骤预览、费用确认、状态/原文、取消及原请求恢复；覆盖双入口故障交互。
 - [x] 固定只读 Agent 计划预览、精确授权、每计划三次上限和持久化执行结果；覆盖取消、版本变化与重启查重。
 - [x] 知识检索工具接入一次性请求 ID、用户 UTC 日次数预算及持久化审计，双入口支持查询和重启后查重。
 - [x] 回复配置查询、显式持久化停用和按用户 UTC 日核对金额账本；包含删除后的记录、精确汇总及差额报告。
@@ -57,7 +58,7 @@
 - [x] 用户显式管理 PostgreSQL 长期记忆（CRUD、页面、版本冲突、配额与隔离）
 - [x] 工具执行次数预算与持久化审计（一次性 ID、失败保留、用户/日期隔离）
 - [x] Agent 编排首阶段（固定只读检索计划、精确用户授权与每计划调用上限）
-- [ ] Agent 计划预览/授权页面与浏览器故障交互验收
+- [x] Agent 计划预览/授权页面与浏览器故障交互验收
 - [ ] 模型受限规划与答案生成（另需确认模型次数及金额预算）
 - [ ] Scheduler（授权、取消、租约与幂等）
 - [x] Redis 短期记忆适配器（用户/对话键隔离、TTL、条目/活跃对话配额及真实 Redis 测试）

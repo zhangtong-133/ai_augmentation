@@ -83,10 +83,10 @@ Next.js 固定放行这些方法和路径，复用 CSRF、16 KiB 请求体限制
 - `make check`：参数、重复查询、授权指纹、HTTP 登录/CSRF 和非法身份字段。
 - `TEST_DATABASE_URL=… make test-agent`：真实 PostgreSQL，并发授权/领取、计划版本保护、三次上限、日额度竞争、消息版本变化、取消/删除、到期/重连及 COMMIT 失败阻止外部调用；HTTP 使用本地 Embedding 夹具验证完整执行及失败后停止。
 - `make smoke-index`：真实 PostgreSQL/Qdrant、本地模型夹具，Next.js/Nginx 双入口预览、授权、执行、审计、取消、用户隔离及 API/数据库重启后的查重。
-- 前端 lint/typecheck/build 验证代理；本次未增加 UI，计划预览与授权页面是下一步。
+- 前端 lint/typecheck/build 验证代理；后续已提供[计划预览与授权页面](sprint-3-agent-plan-ui.md)。
 
 ### 验收记录（2026-09-30，macOS / OrbStack）
 
 `make check`、前端 lint/typecheck/build、`make compose-config`、smoke 脚本语法及差异检查通过。最终完整 `make smoke-index` 通过 44 项 PostgreSQL 集成测试（含 10 项计划测试）、2 项 Agent HTTP 执行测试，并通过回复、Redis、Qdrant 回归以及计划双入口和重启查重。取消、删除、版本变化、未知结果和 COMMIT 失败均有分层覆盖。测试容器、网络和数据卷已清理，构建镜像保留。
 
-本地未运行 Playwright、MinIO 专项、公网网页成功抓取或真实付费模型；既有 CI 的浏览器/对象任务会执行各自回归。计划页面另行交付。
+本次 API 交付未运行本地 Playwright、MinIO 专项、公网网页成功抓取或真实付费模型；页面和浏览器验收另见[计划页面记录](sprint-3-agent-plan-ui.md)。

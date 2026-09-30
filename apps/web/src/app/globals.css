@@ -129,3 +129,21 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .replyList li { border-bottom: 1px solid var(--line); padding: 10px 4px; }
 .replyList small { overflow-wrap: anywhere; color: var(--muted); }
 .replyOutput { white-space: pre-wrap; overflow-wrap: anywhere; }
+.agentPlanPanel { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 12px; min-width: 0; }
+.agentPlanPanel h4 { font-size: 18px; }
+.agentPlanPanel h5 { font-size: 16px; margin: 12px 0; }
+.agentPlanPanel fieldset { display: grid; gap: 8px; min-width: 0; padding: 12px; margin: 0; border: 1px solid var(--line); }
+.agentPlanPanel legend { color: var(--warm); }
+.agentPlanPanel select { width: 100%; padding: 10px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; }
+.agentPlanPanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; background: var(--surface); padding: 12px; }
+.agentPlanList { list-style: none; padding: 0; }
+.agentPlanList > li { border: 1px solid var(--line); border-radius: 4px; padding: 16px; margin: 16px 0; }
+.agentPlanList small { display: block; overflow-wrap: anywhere; }
+.agentSteps, .agentEvidence { padding-left: 20px; }
+.agentSteps > li, .agentEvidence > li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.agentConsent { display: flex; align-items: flex-start; gap: 10px; line-height: 1.6; }
+.agentConsent input { flex: none; margin-top: 5px; accent-color: var(--acid); }
+@media (max-width: 760px) {
+  .agentPlanList > li { padding: 10px; }
+  .agentPlanPanel button { width: 100%; margin-right: 0; }
+}

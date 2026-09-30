@@ -223,6 +223,287 @@ async function prepareReplyConversation(page, title = "回复故障验收") {
   return { panel, replies };
 }
 
+function planFixture(conversation, body = { request_id: randomUUID(), expected_revision: 1, searches: [{ query: "计划查询", limit: 5 }] }) {
+  return {
+    request_id: body.request_id, conversation_id: conversation, revision: body.expected_revision,
+    version: "knowledge-search-v1", digest: "a".repeat(64), status: "draft", tool_call_limit: body.searches.length, attempted: 0,
+    created_at_unix_ms: Date.now(), expires_at_unix_ms: Date.now() + 900000, approved_at_unix_ms: null,
+    steps: body.searches.map((arguments_, index) => ({ ordinal: index + 1, call_id: randomUUID(), tool: "knowledge_search", arguments: arguments_, status: "pending", output: null })),
+  };
+}
+function plansRegion(page) { return page.getByRole("region", { name: "Agent 检索计划", exact: true }); }
+async function approvePlan(plans) {
+  await plans.getByRole("button", { name: "审阅并授权此计划", exact: true }).click();
+  const confirmation = plans.getByRole("group", { name: "确认计划授权", exact: true });
+  await expect(confirmation.getByRole("button", { name: "确认费用并授权执行", exact: true })).toBeDisabled();
+  await confirmation.getByRole("checkbox").check();
+  await confirmation.getByRole("button", { name: "确认费用并授权执行", exact: true }).click();
+}
+
+indexTest("agent plans preview immutable queries, retry original consent and persist real results", async ({ page }, testInfo) => {
+  const owner = await createAccount();
+  const creations = [], approvals = [];
+  let cancellations = 0;
+  await page.route("**/api/conversations/*/agent-plans", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    creations.push(route.request().postDataJSON());
+    expect(route.request().headers()["x-requested-with"]).toBe("personal-ai");
+    if (creations.length === 1) { expect((await route.fetch()).status()).toBe(200); return route.abort("failed"); }
+    return route.continue();
+  });
+  await page.route("**/api/conversations/*/agent-plans/*/approve", async route => {
+    approvals.push({ url: route.request().url(), body: route.request().postDataJSON() });
+    expect(route.request().headers()["x-requested-with"]).toBe("personal-ai");
+    if (approvals.length === 1) { expect((await route.fetch()).status()).toBe(202); return route.abort("failed"); }
+    return route.continue();
+  });
+  await page.route("**/api/conversations/*/agent-plans/*/cancel", async route => {
+    cancellations += 1;
+    expect((await route.fetch()).status()).toBe(200);
+    return route.abort("failed");
+  });
+  await page.goto("/"); await login(page, owner);
+  const imported = page.waitForResponse(response => response.url().endsWith("/api/documents") && response.request().method() === "POST");
+  await upload(page, "agent-live.md", Buffer.from('# 检索计划\n\n每天复习并核对原文。<img src=x onerror="window.planInjected=true">'));
+  const document = await (await imported).json();
+  const detail = await page.evaluate(async id => (await fetch(`/api/documents/${id}`)).json(), document.id);
+  const indexing = page.getByRole("region", { name: "agent-live.md的索引", exact: true });
+  await indexing.getByRole("button", { name: "建立索引", exact: true }).click();
+  await expect(indexing).toContainText("索引完成", { timeout: 30000 });
+  const { panel } = await prepareReplyConversation(page, "Agent 实际检索");
+  const plans = plansRegion(page);
+  await expect(plans).toContainText("暂无检索计划");
+  expect(creations).toHaveLength(0); expect(approvals).toHaveLength(0);
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill(detail.chunks[0]);
+  await plans.getByLabel("步骤 1 返回片段上限", { exact: true }).selectOption("1");
+  for (const [index, query] of [[2, "复习方法"], [3, "核对资料"]]) {
+    await plans.getByRole("button", { name: "添加检索步骤", exact: true }).click();
+    await plans.getByLabel(`步骤 ${index} 查询`, { exact: false }).fill(query);
+  }
+  await expect(plans.getByRole("button", { name: "添加检索步骤", exact: true })).toBeDisabled();
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("结果未确认");
+  await expect(panel.getByRole("button", { name: "发送用户消息", exact: true })).toBeDisabled();
+  await expect(plans.getByLabel("步骤 1 查询", { exact: false })).toBeDisabled();
+  await plans.getByRole("button", { name: "重试计划原请求", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 等待授权");
+  expect(creations[0]).toEqual(creations[1]); expect(approvals).toHaveLength(0);
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill("尚未保存的修改");
+  await plans.getByRole("button", { name: "审阅并授权此计划", exact: true }).click();
+  const confirmation = plans.getByRole("group", { name: "确认计划授权", exact: true });
+  await expect(confirmation).toContainText(detail.chunks[0]);
+  await expect(confirmation).not.toContainText("尚未保存的修改");
+  await expect(confirmation.getByRole("button", { name: "确认费用并授权执行", exact: true })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "删除当前对话", exact: true })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "请求测试回复", exact: true })).toBeDisabled();
+  await confirmation.getByRole("checkbox").check();
+  await confirmation.screenshot({ path: testInfo.outputPath("agent-plan-approval.png") });
+  await confirmation.getByRole("button", { name: "确认费用并授权执行", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("结果未确认");
+  expect(approvals).toHaveLength(1);
+  await plans.getByRole("button", { name: "重试计划原请求", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 已完成", { timeout: 15000 });
+  expect(approvals[0]).toEqual(approvals[1]);
+  expect(approvals[0].body).toEqual({ plan_digest: await plans.locator(".agentPlanList > li small").first().innerText().then(text => text.split("计划指纹：")[1]), accepted_call_limit: 3, acknowledge_embedding_cost: true });
+  await expect(plans.locator(".agentPlanList > li")).toHaveCount(1);
+  await expect(plans).toContainText("已登记 3 次尝试");
+  await plans.getByText("查看检索原文", { exact: true }).first().click();
+  await expect(plans.locator(".agentEvidence pre").first()).toHaveText(detail.chunks[0]);
+  await expect(plans.locator("img")).toHaveCount(0);
+  expect(await page.evaluate(() => window.planInjected)).toBeUndefined();
+  await plans.screenshot({ path: testInfo.outputPath("agent-plans.png") });
+  expect(await plans.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await page.reload();
+  await panel.getByRole("button", { name: "Agent 实际检索", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 已完成");
+  expect(approvals).toHaveLength(2);
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill("待取消的预览");
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await expect(plans.getByRole("button", { name: "取消此计划", exact: true })).toBeEnabled();
+  await plans.getByRole("button", { name: "取消此计划", exact: true }).click();
+  await plans.getByRole("button", { name: "确认取消此计划", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("结果未确认");
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 已取消");
+  await expect(plans.getByRole("button", { name: "重试计划原请求", exact: true })).toHaveCount(0);
+  expect(cancellations).toBe(1);
+});
+
+test("agent plan UI validates inputs, message versions, expiry and malformed history", async ({ page }) => {
+  const owner = await createAccount();
+  let current = null, enabled = false, version = "knowledge-search-v1", invalid = false;
+  let writes = 0, reads = 0;
+  await page.route("**/api/conversations/*/agent-plans", async route => {
+    if (route.request().method() === "POST") {
+      writes += 1; current = planFixture(route.request().url().split("/").at(-2), route.request().postDataJSON());
+      return route.fulfill({ json: current });
+    }
+    reads += 1;
+    return route.fulfill({ json: { enabled, version, max_tool_calls: 3, plans: current ? [{ ...current, ...(invalid ? { steps: [] } : {}) }] : [] } });
+  });
+  await page.goto("/"); await login(page, owner);
+  const { panel } = await prepareReplyConversation(page);
+  const plans = plansRegion(page);
+  await expect(plans).toContainText("管理员尚未启用知识检索");
+  await expect(plans.getByRole("button", { name: "保存计划预览", exact: true })).toBeDisabled();
+  enabled = true; await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans.getByRole("button", { name: "保存计划预览", exact: true })).toBeEnabled();
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill("😀".repeat(1001));
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("1–1000");
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill("计划查询");
+  await plans.getByRole("button", { name: "添加检索步骤", exact: true }).click();
+  await plans.getByLabel("步骤 2 查询", { exact: false }).fill(" 计划查询 ");
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("重复"); expect(writes).toBe(0);
+  await plans.getByRole("button", { name: "移除步骤 2", exact: true }).click();
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 等待授权");
+  await panel.getByLabel("用户消息", { exact: false }).fill("新增消息版本");
+  await panel.getByRole("button", { name: "发送用户消息", exact: true }).click();
+  await expect(panel.locator(".messageList li")).toHaveCount(2);
+  await expect(plans.getByRole("button", { name: "审阅并授权此计划", exact: true })).toBeDisabled();
+  await expect(plans).toContainText("当前消息版本与预览不一致");
+  current = { ...current, revision: 2 }; version = "future-plan-v2";
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("当前计划版本不受页面支持");
+  await expect(plans.getByRole("button", { name: "审阅并授权此计划", exact: true })).toBeDisabled();
+  version = "knowledge-search-v1"; current = { ...current, expires_at_unix_ms: Date.now() + 1500 };
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans.getByRole("button", { name: "审阅并授权此计划", exact: true })).toBeEnabled();
+  const beforeExpiry = reads;
+  await expect(plans).toContainText("消息版本 2 · 授权已过期");
+  expect(reads).toBe(beforeExpiry); expect(writes).toBe(1);
+  invalid = true; await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("服务返回无效计划");
+  await expect(plans.getByRole("button", { name: "保存计划预览", exact: true })).toBeDisabled();
+  await expect(plans).not.toContainText("暂无检索计划");
+});
+
+test("agent plan UI stops polling and explicitly retries cancellation without new authorization", async ({ page }) => {
+  const owner = await createAccount();
+  let current = null, mode = "normal";
+  let reads = 0, approvals = 0;
+  const cancelledUrls = [];
+  await page.route("**/api/conversations/*/agent-plans", async route => {
+    if (route.request().method() === "POST") {
+      current = planFixture(route.request().url().split("/").at(-2), route.request().postDataJSON());
+      return route.fulfill({ json: current });
+    }
+    reads += 1;
+    if (mode !== "normal") return route.fulfill({ status: mode === "expired" ? 401 : 503, json: { error: { code: "unavailable" } } });
+    return route.fulfill({ json: { enabled: true, version: "knowledge-search-v1", max_tool_calls: 3, plans: current ? [current] : [] } });
+  });
+  await page.route("**/api/conversations/*/agent-plans/*/approve", async route => {
+    approvals += 1;
+    expect(route.request().postDataJSON()).toEqual({ plan_digest: current.digest, accepted_call_limit: 1, acknowledge_embedding_cost: true });
+    current = { ...current, status: "running", approved_at_unix_ms: Date.now() };
+    return route.fulfill({ status: 202, json: current });
+  });
+  await page.route("**/api/conversations/*/agent-plans/*/cancel", async route => {
+    cancelledUrls.push(route.request().url());
+    expect(route.request().headers()["x-requested-with"]).toBe("personal-ai");
+    if (cancelledUrls.length === 1) return route.fulfill({ status: 503, json: { error: { code: "unavailable" } } });
+    current = { ...current, status: "cancelled", steps: current.steps.map(step => ({ ...step, status: "cancelled", output: null })) };
+    return cancelledUrls.length === 3 ? route.abort("failed") : route.fulfill({ json: current });
+  });
+  await page.goto("/"); await login(page, owner);
+  const { panel } = await prepareReplyConversation(page);
+  const plans = plansRegion(page);
+  const untrusted = '<img src=x onerror="window.agentInjected=true">';
+  await plans.getByLabel("步骤 1 查询", { exact: false }).fill(untrusted);
+  await plans.getByRole("button", { name: "保存计划预览", exact: true }).click();
+  await approvePlan(plans);
+  await expect(plans).toContainText("消息版本 1 · 正在执行");
+  current = { ...current, attempted: 1, steps: current.steps.map(step => ({ ...step, status: "dispatching" })) };
+  await expect(plans).toContainText("步骤 1 · 正在派发");
+  await plans.getByRole("button", { name: "取消此计划", exact: true }).click();
+  await plans.getByRole("button", { name: "确认取消此计划", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("服务暂不可用");
+  await expect(panel.getByRole("button", { name: "发送用户消息", exact: true })).toBeDisabled();
+  await plans.getByRole("button", { name: "重试计划原请求", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 已取消");
+  expect(cancelledUrls[0]).toBe(cancelledUrls[1]); expect(approvals).toBe(1);
+  for (const [status, label] of [["failed", "执行失败"], ["unknown", "结果未知"], ["succeeded", "已完成"]]) {
+    current = { ...current, status, steps: current.steps.map(step => ({ ...step, status, output: status === "succeeded" ? { hits: [{ document_id: randomUUID(), ordinal: 0, title: untrusted, source: "javascript:alert(1)", text: untrusted, score: 0.7 }] } : null })) };
+    await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+    await expect(plans).toContainText(`消息版本 1 · ${label}`);
+    const stopped = reads; await page.waitForTimeout(2100); expect(reads).toBe(stopped);
+    expect(approvals).toBe(1);
+  }
+  await plans.getByText("查看检索原文", { exact: true }).click();
+  await expect(plans.locator(".agentEvidence pre")).toHaveText(untrusted);
+  await expect(plans.locator("img, svg, a")).toHaveCount(0);
+  expect(await page.evaluate(() => window.agentInjected)).toBeUndefined();
+  current = { ...current, status: "running", steps: current.steps.map(step => ({ ...step, status: "dispatching", output: null })) };
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 正在执行"); mode = "unavailable";
+  await expect(plans.getByRole("alert")).toContainText("已停止自动刷新");
+  await expect(plans.getByRole("button", { name: "保存计划预览", exact: true })).toBeDisabled();
+  const failedReads = reads; await page.waitForTimeout(2100); expect(reads).toBe(failedReads);
+  mode = "expired"; await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("登录已失效");
+  mode = "normal"; await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 正在执行");
+  await plans.getByRole("button", { name: "取消此计划", exact: true }).click();
+  await plans.getByRole("button", { name: "确认取消此计划", exact: true }).click();
+  await expect(plans.getByRole("alert")).toContainText("结果未确认");
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 已取消");
+  await expect(plans.getByRole("button", { name: "重试计划原请求", exact: true })).toHaveCount(0);
+  await expect(plans.getByRole("alert")).toHaveCount(0);
+  expect(cancelledUrls).toHaveLength(3); expect(approvals).toBe(1);
+  current = { ...current, status: "running" };
+  await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+  await expect(plans).toContainText("消息版本 1 · 正在执行");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(plans).toHaveCount(0);
+  const loggedOutReads = reads; await page.waitForTimeout(2100); expect(reads).toBe(loggedOutReads);
+});
+
+test("agent plan UI discards late history after conversation switches, logout and deletion", async ({ page }) => {
+  const owner = await createAccount(), other = await createAccount();
+  await page.goto("/"); await login(page, owner);
+  await prepareReplyConversation(page, "计划对话甲");
+  const { panel } = await prepareReplyConversation(page, "计划对话乙");
+  const plans = plansRegion(page);
+  let release, delaying = false, delivered = 0;
+  await page.route("**/api/conversations/*/agent-plans", async route => {
+    if (route.request().method() !== "GET" || !delaying) return route.continue();
+    delaying = false;
+    const plan = planFixture(route.request().url().split("/").at(-2));
+    plan.steps[0].arguments.query = "不得跨对话显示的晚到计划";
+    await new Promise(resolve => { release = resolve; });
+    await route.fulfill({ json: { enabled: true, version: "knowledge-search-v1", max_tool_calls: 3, plans: [plan] } }).catch(() => {});
+    delivered += 1;
+  });
+  async function delayHistory() {
+    release = undefined; delaying = true;
+    await plans.getByRole("button", { name: "刷新计划历史", exact: true }).click();
+    await expect.poll(() => typeof release).toBe("function");
+  }
+  await expect(plans.getByRole("button", { name: "刷新计划历史", exact: true })).toBeEnabled();
+  await delayHistory();
+  await panel.getByRole("button", { name: "计划对话甲", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "计划对话甲", exact: true })).toBeVisible();
+  await expect(plans).toContainText("暂无检索计划"); release();
+  await expect.poll(() => delivered).toBe(1);
+  await expect(plans).not.toContainText("不得跨对话显示");
+  await delayHistory();
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await login(page, other); release(); await expect.poll(() => delivered).toBe(2);
+  await expect(panel).toContainText("暂无对话"); await expect(plans).toHaveCount(0);
+  await page.getByRole("button", { name: "退出登录", exact: true }).click(); await login(page, owner);
+  await panel.getByRole("button", { name: "计划对话甲", exact: true }).click();
+  await expect(plans).toContainText("暂无检索计划");
+  await expect(plans.getByLabel("步骤 1 查询", { exact: false })).toHaveValue("");
+  await delayHistory();
+  await panel.getByRole("button", { name: "删除当前对话", exact: true }).click();
+  await panel.getByRole("button", { name: "确认删除对话", exact: true }).click();
+  await expect(plans).toHaveCount(0); release(); await expect.poll(() => delivered).toBe(3);
+  await expect(panel).not.toContainText("不得跨对话显示");
+});
+
 test("reply UI retries a committed request with the original ID and isolates accounts", async ({ page }) => {
   const owner = await createAccount();
   const other = await createAccount();
