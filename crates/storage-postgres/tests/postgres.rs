@@ -2,6 +2,8 @@ use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{MetadataStore, StorageError};
 use personal_ai_storage_postgres::PostgresStore;
 use uuid::Uuid;
+#[path = "postgres/agent_plans.rs"]
+mod agent_plans;
 #[path = "postgres/messages.rs"]
 mod messages;
 #[path = "postgres/replies.rs"]

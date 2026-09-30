@@ -9,6 +9,7 @@ rust-version.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-storage.workspace = true
 personal-ai-agent-core.workspace = true
+personal-ai-tools.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 uuid.workspace = true

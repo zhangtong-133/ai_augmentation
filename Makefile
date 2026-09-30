@@ -29,6 +29,12 @@ test-tools: ## 使用一次性 TEST_DATABASE_URL 验证工具执行、次数预�
 	cargo test -p api-server --lib tool
 	cargo test -p personal-ai-storage-postgres --test postgres tool_calls -- --ignored
 
+.PHONY: test-agent
+test-agent: ## 使用一次性 TEST_DATABASE_URL 验证受限计划、授权与执行
+	cargo test -p personal-ai-agent-core knowledge_plan
+	cargo test -p personal-ai-storage-postgres --test postgres agent_plans -- --ignored
+	cargo test -p api-server --lib agent_plans -- --ignored
+
 .PHONY: test-replies
 test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金额 HTTP 与运维命令
 	cargo test -p api-server --test replies -- --ignored

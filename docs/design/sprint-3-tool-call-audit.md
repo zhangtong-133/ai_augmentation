@@ -2,7 +2,7 @@
 
 ## 共用执行入口
 
-`agent-core::tool_execution::AuditedToolExecutor` 包装现有固定白名单执行器：纯参数预检 → PostgreSQL 一次性调用/次数登记 → 工具执行 → 终态元数据。应用提供已认证的身份，工具继续负责数据归属校验。现有 `knowledge_search` HTTP 接口已接入此入口，后续受限 Agent 计划可复用。
+`agent-core::tool_execution::AuditedToolExecutor` 包装现有固定白名单执行器：纯参数预检 → PostgreSQL 一次性调用/次数登记 → 工具执行 → 终态元数据。应用提供已认证的身份，工具继续负责数据归属校验。现有 `knowledge_search` HTTP 接口已接入此入口，[受限 Agent 计划](sprint-3-agent-plans.md)已复用同一日预算、审计和执行器。
 
 本步没有模型自动规划、工具循环、MCP 传输或 Scheduler，也没有新的页面。知识检索仍由用户显式调用，开启 `KNOWLEDGE_INDEX_ENABLED=true` 才注册。
 
@@ -52,7 +52,7 @@
 
 新增迁移 `0016_tool_calls.sql`：`tool_daily_budgets` 保存用户 UTC 日次数，`tool_calls` 保存 ID、工具名、内部参数指纹、大小、状态和时间。没有参数、查询、正文、片段、邮箱或密钥列；指纹不由 API 返回。记录按用户保留，用户删除级联清理。
 
-只读查询使用 `REPEATABLE READ, READ ONLY` 和 30 秒语句时限。工具执行不会持有数据库事务或用户锁。API 身份只取自 Cookie 会话；独立工具上下文 ID 仍由服务端生成，不代表持久化对话。未来 Agent 编排接入真实对话时，还需验证对话归属、用户授权和每个计划的调用上限。
+只读查询使用 `REPEATABLE READ, READ ONLY` 和 30 秒语句时限。工具执行不会持有数据库事务或用户锁。API 身份只取自 Cookie 会话；独立工具上下文 ID 仍由服务端生成，不代表持久化对话。[Agent 计划](sprint-3-agent-plans.md)已接入真实对话、精确授权和每计划上限；工具登记与步骤领取同事务提交。计划查询和结果保存在独立有界记录中，对话删除立即清除，工具元数据仍独立保留。
 
 ## 验证
 

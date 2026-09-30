@@ -186,6 +186,9 @@ try {
   await command("make", ["test-replies"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("cargo", ["test", "-p", "api-server", "--lib", "agent_plans", "--", "--ignored"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
@@ -224,6 +227,7 @@ try {
   const owner = await account(api, "owner@smoke.example");
   const other = await account(api, "other@smoke.example");
   const auditedToolCalls = [];
+  const persistedAgentPlans = [];
   const configurations = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "configurations"], true));
   assert.ok(Array.isArray(configurations.items));
   const audit = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "ledger",
@@ -414,6 +418,58 @@ try {
       assert.equal(toolResult.response.headers.get("cache-control"), "no-store");
       const toolIsolated = await request(base, toolPath, 200, { method: "POST", cookie: otherCookie, body, requestId: randomUUID() });
       assert.deepEqual(toolIsolated.data.output.hits, []);
+      const conversationId = persistedConversations[0].saved.id;
+      const plansPath = `/api/conversations/${conversationId}/agent-plans`;
+      const revision = (await request(base, `/api/conversations/${conversationId}/messages`, 200, { cookie })).data.revision;
+      const planInput = { request_id: randomUUID(), expected_revision: revision,
+        searches: [{ query: body.query, limit: 5 }, { query: "知识库示例", limit: 3 }, { query: "测试索引", limit: 1 }] };
+      await request(base, plansPath, 401);
+      await request(base, plansPath, 403, { method: "POST", cookie, body: planInput, csrf: false });
+      await request(base, plansPath, 404, { method: "POST", cookie: otherCookie, body: planInput });
+      await request(base, plansPath, 422, { method: "POST", cookie, body: { ...planInput, user_id: "forged" } });
+      const before = (await request(base, "/api/tool-calls", 200, { cookie })).data.used;
+      const preview = (await request(base, plansPath, 200, { method: "POST", cookie, body: planInput })).data;
+      assert.equal(preview.status, "draft");
+      assert.equal(preview.attempted, 0);
+      assert.equal(preview.steps.length, 3);
+      assert.equal(preview.tool_call_limit, 3);
+      assert.deepEqual((await request(base, plansPath, 200, { method: "POST", cookie, body: planInput })).data, preview);
+      assert.equal((await request(base, "/api/tool-calls", 200, { cookie })).data.used, before);
+      const planPath = `${plansPath}/${preview.request_id}`;
+      const approval = { plan_digest: preview.digest, accepted_call_limit: 3, acknowledge_embedding_cost: true };
+      await request(base, `${planPath}/approve`, 403, { method: "POST", cookie, body: approval, csrf: false });
+      await request(base, `${planPath}/approve`, 404, { method: "POST", cookie: otherCookie, body: approval });
+      await request(base, `${planPath}/approve`, 409, { method: "POST", cookie, body: { ...approval, plan_digest: "f".repeat(64) } });
+      await request(base, `${planPath}/approve`, 400, { method: "POST", cookie, body: { ...approval, acknowledge_embedding_cost: false } });
+      await request(base, `${planPath}/approve`, 202, { method: "POST", cookie, body: approval });
+      let completed;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        completed = (await request(base, planPath, 200, { cookie })).data;
+        if (completed.status !== "running") break;
+        await delay(100);
+      }
+      assert.equal(completed.status, "succeeded");
+      assert.equal(completed.attempted, 3);
+      assert.ok(completed.steps.every(step => step.status === "succeeded"));
+      assert.equal(completed.steps[0].output.hits[0].document_id, document.id);
+      assert.equal(completed.steps[0].output.hits[0].text, searchable.chunks[completed.steps[0].output.hits[0].ordinal]);
+      await request(base, planPath, 404, { cookie: otherCookie });
+      await request(base, `${planPath}/cancel`, 404, { method: "POST", cookie: otherCookie });
+      assert.equal((await request(base, "/api/tool-calls", 200, { cookie })).data.used, before + 3);
+      const replayPlan = await request(base, `${planPath}/approve`, 202, { method: "POST", cookie, body: approval });
+      assert.deepEqual(replayPlan.data, completed);
+      assert.equal(replayPlan.response.headers.get("cache-control"), "no-store");
+      await request(base, toolPath, 409, { method: "POST", cookie, body: completed.steps[0].arguments, requestId: completed.steps[0].call_id });
+      const draft = (await request(base, plansPath, 200, { method: "POST", cookie, body: { ...planInput, request_id: randomUUID() } })).data;
+      const cancelled = await request(base, `${plansPath}/${draft.request_id}/cancel`, 200, { method: "POST", cookie });
+      assert.equal(cancelled.data.status, "cancelled");
+      await request(base, `${plansPath}/${draft.request_id}/approve`, 409, { method: "POST", cookie, body: { ...approval, plan_digest: draft.digest } });
+      assert.equal((await request(base, "/api/tool-calls", 200, { cookie })).data.used, before + 3);
+      const list = await request(base, plansPath, 200, { cookie });
+      assert.equal(list.data.enabled, true);
+      assert.equal(list.data.max_tool_calls, 3);
+      assert.ok(list.data.plans.some(plan => plan.request_id === completed.request_id));
+      persistedAgentPlans.push({ path: planPath, approval, completed });
       const answerPath = "/api/knowledge/answer";
       const question = { query: searchable.chunks[0] };
       await request(base, answerPath, 401, { method: "POST", body: question });
@@ -430,6 +486,7 @@ try {
       const unanswered = await request(base, answerPath, 200, { method: "POST", cookie: otherCookie, body: question });
       assert.deepEqual(unanswered.data, { status: "insufficient_evidence", answer: null, citations: [] });
     }
+    console.log("PASS: readonly Agent plan preview, exact consent, bounded execution, cancellation, audit and owner isolation through both entry points");
     await verifyIndex(document);
     console.log("PASS: authenticated indexing, verified semantic search and cited answers through both HTTP entry points, CSRF, isolation and idempotency");
     const jobPath = path + "/index-job";
@@ -487,6 +544,15 @@ try {
     await request(web, "/api/tools/knowledge_search", 409, { method: "POST", ...call });
   }
   if (auditedToolCalls.length) console.log("PASS: tool invocation audit and duplicate suppression persist across API/database restarts");
+  for (const plan of persistedAgentPlans) {
+    assert.deepEqual((await request(gateway, plan.path, 200, { cookie })).data, plan.completed);
+    assert.deepEqual((await request(web, `${plan.path}/approve`, 202, { method: "POST", cookie, body: plan.approval })).data, plan.completed);
+    for (const step of plan.completed.steps) {
+      assert.equal((await request(gateway, "/api/tool-calls/" + step.call_id, 200, { cookie })).data.status, "succeeded");
+      await request(web, "/api/tools/knowledge_search", 409, { method: "POST", cookie, body: step.arguments, requestId: step.call_id });
+    }
+  }
+  if (persistedAgentPlans.length) console.log("PASS: Agent plan consent, results and one-time step IDs persist across API/database restarts");
   assert.equal((await request(web, path, 200, { cookie })).data.markdown, body.markdown);
   await request(web, "/api/auth/logout", 200, { method: "POST", cookie });
   await request(gateway, "/api/auth/me", 401, { cookie });

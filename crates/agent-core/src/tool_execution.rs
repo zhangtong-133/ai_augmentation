@@ -49,17 +49,8 @@ impl AuditedToolExecutor {
         self.executor
             .validate(name, request)
             .map_err(AuditedToolError::Execution)?;
-        let value: serde_json::Value = serde_json::from_str(&request.arguments_json)
-            .map_err(|_| AuditedToolError::Execution(ExecutionError::InvalidArguments))?;
-        // JSON 对象排序后计算指纹，使空白/键顺序变化不会绕过同 ID 检查。
-        let canonical = value.to_string();
-        let call = NewToolCall {
-            request_id: request_id.to_owned(),
-            tool: name.to_owned(),
-            arguments_digest: format!("{:x}", Sha256::digest(canonical.as_bytes())),
-            input_bytes: i32::try_from(canonical.len())
-                .map_err(|_| AuditedToolError::Execution(ExecutionError::InvalidArguments))?,
-        };
+        let call =
+            prepare_tool_call(request_id, name, request).map_err(AuditedToolError::Execution)?;
         match self
             .store
             .start_tool_call(&context.user_id, &call)
@@ -71,6 +62,18 @@ impl AuditedToolExecutor {
                 return Err(AuditedToolError::AlreadyUsed(Box::new(call)));
             }
         }
+        self.execute_registered(request_id, name, context, request)
+            .await
+    }
+
+    // 只供本 crate 中已由仓储原子领取的计划步骤使用，不暴露为 HTTP 操作。
+    pub(crate) async fn execute_registered(
+        &self,
+        request_id: &str,
+        name: &str,
+        context: &ToolContext,
+        request: &ToolRequest,
+    ) -> Result<AuditedToolResponse, AuditedToolError> {
         let result = self
             .executor
             .execute(name, context, request)
@@ -103,6 +106,29 @@ impl AuditedToolExecutor {
             .map(|response| AuditedToolResponse { call, response })
             .map_err(AuditedToolError::Execution)
     }
+}
+
+/// 生成元数据审计参数；JSON 键顺序和空白不改变指纹。
+/// # Errors
+/// 参数不是有效 JSON 或超过执行器参数上限。
+pub fn prepare_tool_call(
+    request_id: &str,
+    name: &str,
+    request: &ToolRequest,
+) -> Result<NewToolCall, ExecutionError> {
+    let value: serde_json::Value = serde_json::from_str(&request.arguments_json)
+        .map_err(|_| ExecutionError::InvalidArguments)?;
+    let canonical = value.to_string();
+    if !value.is_object() || canonical.len() > 8192 {
+        return Err(ExecutionError::InvalidArguments);
+    }
+    Ok(NewToolCall {
+        request_id: request_id.to_owned(),
+        tool: name.to_owned(),
+        arguments_digest: format!("{:x}", Sha256::digest(canonical.as_bytes())),
+        input_bytes: i32::try_from(canonical.len())
+            .map_err(|_| ExecutionError::InvalidArguments)?,
+    })
 }
 
 #[cfg(test)]

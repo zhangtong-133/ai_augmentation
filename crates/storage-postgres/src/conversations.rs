@@ -101,6 +101,9 @@ impl ConversationStore for PostgresStore {
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 if changed.rows_affected() == 0 { return Err(StorageError::NotFound); }
                 crate::reply_money::delete_conversation(&mut tx, owner, id).await?;
+                // 工具元数据账本独立保留；立即清除计划的查询和结果，阻止后续领取。
+                sqlx::query("DELETE FROM agent_plans WHERE user_id=$1 AND conversation_id=$2")
+                    .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;
                 // 未派发的额度可释放；派发后的次数留在独立账本，不因删除而退款。
                 sqlx::query("UPDATE reply_daily_budgets b SET reserved=b.reserved-r.count FROM (SELECT budget_day,count(*)::integer AS count FROM conversation_replies WHERE conversation_id=$2 AND status='queued' GROUP BY budget_day) r WHERE b.user_id=$1 AND b.day=r.budget_day")
                     .bind(owner).bind(id).execute(&mut *tx).await.map_err(map_error)?;

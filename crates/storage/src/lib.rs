@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+pub mod agent_plans;
 pub mod conversations;
 pub mod dates;
 pub mod documents;

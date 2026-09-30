@@ -1508,6 +1508,7 @@ version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1518,6 +1519,7 @@ dependencies = [
  "personal-ai-domain",
  "personal-ai-storage",
  "personal-ai-storage-s3",
+ "personal-ai-tools",
  "serde_json",
  "sqlx",
  "tokio",

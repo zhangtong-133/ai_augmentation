@@ -52,39 +52,9 @@ impl ToolCallStore for PostgresStore {
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(map_error)?;
-            if let Some(row) = sqlx::query(&format!(
-                "SELECT {FIELDS},arguments_digest FROM tool_calls WHERE user_id=$1 AND request_id=$2"
-            )).bind(owner).bind(id).fetch_optional(&mut *tx).await.map_err(map_error)? {
-                if row.get::<String, _>("tool") != call.tool
-                    || row.get::<String, _>("arguments_digest") != call.arguments_digest
-                    || row.get::<i32, _>("input_bytes") != call.input_bytes
-                {
-                    return Err(StorageError::Conflict("tool call request already used".into()));
-                }
-                tx.commit().await.map_err(map_error)?;
-                return Ok(ToolCallStart::Existing(record(&row)));
-            }
-            // 在用户锁之后取 UTC 日，避免跨午夜等待锁导致额度记入旧日期。
-            let day: String =
-                sqlx::query_scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text")
-                    .fetch_one(&mut *tx)
-                    .await
-                    .map_err(map_error)?;
-            sqlx::query("INSERT INTO tool_daily_budgets(user_id,day,used) VALUES($1,$2::text::date,0) ON CONFLICT DO NOTHING")
-                .bind(owner).bind(&day).execute(&mut *tx).await.map_err(map_error)?;
-            let used: Option<i32> = sqlx::query_scalar(
-                "UPDATE tool_daily_budgets SET used=used+1 WHERE user_id=$1 AND day=$2::text::date AND used<$3 RETURNING used"
-            ).bind(owner).bind(&day).bind(DAILY_TOOL_CALL_LIMIT)
-                .fetch_optional(&mut *tx).await.map_err(map_error)?;
-            if used.is_none() {
-                return Err(StorageError::Conflict("tool call quota reached".into()));
-            }
-            let row = sqlx::query(&format!(
-                "INSERT INTO tool_calls(user_id,request_id,tool,arguments_digest,day,input_bytes) VALUES($1,$2,$3,$4,$5::text::date,$6) RETURNING {FIELDS}"
-            )).bind(owner).bind(id).bind(call.tool).bind(call.arguments_digest).bind(day)
-                .bind(call.input_bytes).fetch_one(&mut *tx).await.map_err(map_error)?;
+            let result = start_locked(&mut tx, owner, id, &call).await?;
             tx.commit().await.map_err(map_error)?;
-            Ok(ToolCallStart::Started(record(&row)))
+            Ok(result)
         })
     }
 
@@ -176,4 +146,52 @@ impl ToolCallStore for PostgresStore {
             })
         })
     }
+}
+
+// 调用方必须已持有用户行锁；计划领取与工具日预算在同一个事务内提交。
+pub(super) async fn start_locked(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    owner: Uuid,
+    id: Uuid,
+    call: &NewToolCall,
+) -> StorageResult<ToolCallStart> {
+    if let Some(row) = sqlx::query(&format!(
+        "SELECT {FIELDS},arguments_digest FROM tool_calls WHERE user_id=$1 AND request_id=$2"
+    ))
+    .bind(owner)
+    .bind(id)
+    .fetch_optional(&mut **tx)
+    .await
+    .map_err(map_error)?
+    {
+        if row.get::<String, _>("tool") != call.tool
+            || row.get::<String, _>("arguments_digest") != call.arguments_digest
+            || row.get::<i32, _>("input_bytes") != call.input_bytes
+        {
+            return Err(StorageError::Conflict(
+                "tool call request already used".into(),
+            ));
+        }
+        return Ok(ToolCallStart::Existing(record(&row)));
+    }
+    // 在用户锁之后取 UTC 日，避免跨午夜等待锁导致额度记入旧日期。
+    let day: String =
+        sqlx::query_scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text")
+            .fetch_one(&mut **tx)
+            .await
+            .map_err(map_error)?;
+    sqlx::query("INSERT INTO tool_daily_budgets(user_id,day,used) VALUES($1,$2::text::date,0) ON CONFLICT DO NOTHING")
+        .bind(owner).bind(&day).execute(&mut **tx).await.map_err(map_error)?;
+    let used: Option<i32> = sqlx::query_scalar(
+        "UPDATE tool_daily_budgets SET used=used+1 WHERE user_id=$1 AND day=$2::text::date AND used<$3 RETURNING used"
+    ).bind(owner).bind(&day).bind(DAILY_TOOL_CALL_LIMIT)
+        .fetch_optional(&mut **tx).await.map_err(map_error)?;
+    if used.is_none() {
+        return Err(StorageError::Conflict("tool call quota reached".into()));
+    }
+    let row = sqlx::query(&format!(
+        "INSERT INTO tool_calls(user_id,request_id,tool,arguments_digest,day,input_bytes) VALUES($1,$2,$3,$4,$5::text::date,$6) RETURNING {FIELDS}"
+    )).bind(owner).bind(id).bind(&call.tool).bind(&call.arguments_digest).bind(day)
+        .bind(call.input_bytes).fetch_one(&mut **tx).await.map_err(map_error)?;
+    Ok(ToolCallStart::Started(record(&row)))
 }

@@ -11,6 +11,7 @@ use axum::{
 };
 use personal_ai_agent_core::tool_execution::{AuditedToolError, AuditedToolExecutor};
 use personal_ai_domain::ConversationId;
+use personal_ai_storage::agent_plans::KnowledgeQuery;
 use personal_ai_storage::documents::DocumentStore;
 use personal_ai_storage::{StorageError, tool_calls::DAILY_TOOL_CALL_LIMIT};
 use personal_ai_tools::{
@@ -27,29 +28,13 @@ struct KnowledgeSearch {
     documents: Arc<dyn DocumentStore>,
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Arguments {
-    query: String,
-    #[serde(default = "default_limit")]
-    limit: usize,
-}
-fn arguments(request: &ToolRequest) -> Result<Arguments, ToolError> {
-    let input = serde_json::from_str::<Arguments>(&request.arguments_json)
+fn arguments(request: &ToolRequest) -> Result<KnowledgeQuery, ToolError> {
+    let input = serde_json::from_str::<KnowledgeQuery>(&request.arguments_json)
         .map_err(|_| ToolError::InvalidArguments("invalid search arguments".into()))?;
-    if input.query.trim().is_empty()
-        || input.query.contains('\0')
-        || input.query.chars().count() > 1000
-        || !(1..=5).contains(&input.limit)
-    {
-        return Err(ToolError::InvalidArguments(
-            "invalid search arguments".into(),
-        ));
-    }
+    input
+        .validate()
+        .map_err(|_| ToolError::InvalidArguments("invalid search arguments".into()))?;
     Ok(input)
-}
-fn default_limit() -> usize {
-    5
 }
 
 impl Tool for KnowledgeSearch {
@@ -93,7 +78,7 @@ impl Tool for KnowledgeSearch {
     }
 }
 
-pub(super) fn routes(state: &AppState) -> Router<AppState> {
+pub(super) fn executor(state: &AppState) -> Arc<ToolExecutor> {
     let tools: Vec<Arc<dyn Tool>> = state
         .indexing
         .as_ref()
@@ -104,7 +89,10 @@ pub(super) fn routes(state: &AppState) -> Router<AppState> {
             }) as Arc<dyn Tool>]
         })
         .unwrap_or_default();
-    let executor = Arc::new(ToolExecutor::new(tools).expect("static unique tool registry"));
+    Arc::new(ToolExecutor::new(tools).expect("static unique tool registry"))
+}
+
+pub(super) fn routes(executor: Arc<ToolExecutor>) -> Router<AppState> {
     Router::new()
         .route("/api/tools", get(list))
         .route("/api/tools/{name}", post(execute))
@@ -182,7 +170,7 @@ async fn execute(
     ))
 }
 
-fn execution_error(error: ExecutionError) -> ApiError {
+pub(super) fn execution_error(error: ExecutionError) -> ApiError {
     match error {
         ExecutionError::UnknownTool => ApiError(StatusCode::NOT_FOUND, "tool_not_available"),
         ExecutionError::InvalidArguments | ExecutionError::Tool(ToolError::InvalidArguments(_)) => {

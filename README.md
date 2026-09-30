@@ -11,7 +11,7 @@
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
 
-导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API 及[调用次数预算与审计](docs/design/sprint-3-tool-call-audit.md)、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复页面](docs/design/sprint-3-reply-ui.md)支持请求、历史、轮询与取消；执行默认关闭。不自动调用工具，也无定时任务。下一步见 [路线图](docs/ROADMAP.md)。
+导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API 及[调用次数预算与审计](docs/design/sprint-3-tool-call-audit.md)、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复页面](docs/design/sprint-3-reply-ui.md)支持请求、历史、轮询与取消；执行默认关闭。已提供[受限 Agent 计划 API](docs/design/sprint-3-agent-plans.md)：用户预览并授权后，最多顺序执行三次知识检索，支持持久化结果与取消。模型自动规划和定时任务待实现。下一步见 [路线图](docs/ROADMAP.md)。
 
 显式回复支持本地夹具和管理员配置的固定模型付费模式；使用前需设置价格有效期及额度，用户在页面确认金额。配置见 [付费回复部署设计](docs/design/sprint-3-paid-replies.md)；管理员可使用 [reply-operations](docs/design/sprint-3-reply-operations.md)查询配置、显式停用及核对用户日账本。
 
@@ -56,7 +56,9 @@ cargo run -p api-server
 
 ## 工具接口
 
-Sprint 3 工具入口：登录后 `GET /api/tools` 查看可用工具，`POST /api/tools/knowledge_search` 显式检索（沿用索引配置与 CSRF 要求，可能产生模型费用）。这是内部 REST 接口，不是 MCP 服务；边界见 [工具设计](docs/design/sprint-3-tools-memory-scheduler.md)。
+Sprint 3 工具入口：登录后 `GET /api/tools` 查看可用工具，`POST /api/tools/knowledge_search` 显式检索（需 `Idempotency-Key: UUID`，沿用索引配置与 CSRF 要求，可能产生模型费用）。这是内部 REST 接口，不是 MCP 服务；边界见 [工具设计](docs/design/sprint-3-tools-memory-scheduler.md)。
+
+固定 Agent 计划使用 `POST /api/conversations/{id}/agent-plans` 创建预览，再通过 `/{request}/approve` 确认指纹、次数和费用；详情与取消协议见 [计划设计](docs/design/sprint-3-agent-plans.md)。需要已有消息版本和已启用的知识检索。执行不会自动重试，每步计入同一工具日预算。
 
 ## 验证
 
@@ -73,7 +75,8 @@ npm --prefix apps/web run build
 |---|---|
 | `make smoke` | PostgreSQL/Redis、双入口 HTTP、消息幂等、缓存故障恢复及重启持久化 |
 | `make smoke-objects` | 加测真实 MinIO、原文迁移与清理 |
-| `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答 |
+| `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答和 Agent 计划双入口授权/重启查重 |
+| `TEST_DATABASE_URL=… make test-agent` | 一次性 PostgreSQL 验证计划授权、事务预算、取消和故障边界 |
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |

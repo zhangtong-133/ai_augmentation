@@ -51,6 +51,7 @@ struct Fixture {
     sender: Arc<Sender>,
 }
 impl Fixture {
+    #[allow(clippy::too_many_lines)] // 组装真实数据库及固定供应商夹具。
     async fn new() -> Self {
         let url = std::env::var("TEST_DATABASE_URL").unwrap();
         let store = Arc::new(PostgresStore::connect(&url).await.unwrap());
@@ -126,6 +127,7 @@ impl Fixture {
             paid: Some(paid),
         });
         let state = AppState {
+            agent_plans: Some(store.clone()),
             tool_calls: Some(store.clone()),
             replies: Some(replies),
             messages: store.clone(),

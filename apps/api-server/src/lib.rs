@@ -1,3 +1,4 @@
+mod agent_plans;
 mod answering;
 pub use answering::answering_from_env;
 mod index_jobs;
@@ -71,6 +72,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub agent_plans: Option<Arc<dyn personal_ai_storage::agent_plans::AgentPlanStore>>,
     pub tool_calls: Option<Arc<dyn personal_ai_storage::tool_calls::ToolCallStore>>,
     pub replies: Option<Arc<ReplyRuntime>>,
     pub messages: Arc<dyn personal_ai_storage::messages::MessageStore>,
@@ -87,6 +89,7 @@ pub struct AppState {
 }
 
 pub fn router(state: AppState) -> Router {
+    let tools = tool_execution::executor(&state);
     let protected = Router::new()
         .route("/api/users", post(create_user))
         .route("/api/users/{id}", get(get_user))
@@ -105,7 +108,8 @@ pub fn router(state: AppState) -> Router {
         .merge(retrieval::routes())
         .merge(answering::routes())
         .merge(index_jobs::routes())
-        .merge(tool_execution::routes(&state))
+        .merge(tool_execution::routes(tools.clone()))
+        .merge(agent_plans::routes(tools))
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))
