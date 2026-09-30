@@ -132,7 +132,11 @@ mod tests {
         assert_eq!(plan.request.max_output_tokens, Some(1024));
         assert_eq!(
             plan.input_bytes,
-            plan.request.messages.iter().map(|m| m.content.len()).sum()
+            plan.request
+                .messages
+                .iter()
+                .map(|m| m.content.len())
+                .sum::<usize>()
         );
     }
 

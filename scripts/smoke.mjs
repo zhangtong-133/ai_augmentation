@@ -117,12 +117,13 @@ async function ready(url) {
   }
   throw new Error(`readiness timeout: ${url}`);
 }
-async function request(base, path, expected, { method = "GET", body, cookie, admin, csrf = true } = {}) {
+async function request(base, path, expected, { method = "GET", body, cookie, admin, csrf = true, requestId } = {}) {
   if (interrupted) throw new Error("interrupted");
   const headers = { "content-type": "application/json" };
   if (cookie) headers.cookie = cookie;
   if (admin) headers.authorization = `Bearer ${env.SMOKE_TOKEN}`;
   if (method !== "GET" && csrf) headers["x-requested-with"] = "personal-ai";
+  if (requestId !== undefined) headers["idempotency-key"] = requestId;
   const response = await fetch(base + path, {
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(10000), redirect: "error",
@@ -222,6 +223,7 @@ try {
   }
   const owner = await account(api, "owner@smoke.example");
   const other = await account(api, "other@smoke.example");
+  const auditedToolCalls = [];
   const configurations = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "configurations"], true));
   assert.ok(Array.isArray(configurations.items));
   const audit = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "ledger",
@@ -377,11 +379,29 @@ try {
       assert.equal(manifest.data.tools[0].name, "knowledge_search");
       assert.equal(manifest.data.tools[0].read_only, true);
       assert.equal(manifest.data.tools[0].may_incur_cost, true);
+      assert.equal(manifest.data.tools[0].request_id_header, "Idempotency-Key");
+      assert.equal(manifest.data.tools[0].daily_call_limit, 100);
       const toolPath = "/api/tools/knowledge_search";
       await request(base, toolPath, 401, { method: "POST", body });
       await request(base, toolPath, 403, { method: "POST", cookie, body, csrf: false });
       await request(base, toolPath, 400, { method: "POST", cookie, body: { ...body, user_id: "forged" } });
-      const toolResult = await request(base, toolPath, 200, { method: "POST", cookie, body });
+      await request(base, toolPath, 400, { method: "POST", cookie, body });
+      const requestId = randomUUID();
+      const toolResult = await request(base, toolPath, 200, { method: "POST", cookie, body, requestId });
+      assert.equal(toolResult.data.call.request_id, requestId);
+      assert.equal(toolResult.data.call.status, "succeeded");
+      const replay = await request(base, toolPath, 409, { method: "POST", cookie, body, requestId });
+      assert.equal(replay.data.error.code, "tool_call_already_used");
+      const audit = await request(base, "/api/tool-calls", 200, { cookie });
+      assert.ok(audit.data.items.some(call => call.request_id === requestId && call.status === "succeeded"));
+      assert.equal(audit.data.used, audit.data.items.length);
+      assert.equal(audit.response.headers.get("cache-control"), "no-store");
+      assert.equal(JSON.stringify(audit.data).includes(body.query), false);
+      await request(base, "/api/tool-calls", 401);
+      await request(base, "/api/tool-calls?user_id=forged", 400, { cookie });
+      await request(base, "/api/tool-calls?day=2026-02-29", 400, { cookie });
+      await request(base, "/api/tool-calls/" + requestId, 404, { cookie: otherCookie });
+      auditedToolCalls.push({ requestId, cookie, body });
       assert.equal(toolResult.data.tool, "knowledge_search");
       assert.equal(toolResult.data.output.hits.length, found.data.hits.length);
       for (let index = 0; index < found.data.hits.length; index += 1) {
@@ -392,7 +412,7 @@ try {
         assert.ok(Number.isFinite(toolScore) && Math.abs(toolScore - searchScore) < 1e-6);
       }
       assert.equal(toolResult.response.headers.get("cache-control"), "no-store");
-      const toolIsolated = await request(base, toolPath, 200, { method: "POST", cookie: otherCookie, body });
+      const toolIsolated = await request(base, toolPath, 200, { method: "POST", cookie: otherCookie, body, requestId: randomUUID() });
       assert.deepEqual(toolIsolated.data.output.hits, []);
       const answerPath = "/api/knowledge/answer";
       const question = { query: searchable.chunks[0] };
@@ -461,6 +481,12 @@ try {
   await compose(["restart", "postgres"]);
   await compose(["restart", "api-server"]);
   await Promise.all([web, gateway].map(base => ready(base + "/api/readyz")));
+  for (const call of auditedToolCalls) {
+    const detail = await request(gateway, "/api/tool-calls/" + call.requestId, 200, { cookie: call.cookie });
+    assert.equal(detail.data.status, "succeeded");
+    await request(web, "/api/tools/knowledge_search", 409, { method: "POST", ...call });
+  }
+  if (auditedToolCalls.length) console.log("PASS: tool invocation audit and duplicate suppression persist across API/database restarts");
   assert.equal((await request(web, path, 200, { cookie })).data.markdown, body.markdown);
   await request(web, "/api/auth/logout", 200, { method: "POST", cookie });
   await request(gateway, "/api/auth/me", 401, { cookie });

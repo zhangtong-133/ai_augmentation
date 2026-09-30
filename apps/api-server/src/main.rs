@@ -45,6 +45,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            tool_calls: Some(store.clone()),
             replies: Some(replies),
             messages: store.clone(),
             message_cache,

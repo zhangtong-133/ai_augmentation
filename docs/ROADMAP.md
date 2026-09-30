@@ -1,9 +1,10 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。下一步推进受限 Agent 工具编排、工具审计与调用预算。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。下一步实现受限 Agent 计划与用户授权。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
 
+- [x] 知识检索工具接入一次性请求 ID、用户 UTC 日次数预算及持久化审计，双入口支持查询和重启后查重。
 - [x] 回复配置查询、显式持久化停用和按用户 UTC 日核对金额账本；包含删除后的记录、精确汇总及差额报告。
 - [x] 修复对象 CI 的 MinIO 镜像拉取失败，统一从固定官方源码构建并在验收开始时检查构建来源。
 - [x] 文档列表增加索引提交按钮和任务进度/失败状态。
@@ -53,7 +54,8 @@
 
 - [x] 受限 Tool executor 与只读 `knowledge_search` API（白名单、会话隔离、超时和并发限制）
 - [x] 用户显式管理 PostgreSQL 长期记忆（CRUD、页面、版本冲突、配额与隔离）
-- [ ] Agent 编排、工具审计与调用预算
+- [x] 工具执行次数预算与持久化审计（一次性 ID、失败保留、用户/日期隔离）
+- [ ] Agent 编排（受限计划、用户授权与每计划调用上限）
 - [ ] Scheduler（授权、取消、租约与幂等）
 - [x] Redis 短期记忆适配器（用户/对话键隔离、TTL、条目/活跃对话配额及真实 Redis 测试）
 - [x] 对话归属与元数据 API（认证、CSRF、会话撤销、删除墓碑、创建额度与幂等）

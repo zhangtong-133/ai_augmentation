@@ -71,6 +71,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub tool_calls: Option<Arc<dyn personal_ai_storage::tool_calls::ToolCallStore>>,
     pub replies: Option<Arc<ReplyRuntime>>,
     pub messages: Arc<dyn personal_ai_storage::messages::MessageStore>,
     pub message_cache: Option<Arc<dyn personal_ai_storage::messages::MessageCache>>,

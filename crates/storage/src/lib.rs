@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod conversations;
+pub mod dates;
 pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;
@@ -7,6 +8,7 @@ pub mod messages;
 pub mod replies;
 pub mod reply_budgets;
 pub mod reply_operations;
+pub mod tool_calls;
 
 use personal_ai_domain::{ConversationId, User, UserId};
 use std::error::Error;

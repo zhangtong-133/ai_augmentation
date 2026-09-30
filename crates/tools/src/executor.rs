@@ -40,6 +40,21 @@ impl ToolExecutor {
         self.tools.values()
     }
 
+    /// 只检查白名单、输入大小和工具的纯参数约束，不执行工具。
+    ///
+    /// # Errors
+    /// 未注册或参数无效时返回错误。
+    pub fn validate(&self, name: &str, request: &ToolRequest) -> Result<(), ExecutionError> {
+        let tool = self.tools.get(name).ok_or(ExecutionError::UnknownTool)?;
+        if request.arguments_json.len() > 8192
+            || !serde_json::from_str::<serde_json::Value>(&request.arguments_json)
+                .is_ok_and(|value| value.is_object())
+        {
+            return Err(ExecutionError::InvalidArguments);
+        }
+        tool.validate(request).map_err(ExecutionError::Tool)
+    }
+
     /// 上下文必须来自已认证的应用层；工具仍负责所有者隔离及具体参数校验。
     ///
     /// # Errors
@@ -51,13 +66,8 @@ impl ToolExecutor {
         context: &ToolContext,
         request: &ToolRequest,
     ) -> Result<ToolResponse, ExecutionError> {
-        let tool = self.tools.get(name).ok_or(ExecutionError::UnknownTool)?;
-        if request.arguments_json.len() > 8192
-            || !serde_json::from_str::<serde_json::Value>(&request.arguments_json)
-                .is_ok_and(|value| value.is_object())
-        {
-            return Err(ExecutionError::InvalidArguments);
-        }
+        self.validate(name, request)?;
+        let tool = &self.tools[name];
         let _permit = self.slots.try_acquire().map_err(|_| ExecutionError::Busy)?;
         let response =
             tokio::time::timeout(Duration::from_secs(35), tool.execute(context, request))

@@ -22,6 +22,13 @@ test: ## 运行 Rust 工作区测试
 test-postgres: ## 使用 TEST_DATABASE_URL 运行 PostgreSQL 集成测试
 	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
 
+.PHONY: test-tools
+test-tools: ## 使用一次性 TEST_DATABASE_URL 验证工具执行、次数预算与审计
+	cargo test -p personal-ai-tools
+	cargo test -p personal-ai-agent-core tool_execution
+	cargo test -p api-server --lib tool
+	cargo test -p personal-ai-storage-postgres --test postgres tool_calls -- --ignored
+
 .PHONY: test-replies
 test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金额 HTTP 与运维命令
 	cargo test -p api-server --test replies -- --ignored

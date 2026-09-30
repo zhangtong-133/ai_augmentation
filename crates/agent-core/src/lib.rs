@@ -3,6 +3,7 @@
 pub mod budget;
 pub mod reply;
 pub mod reply_executor;
+pub mod tool_execution;
 
 use personal_ai_domain::{ConversationId, UserId};
 use personal_ai_llm::ChatMessage;

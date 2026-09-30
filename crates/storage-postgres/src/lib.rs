@@ -9,6 +9,7 @@ mod replies;
 mod reply_dispatch;
 mod reply_money;
 mod reply_operations;
+mod tool_calls;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};

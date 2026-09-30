@@ -55,6 +55,13 @@ pub trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
     fn input_schema_json(&self) -> &'static str;
+    /// 执行前的纯参数校验；实现不得调用外部服务或产生副作用。
+    ///
+    /// # Errors
+    /// 参数或权限约束不满足时返回错误。
+    fn validate(&self, _request: &ToolRequest) -> Result<(), ToolError> {
+        Ok(())
+    }
     fn execute(
         &self,
         context: &ToolContext,

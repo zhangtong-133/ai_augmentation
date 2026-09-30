@@ -126,6 +126,7 @@ impl Fixture {
             paid: Some(paid),
         });
         let state = AppState {
+            tool_calls: Some(store.clone()),
             replies: Some(replies),
             messages: store.clone(),
             message_cache: None,

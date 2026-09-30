@@ -16,7 +16,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies) {
+  const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !toolAudit) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
@@ -27,6 +28,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   for (const name of ["content-type", "cookie", "x-requested-with"]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
+  }
+  if (request.method === "POST" && endpoint === "tools/knowledge_search") {
+    const requestId = request.headers.get("idempotency-key");
+    if (requestId) headers.set("idempotency-key", requestId);
   }
   try {
     const limit = endpoint === "documents" ? 8 * 1024 * 1024 : 16384;

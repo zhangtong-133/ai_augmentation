@@ -8,6 +8,8 @@ rust-version.workspace = true
 [dependencies]
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
+sha2.workspace = true
+serde_json.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-llm.workspace = true
 personal-ai-storage.workspace = true
@@ -15,3 +17,6 @@ personal-ai-tools.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

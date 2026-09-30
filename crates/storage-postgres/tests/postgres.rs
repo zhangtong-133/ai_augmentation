@@ -6,6 +6,8 @@ use uuid::Uuid;
 mod messages;
 #[path = "postgres/replies.rs"]
 mod replies;
+#[path = "postgres/tool_calls.rs"]
+mod tool_calls;
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]

@@ -429,6 +429,7 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
@@ -543,6 +544,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
@@ -603,6 +605,9 @@ async fn auth_request(
         .header("content-type", "application/json");
     if let Some(cookie) = cookie {
         req = req.header("cookie", cookie);
+    }
+    if method == "POST" && path.starts_with("/api/tools/") {
+        req = req.header("idempotency-key", Uuid::new_v4().to_string());
     }
     if csrf {
         req = req.header("x-requested-with", "personal-ai");
@@ -898,6 +903,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
@@ -1100,6 +1106,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
@@ -1175,6 +1182,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     }
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
@@ -1400,6 +1408,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         2,
     );
     let state = AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
@@ -1519,6 +1528,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         assert!(!String::from_utf8_lossy(&bytes).contains("secret"));
     }
     let disabled = router(AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: None,
         ..state
@@ -1580,6 +1590,7 @@ async fn retrieval_fixture() -> (
         .unwrap();
     assert!(indexer.index_batch(&owner.id, &document, 0).await.is_ok());
     let state = AppState {
+        tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
@@ -2213,3 +2224,6 @@ async fn answers_require_verified_evidence_and_never_call_chat_for_empty_results
     assert_eq!(body["citations"], json!([]));
     assert_eq!(provider.calls.load(Ordering::SeqCst), calls);
 }
+
+#[path = "tool_call_tests.rs"]
+mod tool_calls;
