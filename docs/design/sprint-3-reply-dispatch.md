@@ -2,7 +2,7 @@
 
 ## 当前交付
 
-新增内部 `ReplyDispatchStore` 和迁移 `0014_reply_configurations.sql`，为后续供应商执行器提供一次性领取凭据与跨进程配置停用。应用入口尚未接入，`CONVERSATION_REPLY_MODE` 仍仅支持 `disabled` / `fixture`，没有新增环境变量、HTTP 接口或页面。
+新增内部 `ReplyDispatchStore` 和迁移 `0014_reply_configurations.sql`，为后续供应商执行器提供一次性领取凭据与跨进程配置停用。后续[显式付费入口](sprint-3-paid-replies.md)已接入应用启动、配置、预留事务与页面。
 
 ## 配置登记与有效期
 
@@ -20,7 +20,7 @@
 
 ## 运行时接入边界
 
-后续已实现[内部执行器](sprint-3-reply-executor.md)的复核、发送、结算及异常停用；应用启动、HTTP 和页面仍未开放付费模式。以下限制继续适用于最终接入。
+后续已实现[内部执行器](sprint-3-reply-executor.md)的复核、发送、结算及异常停用；后续已接入[显式付费配置与页面](sprint-3-paid-replies.md)。以下限制继续适用于最终接入。
 
 本次只提供内部仓储能力。现有预算预留端口仍可用于离线规划和账本测试，不要求配置登记；领取是配置有效性的强制关卡。未来运行时应在接受新预留前也检查配置，避免为已停用版本积压 queued 请求。
 

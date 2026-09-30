@@ -69,7 +69,34 @@ pub struct BudgetedReplyClaim {
 }
 
 /// 部署端内部端口。配置版本不可变，停用不可逆，禁止接入用户 HTTP 参数。
+/// 用户可查看的账本记录；无正文、密钥、内部计数器或价格明细。
+pub struct ReplyMoneyReceipt {
+    pub request_id: String,
+    pub currency: String,
+    pub reserved: i64,
+    pub charged: Option<i64>,
+    pub settlement: Option<String>,
+}
+
 pub trait ReplyDispatchStore: BudgetedReplyStore {
+    /// 新请求必须在预留事务内检查已登记配置；同键重放不重新报价。
+    fn reserve_active_budgeted_reply(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        revision: i64,
+        configuration: &ReplyConfiguration,
+        planner: Arc<dyn ReplyBudgetPlanner>,
+    ) -> BoxFuture<'_, StorageResult<Reply>>;
+
+    /// 验证对话归属及未删除状态后返回其金额记录；模式停用后仍可查询。
+    fn reply_money_receipts(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+    ) -> BoxFuture<'_, StorageResult<Vec<ReplyMoneyReceipt>>>;
+
     /// 仅扫描指定配置的金额请求，避免旧夹具或其他配置队列阻塞执行器。
     fn pending_budgeted_replies(
         &self,

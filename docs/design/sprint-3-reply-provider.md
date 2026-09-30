@@ -2,7 +2,7 @@
 
 ## 当前交付
 
-`personal-ai-llm-openai::replies` 新增 `OpenAiReplyPolicy` 与 `OpenAiReplies`。前者实现内部 `ReplyBudgetPlanner`，后者提供单次 HTTP 发送方法；应用入口尚未组装它们，`CONVERSATION_REPLY_MODE` 仍仅支持 `disabled`/`fixture`。没有新环境变量、数据库迁移或页面变化，不会因升级代码自动调用模型。
+`personal-ai-llm-openai::replies` 新增 `OpenAiReplyPolicy` 与 `OpenAiReplies`。前者实现内部 `ReplyBudgetPlanner`，后者提供单次 HTTP 发送方法；后续[付费部署入口](sprint-3-paid-replies.md)已组装它们，`CONVERSATION_REPLY_MODE` 支持 `disabled`/`fixture`/`openai`，默认关闭。
 
 首版仅允许官方端点 `https://api.openai.com/v1/chat/completions` 与固定快照 `gpt-4o-mini-2024-07-18`。不接受模型别名、任意兼容地址或客户端模型配置。使用这个快照是为了建立有明确边界的首个纯文本适配器，不代表建议所有任务使用该模型。
 
@@ -28,7 +28,7 @@ HTTP 客户端禁用环境代理、重定向和 reqwest 自动重试，连接超
 
 本模块不持有数据库发送权，也不保证跨调用幂等。`send_once` 意味着每次调用最多一次 HTTP 尝试；调用者反复调用仍可能重复收费。
 
-已新增[有预算凭据的领取端口及持久化配置登记/停用](sprint-3-reply-dispatch.md)，并已接入[内部执行器](sprint-3-reply-executor.md)，尚未开放付费入口；该端口原子返回该请求的冻结上下文及预算，确认事务提交后才能调用适配器。禁止仅凭 `Reply.context`、内存里临时生成的预算或现有无金额历史请求付费发送。领取前要核验配置有效性，取消/删除后不派发或不接收晚到输出，并沿用 120 秒过期收敛与一次性结算。
+已新增[有预算凭据的领取端口及持久化配置登记/停用](sprint-3-reply-dispatch.md)，并已接入[内部执行器](sprint-3-reply-executor.md)，已提供显式金额确认的付费入口；该端口原子返回该请求的冻结上下文及预算，确认事务提交后才能调用适配器。禁止仅凭 `Reply.context`、内存里临时生成的预算或现有无金额历史请求付费发送。领取前要核验配置有效性，取消/删除后不派发或不接收晚到输出，并沿用 120 秒过期收敛与一次性结算。
 
 当前停用标记仅在共享策略实例的进程内有效，重启或其他实例不会继承。开放真实供应商前必须持久化配置停用/价格有效性及告警，处理多实例已领取请求；不能把本地标记描述成全局熔断。随后再增加显式部署配置和页面金额/未知计费提示，完成双入口与故障验收。自动测试始终只使用本地夹具。
 

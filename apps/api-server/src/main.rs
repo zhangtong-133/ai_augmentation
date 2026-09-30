@@ -28,8 +28,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     let indexing = api_server::indexing_from_env(store.clone()).await?;
     let answering = api_server::answering_from_env(indexing.is_some())?;
-    let replies =
-        api_server::ReplyRuntime::from_env(store.clone()).map_err(std::io::Error::other)?;
+    let replies = api_server::ReplyRuntime::from_env(store.clone())
+        .await
+        .map_err(std::io::Error::other)?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     let reply_task = {
         let replies = replies.clone();

@@ -27,6 +27,7 @@ mod conversations;
 mod documents;
 mod memories;
 mod messages;
+mod paid_replies;
 mod replies;
 pub use messages::{message_cache_from_env, reconcile_message_deletions};
 pub use replies::ReplyRuntime;

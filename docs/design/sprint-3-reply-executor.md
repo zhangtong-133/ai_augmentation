@@ -4,7 +4,7 @@
 
 `personal-ai-agent-core::reply_executor` 提供内部 `ReplySender` 端口及 `BudgetedReplyExecutor`，OpenAI 适配器实现该端口。业务执行器只依赖存储和供应商接口，应用入口负责组装。现有适配器的 `ReplyCompletion` / `ReplySendError` 从原模块重新导出，调用方式兼容。
 
-此轮完成内部执行链及本地夹具验收。HTTP、环境变量和页面仍仅支持 disabled / fixture；尚未在应用启动时组装付费执行器，升级不会自动发送模型请求。下一步是部署配置、预留入口检查、页面金额说明与双入口交互验收。
+此轮完成内部执行链及本地夹具验收。后续[显式部署配置与金额页面](sprint-3-paid-replies.md)已组装付费执行器，默认关闭，管理员启用后才可创建模型请求。
 
 ## 执行流程
 

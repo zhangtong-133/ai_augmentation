@@ -801,3 +801,76 @@ test("web import rejects private URLs without adding documents", async ({ page }
   await expect(metric(page, "文档总数")).toHaveText("0");
   await expect(page.getByRole("button", { name: "导入网页", exact: true })).toBeEnabled();
 });
+
+test("paid reply UI binds confirmation to the quote and retries the original amount", async ({ page }, testInfo) => {
+  const account = await createAccount();
+  let quote = { configuration_revision: "test-price-v1", currency: "USD", reservation_micro: "129024", request_limit_micro: "200000", daily_limit_micro: "1000000" };
+  let enabled = true;
+  let current = null;
+  const writes = [];
+  await page.route("**/api/conversations/*/replies", async route => {
+    if (route.request().method() === "POST") {
+      const input = route.request().postDataJSON();
+      expect(route.request().headers()["x-requested-with"]).toBe("personal-ai");
+      writes.push(input);
+      current = { request_id: input.request_id, revision: 1, status: "unknown", output: null, mode: "openai", billing: { currency: "USD", reserved_micro: input.accepted_max_micro, charged_micro: input.accepted_max_micro, settlement: "retained" } };
+      if (writes.length === 1) return route.abort("failed");
+      return route.fulfill({ status: 202, json: current });
+    }
+    return route.fulfill({ status: 200, json: { mode: "openai", enabled, quote, items: current ? [current] : [] } });
+  });
+  await page.goto("/");
+  await login(page, account);
+  const { replies } = await prepareReplyConversation(page, "模型金额确认");
+  await expect(replies).toContainText("每次预留 USD 0.129024");
+  await expect(replies).toContainText("仍可能已计费");
+  expect(writes).toHaveLength(0);
+  await replies.getByRole("button", { name: "请求模型回复", exact: true }).click();
+  quote = { ...quote, configuration_revision: "test-price-v2", reservation_micro: "150000" };
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies).toContainText("配置已变化");
+  await expect(replies.getByRole("button", { name: "确认金额并请求模型回复", exact: true })).toBeDisabled();
+  await replies.getByRole("button", { name: "暂不请求" }).click();
+  await replies.getByRole("button", { name: "请求模型回复", exact: true }).click();
+  await expect(replies).toContainText("本次最多预留 USD 0.150000");
+  await replies.getByRole("button", { name: "确认金额并请求模型回复", exact: true }).click();
+  await expect(replies.getByRole("alert")).toContainText("结果未确认");
+  expect(writes).toHaveLength(1);
+  expect(writes[0].configuration_revision).toBe("test-price-v2");
+  expect(writes[0].accepted_max_micro).toBe("150000");
+  enabled = false;
+  quote = { ...quote, configuration_revision: "test-price-v3", reservation_micro: "180000" };
+  await replies.getByRole("button", { name: "刷新回复历史" }).click();
+  await expect(replies).toContainText("模型回复配置已停用或过期");
+  await replies.getByRole("button", { name: "重试回复原请求" }).click();
+  await expect(replies.getByRole("button", { name: "重试回复原请求" })).toHaveCount(0);
+  expect(writes).toHaveLength(2);
+  expect(writes[1]).toEqual(writes[0]);
+  await expect(replies).toContainText("保守保留（可能已计费） USD 0.150000");
+  await expect(replies.getByRole("button", { name: "请求模型回复", exact: true })).toBeDisabled();
+  const screenshot = testInfo.outputPath("paid-replies.png");
+  await replies.screenshot({ path: screenshot });
+  await testInfo.attach("paid-replies", { path: screenshot, contentType: "image/png" });
+});
+
+test("reply UI preserves paid history and integer amounts after disabling new replies", async ({ page }) => {
+  const account = await createAccount();
+  await page.route("**/api/conversations/*/replies", route => route.fulfill({ status: 200, json: {
+    enabled: false, mode: "fixture", quote: null,
+    items: [
+      { request_id: randomUUID(), revision: 1, status: "unknown", output: null, billing: { currency: "USD", reserved_micro: "9223372036854775807", charged_micro: "9223372036854775807", settlement: "retained" } },
+      { request_id: randomUUID(), revision: 1, status: "cancelled", output: null, billing: { currency: "USD", reserved_micro: "129024", charged_micro: "0", settlement: "cancelled_before_dispatch" } },
+    ],
+  } }));
+  await page.goto("/");
+  await login(page, account);
+  const { replies } = await prepareReplyConversation(page, "历史金额保留");
+  await expect(replies).toContainText("USD 9223372036854.775807");
+  await expect(replies).toContainText("派发前取消，已退回 USD 0.000000");
+  await expect(replies).toContainText("不会自动重发");
+  await expect(replies.getByRole("button", { name: "请求测试回复", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "退出登录" }).click();
+  await expect(replies).toHaveCount(0);
+  await login(page, await createAccount());
+  await expect(page.getByRole("region", { name: "对话与消息", exact: true })).not.toContainText("9223372036854");
+});

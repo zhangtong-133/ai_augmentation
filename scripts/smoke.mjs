@@ -178,7 +178,7 @@ try {
   await command("make", ["test-postgres"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
-  await command("cargo", ["test", "-p", "api-server", "--test", "replies", "--", "--ignored"], {
+  await command("make", ["test-replies"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
@@ -253,7 +253,7 @@ try {
     const replyDetail = `${replyPath}/${replyBody.request_id}`;
     await request(base, replyPath, 401);
     await request(base, replyPath, 404, { cookie: otherCookie });
-    assert.deepEqual((await request(base, replyPath, 200, { cookie })).data, { enabled: true, mode: "fixture", items: [] });
+    assert.deepEqual((await request(base, replyPath, 200, { cookie })).data, { enabled: true, mode: "fixture", quote: null, items: [] });
     await request(base, replyPath, 401, { method: "POST", body: replyBody });
     await request(base, replyPath, 403, { method: "POST", cookie, body: replyBody, csrf: false });
     await request(base, replyPath, 404, { method: "POST", cookie: otherCookie, body: replyBody });

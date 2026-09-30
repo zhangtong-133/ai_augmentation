@@ -2,8 +2,10 @@ use crate::{PostgresStore, map_error, replies, reply_money};
 use personal_ai_domain::UserId;
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
-    replies::{PendingReply, ReplyConfiguration, ReplyContext, ReplyStatus},
-    reply_budgets::{BudgetedReplyClaim, ReplyBudget, ReplyDispatchStore},
+    replies::{PendingReply, Reply, ReplyConfiguration, ReplyContext, ReplyStatus},
+    reply_budgets::{
+        BudgetedReplyClaim, ReplyBudget, ReplyBudgetPlanner, ReplyDispatchStore, ReplyMoneyReceipt,
+    },
 };
 use sqlx::{PgConnection, Row};
 
@@ -16,7 +18,7 @@ fn encode(budget: &ReplyBudget) -> StorageResult<String> {
         .map_err(|_| StorageError::InvalidData("invalid reply budget".into()))
 }
 
-async fn check(
+pub(super) async fn check(
     tx: &mut PgConnection,
     configuration: &ReplyConfiguration,
     budget: &ReplyBudget,
@@ -42,6 +44,51 @@ async fn check(
 }
 
 impl ReplyDispatchStore for PostgresStore {
+    fn reserve_active_budgeted_reply(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        revision: i64,
+        configuration: &ReplyConfiguration,
+        planner: std::sync::Arc<dyn ReplyBudgetPlanner>,
+    ) -> BoxFuture<'_, StorageResult<Reply>> {
+        self.reserve_reply_with_policy(
+            owner,
+            conversation,
+            request,
+            revision,
+            (configuration, Some(planner), true),
+        )
+    }
+
+    fn reply_money_receipts(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+    ) -> BoxFuture<'_, StorageResult<Vec<ReplyMoneyReceipt>>> {
+        let ids = replies::ids(owner, conversation, &uuid::Uuid::nil().to_string());
+        Box::pin(async move {
+            let (owner, conversation, _) = ids?;
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            sqlx::query("SELECT id FROM conversations WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE")
+                .bind(owner).bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
+            let rows = sqlx::query("SELECT request_id,currency,reserved,charged,settlement FROM reply_money_reservations WHERE user_id=$1 AND conversation_id=$2")
+                .bind(owner).bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
+            tx.commit().await.map_err(map_error)?;
+            Ok(rows
+                .iter()
+                .map(|r| ReplyMoneyReceipt {
+                    request_id: r.get::<uuid::Uuid, _>("request_id").to_string(),
+                    currency: r.get("currency"),
+                    reserved: r.get("reserved"),
+                    charged: r.get("charged"),
+                    settlement: r.get("settlement"),
+                })
+                .collect())
+        })
+    }
+
     fn pending_budgeted_replies(
         &self,
         configuration: &ReplyConfiguration,

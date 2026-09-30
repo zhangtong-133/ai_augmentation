@@ -60,6 +60,12 @@ impl BudgetedReplyExecutor {
         }
     }
 
+    /// 本实例观察到供应商契约异常后，立即停止接受新派发。
+    #[must_use]
+    pub fn is_halted(&self) -> bool {
+        self.halted.load(Ordering::SeqCst)
+    }
+
     /// 有界扫描，已领取请求仅做过期恢复；不重试发送或重新排队。
     pub async fn tick(&self) {
         // 停用写入失败时，本实例保持关闭；后续轮次重试持久化，不再发送。

@@ -217,7 +217,7 @@ impl ReplyStore for PostgresStore {
             conversation,
             request,
             revision,
-            (configuration, None),
+            (configuration, None, false),
         )
     }
     fn get_reply(
@@ -270,17 +270,22 @@ impl ReplyStore for PostgresStore {
 }
 
 impl PostgresStore {
-    fn reserve_reply_with_policy(
+    pub(super) fn reserve_reply_with_policy(
         &self,
         owner: &UserId,
         conversation: &str,
         request: &str,
         revision: i64,
-        policy: (&ReplyConfiguration, Option<Arc<dyn ReplyBudgetPlanner>>),
+        policy: (
+            &ReplyConfiguration,
+            Option<Arc<dyn ReplyBudgetPlanner>>,
+            bool,
+        ),
     ) -> BoxFuture<'_, StorageResult<Reply>> {
         let ids = ids(owner, conversation, request);
         let configuration = policy.0.clone();
         let planner = policy.1;
+        let require_active = policy.2;
         Box::pin(async move {
             let (owner, conversation, request) = ids?;
             let mut tx = self.pool.begin().await.map_err(map_error)?;
@@ -312,7 +317,10 @@ impl PostgresStore {
                 let money = money.map(|budget| crate::reply_money::validate(budget, &context)).transpose()?;
                 let money_configuration = context.configuration.clone();
                 let context = serde_json::to_string(&context).map_err(|_| StorageError::InvalidData("invalid reply context".into()))?;
-                // 在取得用户锁之后读取时钟；跨 UTC 午夜等待不会使用事务开始时的旧日期。
+                if require_active && let Some((budget, _)) = &money {
+                    crate::reply_dispatch::check(&mut tx, &money_configuration, budget).await?;
+                }
+                // 在取得用户及配置锁之后读取时钟；跨 UTC 午夜等待不使用旧日期。
                 let day: String = sqlx::query_scalar("SELECT (clock_timestamp() AT TIME ZONE 'UTC')::date::text").fetch_one(&mut *tx).await.map_err(map_error)?;
                 if let Some((budget, quote)) = money {
                     crate::reply_money::reserve(&mut tx, owner, (conversation, request), &day, &money_configuration, budget, quote).await?;
@@ -349,7 +357,7 @@ impl BudgetedReplyStore for PostgresStore {
             conversation,
             request,
             revision,
-            (configuration, Some(planner)),
+            (configuration, Some(planner), false),
         )
     }
     fn finish_budgeted_reply(

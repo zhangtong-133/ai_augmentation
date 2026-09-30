@@ -13,6 +13,8 @@
 
 导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[测试回复页面](docs/design/sprint-3-reply-ui.md)支持显式请求、历史、轮询与取消；执行默认关闭，仅可启用内置夹具，不调用真实模型。不自动调用工具，也无定时任务。下一步见 [路线图](docs/ROADMAP.md)。
 
+显式回复默认关闭，支持本地夹具和管理员配置的固定模型付费模式；使用前需设置价格有效期及额度，用户在页面确认金额。配置、账本和停用操作见 [付费回复部署设计](docs/design/sprint-3-paid-replies.md)。
+
 ## 快速开始
 
 需要 Rust 1.96+、Node.js 20.9+、npm 和可用的 Docker / Compose。macOS 的 PDF 提取使用 Linux API 容器；浏览器验收使用无头 Chromium，不占用前台。详见 [环境说明](docs/ENVIRONMENT.md)。
