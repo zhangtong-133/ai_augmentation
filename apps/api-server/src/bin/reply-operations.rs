@@ -142,10 +142,11 @@ fn parse(args: &[String]) -> Result<Command, &'static str> {
 
 fn ledger(options: &[&str]) -> Result<Command, &'static str> {
     let (mut user, mut day, mut currency, mut after) = (None, None, None, None);
-    if !options.len().is_multiple_of(2) {
+    let (pairs, remainder) = options.as_chunks::<2>();
+    if !remainder.is_empty() {
         return Err(USAGE);
     }
-    for option in options.chunks_exact(2) {
+    for option in pairs {
         let target = match option[0] {
             "--user" => &mut user,
             "--day" => &mut day,
