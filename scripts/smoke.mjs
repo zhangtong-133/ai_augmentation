@@ -171,6 +171,10 @@ try {
   catch { binary = "docker-compose"; prefix = []; }
   console.log(`Smoke project: ${project}`);
   started = true;
+  if (process.argv.includes("--objects")) {
+    console.log("Building pinned MinIO/mc sources and checking public base image access");
+    await compose(["build", "--pull", "minio", "minio-init"]);
+  }
   await compose(["up", "-d", "postgres", "redis"]);
   const database = (await endpoint("postgres", 5432)).replace("http://", "");
   await compose(["exec", "-T", "postgres", "sh", "-c",

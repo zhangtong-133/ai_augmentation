@@ -43,13 +43,13 @@
 
 `make infra-up` / `make stack-up` 的 `minio-init` 使用管理凭据幂等创建桶，默认不授予匿名权限；启动 API 等待初始化成功。已有桶的权限策略保持不变。示例应用凭据与本地 MinIO 管理凭据一致；自行配置专用应用凭据时需事先创建并授权该桶。外部 S3 桶需要事先由管理员准备，适配器不自动创建桶。
 
-MinIO 镜像采用官方 Quay 仓库相同固定版本，原因是本轮验收中原 Docker Hub 引用拉取失败。出处：[官方容器部署说明](https://github.com/minio/minio/blob/master/docs/docker/README.md)、[mc 官方镜像构建脚本](https://github.com/minio/mc/blob/master/docker-buildx.sh)。适配器配置参考 [AmazonS3Builder 文档](https://docs.rs/object_store/0.12.5/object_store/aws/struct.AmazonS3Builder.html)。
+MinIO / mc 由 `infra/minio/Dockerfile` 从官方固定源码构建，分别保留 `RELEASE.2025-04-22T22-12-26Z`（提交 `0d7408fc9969caf07de6a8c3a84f9fbb10a6739e`）和 `RELEASE.2025-04-16T18-13-26Z`（提交 `b00526b153a31b36767991a4f5ce2cced435ee8e`）。使用 Go 1.24.2、固定模块版本与 Go checksum database 校验，运行镜像携带 CA 证书及上游许可证。普通 Compose 和对象验收使用同一构建定义。此调整解决 2026-09-30 CI 的 Quay 匿名拉取 `401 Unauthorized`；Docker Hub 的旧来源同样不可用，本地缓存不能证明新机器仍可拉取。出处：[官方源码分发说明](https://github.com/minio/minio#source-only-distribution)、[MinIO 固定发布源码](https://github.com/minio/minio/tree/RELEASE.2025-04-22T22-12-26Z)、[mc 固定发布源码](https://github.com/minio/mc/tree/RELEASE.2025-04-16T18-13-26Z)。适配器配置参考 [AmazonS3Builder 文档](https://docs.rs/object_store/0.12.5/object_store/aws/struct.AmazonS3Builder.html)。
 
 ## 验收
 
 `make check` 覆盖适配器键名/endpoint 校验、配置启用规则及现有工作区测试。`make test-postgres` 验证追加迁移与旧存储模式。
 
-新增 `make smoke-objects`：随机命名的独立 Compose 项目、随机凭据、回环随机端口和专用卷，完成后只清理本次资源。先运行真实 PostgreSQL 集成测试，再创建私有 MinIO 桶并运行 `tests/objects.rs`，覆盖三种格式的字节级读取、旧数据兼容、元数据不再内联 PDF/HTML、重复导入不上传、用户隔离先于对象读取、同一内容跨用户独立保存、缺失对象返回不可用、未配置对象存储时的行为，以及缺失桶和注入上传失败后的回滚与重试。随后运行启用 MinIO 的双入口 HTTP 验收，并重启 MinIO/PostgreSQL/API 检查持久化。
+新增 `make smoke-objects`：随机命名的独立 Compose 项目、随机凭据、回环随机端口和专用卷，完成后只清理本次资源。先显式构建 MinIO / mc 并检查公开基础镜像拉取，再运行真实 PostgreSQL 集成测试、创建私有 MinIO 桶并运行 `tests/objects.rs`，覆盖三种格式的字节级读取、旧数据兼容、元数据不再内联 PDF/HTML、重复导入不上传、用户隔离先于对象读取、同一内容跨用户独立保存、缺失对象返回不可用、未配置对象存储时的行为，以及缺失桶和注入上传失败后的回滚与重试。随后运行启用 MinIO 的双入口 HTTP 验收，并重启 MinIO/PostgreSQL/API 检查持久化。
 
 Embedding、Qdrant、RAG、历史原文迁移和孤立对象清理留在后续步骤。
 
@@ -60,3 +60,10 @@ Embedding、Qdrant、RAG、历史原文迁移和孤立对象清理留在后续�
 - `make compose-config`、验收脚本语法检查与 `git diff --check` 通过。
 - `make smoke-objects` 通过：2 个真实 PostgreSQL 测试、1 个包含全部原文场景的真实 MinIO/PostgreSQL 测试，以及 Web/Nginx 双入口 HTTP、CSRF、去重、隔离、统计、重启持久化和退出会话验收。
 - 本轮未运行 Playwright 浏览器验收或真实公网网页抓取；页面交互未变。三种原文格式均在存储集成测试中验证，HTTP 重启场景使用 Markdown。
+
+### CI 镜像修复验收（2026-09-30）
+
+- MinIO / mc 固定源码首次构建成功，运行时版本和提交均与原来发布版本一致。
+- `make smoke-objects` 通过：25 个 PostgreSQL、8 个回复执行器、3 个付费回复 HTTP、4 个 Redis、1 个包含全部原文场景的 MinIO/PostgreSQL 集成测试，以及双入口 HTTP、存储故障恢复和重启持久化验收；本次容器、网络和数据卷已清理。
+- `make check`、前端 lint/typecheck/production build、`make compose-config` 和脚本语法检查通过。
+- 本地本轮未重新运行 Playwright 或真实公网抓取；页面和应用逻辑未修改。

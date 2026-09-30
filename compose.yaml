@@ -178,7 +178,9 @@ services:
       - personal-ai
 
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z
+    build:
+      context: ./infra/minio
+      target: minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -193,7 +195,9 @@ services:
       - personal-ai
 
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z
+    build:
+      context: ./infra/minio
+      target: mc
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
