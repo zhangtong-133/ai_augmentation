@@ -30,6 +30,7 @@
 - [回复预算领取与持久化配置停用](design/sprint-3-reply-dispatch.md)
 - [预算回复供应商执行器](design/sprint-3-reply-executor.md)
 - [显式付费回复部署与金额确认](design/sprint-3-paid-replies.md)
+- [回复配置与金额账本运维](design/sprint-3-reply-operations.md)：只读配置查询、显式停用、用户日账本核对及分页明细。
 
 - [Sprint 3：工具、记忆与调度](design/sprint-3-tools-memory-scheduler.md)：工具、记忆、对话/消息，以及后续页面、调度与 MCP 边界。
 

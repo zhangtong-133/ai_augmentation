@@ -8,6 +8,7 @@ mod originals;
 mod replies;
 mod reply_dispatch;
 mod reply_money;
+mod reply_operations;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{BoxFuture, MetadataStore, StorageError, StorageResult};
@@ -36,16 +37,25 @@ impl PostgresStore {
     /// # Errors
     /// 数据库不可用或迁移失败时，返回不暴露内部细节的错误。
     pub async fn connect(url: &str) -> StorageResult<Self> {
+        let store = Self::connect_existing(url).await?;
+        sqlx::migrate!("./migrations")
+            .run(&store.pool)
+            .await
+            .map_err(|_| StorageError::Unavailable("migration failed".into()))?;
+        Ok(store)
+    }
+
+    /// 连接已初始化数据库，不执行迁移；供管理员查询及显式操作使用。
+    ///
+    /// # Errors
+    /// 数据库不可用时返回不包含连接 URL 或凭据的错误。
+    pub async fn connect_existing(url: &str) -> StorageResult<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(Duration::from_secs(5))
             .connect(url)
             .await
             .map_err(map_error)?;
-        sqlx::migrate!("./migrations")
-            .run(&pool)
-            .await
-            .map_err(|_| StorageError::Unavailable("migration failed".into()))?;
         Ok(Self {
             pool,
             objects: None,

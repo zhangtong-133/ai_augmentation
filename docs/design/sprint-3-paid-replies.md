@@ -32,14 +32,11 @@
 
 供应商模型/服务等级/usage 契约异常会停用当前实例及数据库配置，错误日志带配置版本，便于关联账单核对。停用持久化失败时本实例停止接受新请求和发送，后续 tick 重试写入。其他实例只有在数据库停用成功后才能观察到该状态。
 
-管理员也可在数据库执行以下操作，使用 psql 变量绑定避免把版本直接拼入 SQL：
+管理员可使用[回复运维命令](sprint-3-reply-operations.md)查询配置与账本。停用默认预览，明确添加 `--apply` 才写入：
 
 ```bash
-psql "$DATABASE_URL" -v revision="$REPLY_CONFIGURATION_REVISION" <<'SQL'
-UPDATE reply_configurations
-SET disabled_at = COALESCE(disabled_at, clock_timestamp())
-WHERE revision = :'revision';
-SQL
+cargo run -p api-server --bin reply-operations -- disable "$REPLY_CONFIGURATION_REVISION"
+cargo run -p api-server --bin reply-operations -- disable "$REPLY_CONFIGURATION_REVISION" --apply
 ```
 
 配置停用或过期后，新请求的事务预留和领取均拒绝，页面禁用新请求按钮。已有 queued 请求可显式取消以退回次数/金额；派发后的取消或未知结果保留全额。停用不能撤回已经发出的网络请求。若服务重启时原配置已失效，可设置 `CONVERSATION_REPLY_MODE=disabled` 启动并管理历史；核对价格和账单后，以新的配置版本重新启用。

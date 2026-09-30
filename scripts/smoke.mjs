@@ -222,6 +222,14 @@ try {
   }
   const owner = await account(api, "owner@smoke.example");
   const other = await account(api, "other@smoke.example");
+  const configurations = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "configurations"], true));
+  assert.ok(Array.isArray(configurations.items));
+  const audit = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "ledger",
+    "--user", owner.id, "--day", new Date().toISOString().slice(0, 10), "--currency", "USD"], true));
+  assert.equal(audit.consistent, true);
+  assert.equal(audit.counts.requests, 0);
+  assert.equal(audit.totals.expected_occupied_micro, "0");
+  console.log("PASS: packaged reply operations configuration queries and owner-scoped ledger audit");
   const cookie = await login(web, owner);
   const otherCookie = await login(gateway, other);
   await request(web, "/api/overview", 401);

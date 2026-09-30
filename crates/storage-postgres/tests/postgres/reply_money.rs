@@ -490,3 +490,6 @@ async fn monetary_invalid_configuration_and_foreign_access_leave_no_ledger() {
 
 #[path = "reply_dispatch.rs"]
 mod dispatch;
+
+#[path = "reply_operations.rs"]
+mod operations;

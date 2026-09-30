@@ -8,7 +8,9 @@ COPY apps ./apps
 COPY crates ./crates
 
 ARG APP
-RUN cargo build --locked --release --package "$APP"
+RUN cargo build --locked --release --package "$APP" \
+    && mkdir /workspace/admin-bin \
+    && if [ "$APP" = "api-server" ]; then cp /workspace/target/release/reply-operations /workspace/admin-bin/; fi
 
 FROM debian:bookworm-slim AS runtime
 ARG APP
@@ -21,5 +23,6 @@ RUN export http_proxy="${HTTP_PROXY:-}" https_proxy="${HTTPS_PROXY:-}" no_proxy=
     && rm -rf /var/lib/apt/lists/*
 RUN useradd --create-home --uid 10001 app
 COPY --from=builder "/workspace/target/release/$APP" "/usr/local/bin/$APP"
+COPY --from=builder /workspace/admin-bin/ /usr/local/bin/
 USER app
 ENTRYPOINT ["/bin/sh", "-c", "exec /usr/local/bin/$APP_BINARY"]

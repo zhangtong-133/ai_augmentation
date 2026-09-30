@@ -23,9 +23,10 @@ test-postgres: ## 使用 TEST_DATABASE_URL 运行 PostgreSQL 集成测试
 	cargo test -p personal-ai-storage-postgres --test postgres -- --ignored
 
 .PHONY: test-replies
-test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器与金额 HTTP 路由
+test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金额 HTTP 与运维命令
 	cargo test -p api-server --test replies -- --ignored
 	cargo test -p api-server --lib paid_tests -- --ignored
+	cargo test -p api-server --test reply_operations -- --ignored
 
 .PHONY: test-redis
 test-redis: ## 使用一次性 TEST_REDIS_URL 验证短期记忆隔离、配额与 TTL
