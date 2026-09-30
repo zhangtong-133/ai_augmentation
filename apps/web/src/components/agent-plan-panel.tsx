@@ -234,7 +234,7 @@ export function AgentPlanPanel({ conversation, revision, disabled, onLock }: {
           void send({ kind: "approve", requestId: confirmation.plan.request_id, body: { plan_digest: confirmation.plan.digest, accepted_call_limit: confirmation.plan.tool_call_limit, acknowledge_embedding_cost: true } });
         }}>确认费用并授权执行</button>
       </> : <>
-        <p>取消会清除计划中已保存的结果并阻止后续步骤。已派发的调用可能继续计费，已登记次数不会退还。</p>
+        <p>取消会清除未完成计划的已保存结果并阻止后续步骤。若计划在确认期间已完成、失败或因版本变化停止，则保留原状态和结果。已派发的调用可能继续计费，已登记次数不会退还。</p>
         <button disabled={disabled || busy || !!pending} onClick={() => void send({ kind: "cancel", requestId: confirmation.plan.request_id })}>确认取消此计划</button>
       </>}
       <button onClick={() => setConfirmation(null)}>返回计划列表</button>
