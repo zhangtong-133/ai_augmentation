@@ -91,8 +91,26 @@ pub(super) async fn settle(
     before_dispatch: bool,
     usage: Option<ReplyUsage>,
 ) -> StorageResult<()> {
-    let Some(row) = sqlx::query("SELECT day::text AS day,currency,budget::text AS budget,reserved FROM reply_money_reservations WHERE user_id=$1 AND conversation_id=$2 AND request_id=$3 AND charged IS NULL FOR UPDATE")
-        .bind(owner).bind(conversation).bind(request).fetch_optional(&mut *tx).await.map_err(map_error)? else { return Ok(()); };
+    settle_kind(
+        tx,
+        (owner, conversation, request),
+        "reply",
+        before_dispatch,
+        usage,
+    )
+    .await
+}
+
+pub(super) async fn settle_kind(
+    tx: &mut PgConnection,
+    ids: (Uuid, Uuid, Uuid),
+    kind: &str,
+    before_dispatch: bool,
+    usage: Option<ReplyUsage>,
+) -> StorageResult<()> {
+    let (owner, conversation, request) = ids;
+    let Some(row) = sqlx::query("SELECT day::text AS day,currency,budget::text AS budget,reserved FROM reply_money_reservations WHERE user_id=$1 AND conversation_id=$2 AND request_id=$3 AND request_kind=$4 AND charged IS NULL FOR UPDATE")
+        .bind(owner).bind(conversation).bind(request).bind(kind).fetch_optional(&mut *tx).await.map_err(map_error)? else { return Ok(()); };
     let budget: ReplyBudget = serde_json::from_str(row.get("budget"))
         .map_err(|_| StorageError::Unavailable("invalid stored reply budget".into()))?;
     let quote = quote(&budget)?;
@@ -137,7 +155,7 @@ pub(super) async fn delete_conversation(
     owner: Uuid,
     conversation: Uuid,
 ) -> StorageResult<()> {
-    let rows = sqlx::query("SELECT r.request_id,r.status FROM conversation_replies r JOIN reply_money_reservations b USING(conversation_id,request_id) WHERE b.user_id=$1 AND r.conversation_id=$2 AND b.charged IS NULL")
+    let rows = sqlx::query("SELECT r.request_id,r.status FROM conversation_replies r JOIN reply_money_reservations b USING(conversation_id,request_id) WHERE b.user_id=$1 AND r.conversation_id=$2 AND b.request_kind='reply' AND b.charged IS NULL")
         .bind(owner).bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
     for row in rows {
         settle(

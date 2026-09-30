@@ -41,6 +41,7 @@ pub struct ReplyLedgerTotals {
 
 #[derive(Debug, serde::Serialize)]
 pub struct ReplyAuditReceipt {
+    pub request_kind: String,
     pub conversation_id: String,
     pub request_id: String,
     pub model: String,

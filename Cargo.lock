@@ -1521,6 +1521,7 @@ dependencies = [
  "personal-ai-storage",
  "personal-ai-storage-s3",
  "personal-ai-tools",
+ "serde",
  "serde_json",
  "sqlx",
  "tokio",

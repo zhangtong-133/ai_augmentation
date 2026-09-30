@@ -73,7 +73,7 @@ impl ReplyDispatchStore for PostgresStore {
             let mut tx = self.pool.begin().await.map_err(map_error)?;
             sqlx::query("SELECT id FROM conversations WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL FOR SHARE")
                 .bind(owner).bind(conversation).fetch_one(&mut *tx).await.map_err(map_error)?;
-            let rows = sqlx::query("SELECT request_id,currency,reserved,charged,settlement FROM reply_money_reservations WHERE user_id=$1 AND conversation_id=$2")
+            let rows = sqlx::query("SELECT request_id,currency,reserved,charged,settlement FROM reply_money_reservations WHERE request_kind='reply' AND user_id=$1 AND conversation_id=$2")
                 .bind(owner).bind(conversation).fetch_all(&mut *tx).await.map_err(map_error)?;
             tx.commit().await.map_err(map_error)?;
             Ok(rows
@@ -95,7 +95,7 @@ impl ReplyDispatchStore for PostgresStore {
     ) -> BoxFuture<'_, StorageResult<Vec<PendingReply>>> {
         let configuration = configuration.clone();
         Box::pin(async move {
-            let rows = sqlx::query("SELECT c.user_id,r.conversation_id,r.request_id,r.status FROM conversation_replies r JOIN conversations c ON c.id=r.conversation_id JOIN reply_money_reservations b ON b.conversation_id=r.conversation_id AND b.request_id=r.request_id AND b.user_id=c.user_id WHERE c.deleted_at IS NULL AND b.model=$1 AND b.configuration_revision=$2 AND b.charged IS NULL AND (r.status='queued' OR (r.status='dispatching' AND r.dispatched_at+interval '120 seconds' <= clock_timestamp())) ORDER BY (r.status='dispatching') DESC,r.created_at,r.conversation_id,r.request_id LIMIT 20")
+            let rows = sqlx::query("SELECT c.user_id,r.conversation_id,r.request_id,r.status FROM conversation_replies r JOIN conversations c ON c.id=r.conversation_id JOIN reply_money_reservations b ON b.conversation_id=r.conversation_id AND b.request_id=r.request_id AND b.user_id=c.user_id WHERE c.deleted_at IS NULL AND b.model=$1 AND b.configuration_revision=$2 AND b.request_kind='reply' AND b.charged IS NULL AND (r.status='queued' OR (r.status='dispatching' AND r.dispatched_at+interval '120 seconds' <= clock_timestamp())) ORDER BY (r.status='dispatching') DESC,r.created_at,r.conversation_id,r.request_id LIMIT 20")
                 .bind(configuration.model).bind(configuration.revision).fetch_all(&self.pool).await.map_err(map_error)?;
             Ok(rows
                 .iter()
@@ -208,7 +208,7 @@ impl ReplyDispatchStore for PostgresStore {
                 ));
             }
             let context = reply.context.as_ref().ok_or_else(conflict)?;
-            let row = sqlx::query("SELECT model,configuration_revision,budget::text AS budget,reserved FROM reply_money_reservations WHERE user_id=$1 AND conversation_id=$2 AND request_id=$3 AND charged IS NULL FOR UPDATE")
+            let row = sqlx::query("SELECT model,configuration_revision,budget::text AS budget,reserved FROM reply_money_reservations WHERE request_kind='reply' AND user_id=$1 AND conversation_id=$2 AND request_id=$3 AND charged IS NULL FOR UPDATE")
                 .bind(owner).bind(conversation).bind(request).fetch_optional(&mut *tx).await.map_err(map_error)?.ok_or_else(conflict)?;
             let budget: ReplyBudget = serde_json::from_str(row.get("budget"))
                 .map_err(|_| StorageError::Unavailable("invalid stored reply budget".into()))?;

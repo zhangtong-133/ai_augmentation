@@ -18,13 +18,15 @@ cargo run -p api-server --bin reply-operations -- ledger \
   --user "$REPLY_AUDIT_USER_ID" --day 2026-09-30 --currency USD
 ```
 
-部署栈中可使用 `./scripts/compose.sh exec -T api-server reply-operations`，后续参数与上述一致。查询和预览支持只读数据库账号：需对 `users`、`conversations`、`conversation_replies`、`reply_configurations`、`reply_money_daily`、`reply_money_reservations` 有 SELECT 权限；配置查询只需对应配置表权限。执行停用另需对 `reply_configurations` 的 UPDATE 权限。命令没有重新启用、覆盖配置或修改金额端口。
+部署栈中可使用 `./scripts/compose.sh exec -T api-server reply-operations`，后续参数与上述一致。查询和预览支持只读数据库账号：需对 `users`、`conversations`、`conversation_replies`、`reply_configurations`、`reply_money_daily`、`reply_money_reservations` 有 SELECT 权限；接入模型规划后，还需对 `model_planning_requests` 的 `user_id`、`conversation_id`、`request_id`、`status` 列授予 SELECT，不需读取冻结快照。配置查询只需对应配置表权限。执行停用另需对 `reply_configurations` 的 UPDATE 权限。命令没有重新启用、覆盖配置或修改金额端口。
 
 配置结果包含版本、固定模型、币种、价格/计数版本、价格、token 上界、单次/日限额、创建/停用时间及数据库时钟下的有效性。失效或停用版本仍可查询。新价格或有效期继续使用新版本登记，沿用[不可变配置协议](sprint-3-reply-dispatch.md)。停用阻止新的预留和领取，不能撤回已发出的网络请求；queued 请求仍按已有取消协议退款。
 
 ## 日账本核对
 
 `ledger` 必须显式指定用户、日期和币种，按同一用户 UTC 日核对所有配置的金额记录。无金额夹具请求不计入。明细包含请求/对话 ID、模型/配置版本、预留额、结算额、原因和时间，以及对话删除状态；不读取或返回消息、回复正文、标题、邮箱或密钥。对话及墓碑删除后仍保留金额凭据；用户删除继续级联清理。
+
+接入[模型规划仓储](sprint-3-model-planning-store.md)后，同币种日账本包含付费回复和模型规划。明细新增 `request_kind`（`reply` / `model_planning`），`reply_status` 字段沿用原名并返回对应类型的请求状态；汇总覆盖两类独立凭据。
 
 每次查询在 PostgreSQL `REPEATABLE READ, READ ONLY` 事务中读取日账本、全量汇总及当前页明细，单条语句时限 30 秒。使用数据库 numeric 聚合，累计预留与退款可以超过 i64；所有金额、价格和时间都输出精确十进制字符串。单位为微币种，USD 时 1 美元 = 1,000,000 微美元。
 

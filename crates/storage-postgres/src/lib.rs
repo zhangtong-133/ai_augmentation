@@ -5,6 +5,7 @@ mod documents;
 mod index_jobs;
 mod long_memory;
 mod messages;
+mod model_planning;
 mod originals;
 mod replies;
 mod reply_dispatch;

@@ -15,7 +15,7 @@
 
 显式回复支持本地夹具和管理员配置的固定模型付费模式；使用前需设置价格有效期及额度，用户在页面确认金额。配置见 [付费回复部署设计](docs/design/sprint-3-paid-replies.md)；管理员可使用 [reply-operations](docs/design/sprint-3-reply-operations.md)查询配置、显式停用及核对用户日账本。
 
-已提供[模型 Agent 纯规划与两阶段费用授权](docs/design/sprint-3-model-agent-budget.md)：严格校验只读检索建议，分别确认规划、检索与回答的金额及次数。当前为纯领域模块，模型请求仓储和执行入口尚待接入。
+已提供[模型 Agent 纯规划与两阶段费用授权](docs/design/sprint-3-model-agent-budget.md)：严格校验只读检索建议，分别确认规划、检索与回答的金额及次数。已落地[第一阶段请求仓储与事务预算](docs/design/sprint-3-model-planning-store.md)，支持精确批准、一次性领取、结算和取消；第二阶段仓储及模型执行入口尚待接入。
 
 ## 快速开始
 
@@ -79,6 +79,7 @@ npm --prefix apps/web run build
 | `make smoke-objects` | 加测真实 MinIO、原文迁移与清理 |
 | `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答和 Agent 计划双入口授权/重启查重 |
 | `TEST_DATABASE_URL=… make test-agent` | 一次性 PostgreSQL 验证计划授权、事务预算、取消和故障边界 |
+| `TEST_DATABASE_URL=… make test-model-agent` | 一次性 PostgreSQL 验证模型规划阶段事务金额/次数、领取、取消及查重 |
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |

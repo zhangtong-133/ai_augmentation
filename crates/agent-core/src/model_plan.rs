@@ -42,38 +42,9 @@ pub struct AgentRequestIdentity {
     pub request_id: String,
 }
 
-/// 完整请求的费用上界，包含 schema/封装开销和所有计费输出。
-/// 本模块无法证明供应商契约；适配器必须先验证固定模型和硬上限。
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub struct ModelCallBudget {
-    pub configuration_version: String,
-    pub provider: String,
-    pub model: String,
-    pub price_version: String,
-    pub counter_version: String,
-    pub currency: String,
-    pub input_price_per_million: u64,
-    pub output_price_per_million: u64,
-    pub input_token_bound: u64,
-    pub output_token_bound: u64,
-    pub valid_until_unix_ms: i64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-pub struct AgentCallCounts {
-    pub chat: u32,
-    pub embedding: u32,
-    pub tool: u32,
-}
-
-/// 阶段金额上限与同币种用户 UTC 日额度；由部署端提供。
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-pub struct AgentBudgetLimits {
-    pub phase_amount: i64,
-    pub daily_amount: i64,
-    pub daily_model_calls: u32,
-    pub daily_tool_calls: u32,
-}
+pub use personal_ai_storage::model_agents::{
+    AgentBudgetLimits, AgentCallCounts, AgentQuoteApproval, ModelCallBudget,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct QuoteWindow {
@@ -87,15 +58,6 @@ pub struct AgentBudgetUsage {
     /// 聊天及向量化的未派发预留 + 已登记尝试；失败/未知不能退还尝试。
     pub model_calls: u32,
     pub tool_calls: u32,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AgentQuoteApproval {
-    pub digest: String,
-    pub accepted_currency: String,
-    pub accepted_amount: i64,
-    pub accepted_calls: AgentCallCounts,
-    pub acknowledge_cost: bool,
 }
 
 /// 不可变的纯报价；审核成功也不能代替数据库事务预留及一次性领取。
@@ -373,6 +335,44 @@ struct QuoteDefinition<'a> {
     window: QuoteWindow,
 }
 
+fn validate_parameters(
+    limits: AgentBudgetLimits,
+    window: QuoteWindow,
+) -> Result<(), ModelPlanError> {
+    if window.now_unix_ms < 0
+        || window.expires_at_unix_ms <= window.now_unix_ms
+        || window.expires_at_unix_ms - window.now_unix_ms > MAX_QUOTE_LIFETIME_MS
+    {
+        return Err(ModelPlanError::InvalidWindow);
+    }
+    if limits.phase_amount <= 0
+        || limits.daily_amount <= 0
+        || limits.daily_model_calls == 0
+        || limits.daily_tool_calls == 0
+        || limits.daily_model_calls > i32::MAX as u32
+        || limits.daily_tool_calls > i32::MAX as u32
+    {
+        return Err(ModelPlanError::InvalidBudget);
+    }
+    Ok(())
+}
+
+/// 登记固定规划配置前验证费用和有效期，不读取上下文或访问供应商。
+/// # Errors
+/// 拒绝无效配置/报价窗口、错误输出硬上限及阶段/日额度不足。
+pub fn quote_model_planning_budget(
+    budget: &ModelCallBudget,
+    limits: AgentBudgetLimits,
+    window: QuoteWindow,
+) -> Result<CostReservation, ModelPlanError> {
+    validate_parameters(limits, window)?;
+    let reservation = quote_call(budget, MAX_PLANNING_OUTPUT_TOKENS, limits, window)?;
+    reservation
+        .reserve_against(0, limits.daily_amount)
+        .map_err(ModelPlanError::Cost)?;
+    Ok(reservation)
+}
+
 fn quote(input: &QuoteDefinition<'_>) -> Result<AgentQuote, ModelPlanError> {
     if !valid_id(input.identity.owner.as_str())
         || !valid_id(input.identity.conversation.as_str())
@@ -380,19 +380,7 @@ fn quote(input: &QuoteDefinition<'_>) -> Result<AgentQuote, ModelPlanError> {
     {
         return Err(ModelPlanError::InvalidIdentity);
     }
-    if input.window.now_unix_ms < 0
-        || input.window.expires_at_unix_ms <= input.window.now_unix_ms
-        || input.window.expires_at_unix_ms - input.window.now_unix_ms > MAX_QUOTE_LIFETIME_MS
-    {
-        return Err(ModelPlanError::InvalidWindow);
-    }
-    if input.limits.phase_amount <= 0
-        || input.limits.daily_amount <= 0
-        || input.limits.daily_model_calls == 0
-        || input.limits.daily_tool_calls == 0
-    {
-        return Err(ModelPlanError::InvalidBudget);
-    }
+    validate_parameters(input.limits, input.window)?;
     if input.amount > input.limits.phase_amount {
         return Err(ModelPlanError::Cost(BudgetError::RequestLimitExceeded));
     }

@@ -6,6 +6,7 @@ pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;
 pub mod messages;
+pub mod model_agents;
 pub mod replies;
 pub mod reply_budgets;
 pub mod reply_operations;

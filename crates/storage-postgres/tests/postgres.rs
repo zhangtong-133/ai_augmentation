@@ -6,6 +6,8 @@ use uuid::Uuid;
 mod agent_plans;
 #[path = "postgres/messages.rs"]
 mod messages;
+#[path = "postgres/model_planning.rs"]
+mod model_planning;
 #[path = "postgres/replies.rs"]
 mod replies;
 #[path = "postgres/tool_calls.rs"]
