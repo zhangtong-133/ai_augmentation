@@ -7,6 +7,7 @@ mod long_memory;
 mod messages;
 mod model_evidence;
 mod model_execution;
+mod model_operations;
 mod model_planning;
 mod originals;
 mod replies;

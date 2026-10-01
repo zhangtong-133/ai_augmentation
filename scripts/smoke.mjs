@@ -230,6 +230,13 @@ try {
   const persistedAgentPlans = [];
   const configurations = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "configurations"], true));
   assert.ok(Array.isArray(configurations.items));
+  for (const stage of ["planning", "execution"]) {
+    const modelConfigs = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "configurations", stage], true));
+    assert.ok(Array.isArray(modelConfigs.items));
+  }
+  const modelAudit = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "ledger",
+    "--user", owner.id, "--day", new Date().toISOString().slice(0, 10), "--currency", "USD"], true));
+  assert.equal(modelAudit.consistent, true);
   const audit = JSON.parse(await compose(["exec", "-T", "api-server", "reply-operations", "ledger",
     "--user", owner.id, "--day", new Date().toISOString().slice(0, 10), "--currency", "USD"], true));
   assert.equal(audit.consistent, true);

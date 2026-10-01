@@ -30,6 +30,7 @@
 - [回复预算领取与持久化配置停用](design/sprint-3-reply-dispatch.md)
 - [预算回复供应商执行器](design/sprint-3-reply-executor.md)
 - [显式付费回复部署与金额确认](design/sprint-3-paid-replies.md)
+- [模型 Agent 配置与账本运维](design/sprint-3-model-agent-operations.md)：分阶段配置查询、显式停用与共享金额核对。
 - [回复配置与金额账本运维](design/sprint-3-reply-operations.md)：只读配置查询、显式停用、用户日账本核对及分页明细。
 - [受限 Agent 计划与用户授权](design/sprint-3-agent-plans.md)：固定只读步骤、精确授权、每计划上限、取消与一次性派发。
 - [Agent 检索计划页面](design/sprint-3-agent-plan-ui.md)：固定预览、费用确认、执行结果、取消及原请求恢复。

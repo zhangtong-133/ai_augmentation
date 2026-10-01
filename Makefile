@@ -45,6 +45,7 @@ test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金�
 	cargo test -p api-server --test replies -- --ignored
 	cargo test -p api-server --lib paid_tests -- --ignored
 	cargo test -p api-server --test reply_operations -- --ignored
+	cargo test -p api-server --test model_operations -- --ignored
 
 .PHONY: test-redis
 test-redis: ## 使用一次性 TEST_REDIS_URL 验证短期记忆隔离、配额与 TTL
