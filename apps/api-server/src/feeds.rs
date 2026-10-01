@@ -14,13 +14,17 @@ use personal_ai_agent_core::feeds::{FeedExecutionError, FeedExecutor};
 use personal_ai_feeds::transport::FeedTransport;
 use personal_ai_storage::{
     StorageError,
+    briefs::BriefStore,
     feeds::{FeedStore, SubscriptionInput},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+mod briefs;
+
 pub struct FeedRuntime {
+    briefs: Arc<dyn BriefStore>,
     store: Arc<dyn FeedStore>,
     executor: Option<FeedExecutor>,
 }
@@ -28,7 +32,9 @@ impl FeedRuntime {
     /// 默认只提供管理/预览；public 模式才允许确认后执行公网 GET。
     /// # Errors
     /// 未知 `RSS_COLLECTION_MODE` 导致启动失败，不隐式启用。
-    pub fn from_env(store: Arc<dyn FeedStore>) -> Result<Arc<Self>, String> {
+    pub fn from_env<S: FeedStore + BriefStore + 'static>(
+        store: Arc<S>,
+    ) -> Result<Arc<Self>, String> {
         let enabled = mode(std::env::var("RSS_COLLECTION_MODE").ok().as_deref())?;
         let transport = enabled.then(|| {
             Arc::new(personal_ai_feed_http::PublicFeedTransport) as Arc<dyn FeedTransport>
@@ -37,9 +43,16 @@ impl FeedRuntime {
     }
     /// 仅应用装配和测试使用，传输实现不由 HTTP 输入选择。
     #[must_use]
-    pub fn new(store: Arc<dyn FeedStore>, transport: Option<Arc<dyn FeedTransport>>) -> Self {
+    pub fn new<S: FeedStore + BriefStore + 'static>(
+        store: Arc<S>,
+        transport: Option<Arc<dyn FeedTransport>>,
+    ) -> Self {
         let executor = transport.map(|transport| FeedExecutor::new(store.clone(), transport));
-        Self { store, executor }
+        Self {
+            briefs: store.clone(),
+            store,
+            executor,
+        }
     }
 }
 fn mode(value: Option<&str>) -> Result<bool, String> {
@@ -51,6 +64,7 @@ fn mode(value: Option<&str>) -> Result<bool, String> {
 }
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .merge(briefs::routes())
         .route("/api/feeds/config", get(config))
         .route("/api/feed-subscriptions", get(subscriptions).post(create))
         .route(
@@ -164,7 +178,8 @@ fn output(value: &impl Serialize) -> Result<Response, ApiError> {
                 for (key, value) in fields {
                     if (key.ends_with("_unix_ms")
                         || key == "revision"
-                        || key == "subscription_revision")
+                        || key == "subscription_revision"
+                        || key == "preference_revision")
                         && value.is_number()
                     {
                         *value = Value::String(value.to_string());

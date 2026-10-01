@@ -461,3 +461,6 @@ async fn feed_http_unknown_results_are_queried_without_retry_and_recovery_is_exp
     assert_eq!(f.transport.calls.load(Ordering::SeqCst), 1);
     f.cleanup().await;
 }
+
+#[path = "feed_tests/briefs.rs"]
+mod briefs;

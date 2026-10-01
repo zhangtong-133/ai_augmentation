@@ -81,3 +81,5 @@
 - [Sprint 4：RSS 规则评分与 Daily Brief 纯规划](design/sprint-4-rss-brief-planning.md)：显式 UTC 窗口、关键词解释、稳定排名、保守去重与不可变摘要。
 
 - [Sprint 4：Daily Brief 偏好与不可变计划仓储](design/sprint-4-rss-brief-store.md)：偏好版本、幂等快照、事务额度、来源删除清理及历史分页。
+
+- [Sprint 4：Daily Brief HTTP 与页面](design/sprint-4-rss-brief-app.md)：会话/CSRF、显式生成、历史与删除、原请求核对及双入口验收。

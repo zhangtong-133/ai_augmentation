@@ -21,6 +21,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const feeds = (request.method === "GET" && /^(?:feeds\/config|feed-subscriptions(?:\/[a-f0-9-]{36}(?:\/entries)?)?|feed-collections(?:\/[a-f0-9-]{36}(?:\/audit)?)?)$/i.test(endpoint))
     || (request.method === "POST" && /^(?:feed-subscriptions(?:\/[a-f0-9-]{36}\/collections)?|feed-collections\/[a-f0-9-]{36}\/(?:confirm|cancel|recover))$/i.test(endpoint))
     || (["PUT", "DELETE"].includes(request.method) && /^feed-subscriptions\/[a-f0-9-]{36}$/i.test(endpoint));
+  const briefs = (["GET", "PUT"].includes(request.method) && endpoint === "feed-brief-preferences")
+    || (["GET", "POST"].includes(request.method) && endpoint === "feed-briefs")
+    || (["GET", "DELETE"].includes(request.method) && /^feed-briefs\/[a-f0-9-]{36}$/i.test(endpoint));
   const feedConfirmation = request.method === "POST" && /^feed-collections\/[a-f0-9-]{36}\/confirm$/i.test(endpoint);
   const mcpCredentials = (["GET", "POST"].includes(request.method) && endpoint === "mcp/credentials")
     || (request.method === "POST" && /^mcp\/credentials\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));
@@ -29,7 +32,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
   const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。

@@ -91,6 +91,7 @@ export function FeedPanel() {
       const result = await request<Collection | Subscription>(operation.path, c, operation);
       if (!alive.current || c.signal.aborted) return;
       setPending(null); setDeleting(null);
+      if (operation.kind === "delete") window.dispatchEvent(new Event("feed-sources-changed"));
       if (["preview", "confirm", "cancel", "recover"].includes(operation.kind)) { setSelected(result as Collection); setAudit([]); }
       else { setEditing(null); setName(""); setSource(""); setEnabled(true); setSelected(null); setAudit([]); setEntrySub(null); setEntries(empty()); }
       setNotice(operation.kind === "preview" ? "预览已保存，尚未请求来源。" : "操作已保存，请查看当前状态。");
@@ -162,7 +163,7 @@ export function FeedPanel() {
       <button disabled={locked} onClick={() => setDeleting(sub)}>删除订阅</button>
     </li>)}</ul>
     <div className="pagination"><button disabled={locked || !subPages.length} onClick={() => void run(c => load(c, subPages.slice(0, -1), historyPages))}>上一页订阅</button><button disabled={locked || !subscriptions.next_cursor} onClick={() => void run(c => load(c, [...subPages, subscriptions.next_cursor!], historyPages))}>下一页订阅</button></div>
-    {deleting && <div className="feedReview" aria-label="删除 RSS 订阅"><p>删除「{deleting.name}」及已保存条目？采集历史保留，已发送的请求无法撤回。</p><button disabled={locked} onClick={() => { const path = `/api/feed-subscriptions/${deleting.snapshot.subscription_id}`; void mutate({ kind: "delete", method: "DELETE", path, lookup: path, body: { revision: deleting.snapshot.revision } }); }}>确认删除订阅</button><button disabled={locked} onClick={() => setDeleting(null)}>保留订阅</button></div>}
+    {deleting && <div className="feedReview" aria-label="删除 RSS 订阅"><p>删除「{deleting.name}」及已保存条目？相关日报正文也会清除，采集历史保留，已发送的请求无法撤回。</p><button disabled={locked} onClick={() => { const path = `/api/feed-subscriptions/${deleting.snapshot.subscription_id}`; void mutate({ kind: "delete", method: "DELETE", path, lookup: path, body: { revision: deleting.snapshot.revision } }); }}>确认删除订阅</button><button disabled={locked} onClick={() => setDeleting(null)}>保留订阅</button></div>}
     {entrySub && <div className="feedReview" aria-label="RSS 条目"><h3>{entrySub.name} · 已保存条目</h3>{entryLoaded && entries.items.length === 0 && !busy && <p>暂无已保存条目。</p>}<ul>{entries.items.map(entry => <li key={entry.entry_key}><h4>{entry.title}</h4><p className="feedText">{entry.summary}</p>{entry.published_at && <p>{entry.published_at}</p>}{safeLink(entry.link) && <a href={safeLink(entry.link)} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">打开来源文章（离开本站）</a>}</li>)}</ul><div className="pagination"><button disabled={locked || !entryPages.length} onClick={() => readEntries(entrySub, entryPages.slice(0, -1))}>上一页条目</button><button disabled={locked || !entries.next_cursor} onClick={() => readEntries(entrySub, [...entryPages, entries.next_cursor!])}>下一页条目</button></div></div>}
     <h3>采集历史</h3>{ready && history.items.length === 0 && <p>暂无采集记录。</p>}
     <ul className="feedList">{history.items.map(item => <li key={item.plan.request_id}><p>{item.plan.source_url}</p><p>{statuses[item.status] ?? item.status}</p><button disabled={locked} onClick={() => inspect(`/api/feed-collections/${item.plan.request_id}`)}>审阅采集</button></li>)}</ul>
