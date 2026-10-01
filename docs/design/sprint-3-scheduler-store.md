@@ -1,6 +1,6 @@
 # Scheduler 第一阶段：一次性提醒授权与任务仓储
 
-本阶段实现内部 `ScheduleStore`、授权指纹和 PostgreSQL 持久化。首个任务类型固定为 `local-reminder-once-v1`：在指定 UTC 时间生成一条站内提醒，内容由用户提供，最多执行一次，模型、工具和外部通知费用为零。现已接入[默认关闭的后台领取、租约与提醒投递](sprint-3-scheduler-delivery.md)，HTTP 与页面尚待实现。
+本阶段实现内部 `ScheduleStore`、授权指纹和 PostgreSQL 持久化。首个任务类型固定为 `local-reminder-once-v1`：在指定 UTC 时间生成一条站内提醒，内容由用户提供，最多执行一次，模型、工具和外部通知费用为零。现已接入[默认关闭的后台领取、租约与提醒投递](sprint-3-scheduler-delivery.md)，已接入[HTTP 管理与提醒页面](sprint-3-scheduler-app.md)。
 
 未来模型/工具定时任务必须另设协议和逐次费用授权，不能复用当前零费用授权，也不能自动复用一次性 Agent 批准。Cron、重复执行、外部收件人、Webhook、shell 和模型生成任务不在当前接口内。
 

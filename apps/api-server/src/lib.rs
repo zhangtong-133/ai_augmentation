@@ -30,6 +30,8 @@ mod auth;
 mod conversations;
 mod documents;
 mod memories;
+mod schedules;
+pub use schedules::SchedulerStore;
 mod messages;
 mod paid_replies;
 mod replies;
@@ -75,6 +77,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub schedules: Option<Arc<dyn SchedulerStore>>,
     pub model_agents: Option<Arc<ModelAgentRuntime>>,
     pub agent_plans: Option<Arc<dyn personal_ai_storage::agent_plans::AgentPlanStore>>,
     pub tool_calls: Option<Arc<dyn personal_ai_storage::tool_calls::ToolCallStore>>,
@@ -105,6 +108,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/auth/me", get(auth::me))
         .merge(documents::routes())
         .merge(memories::routes())
+        .merge(schedules::routes())
         .merge(messages::routes())
         .merge(replies::routes())
         .merge(conversations::routes())

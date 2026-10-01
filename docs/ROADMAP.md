@@ -1,8 +1,10 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，已落地[检索证据保存与受限回答协议](design/sprint-3-model-evidence.md)，已提供[固定模型适配器与一次性执行器](design/sprint-3-model-agent-executor.md)，已接入[显式部署配置、两阶段 HTTP 授权与页面](design/sprint-3-model-agent-app.md)，已提供[模型 Agent 配置查询、主动停用与共享账本核对](design/sprint-3-model-agent-operations.md)，已实现 [Scheduler 一次性提醒授权、取消与任务仓储](design/sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内提醒投递](design/sprint-3-scheduler-delivery.md)，下一步实现 Scheduler 管理/提醒 API 与页面。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，已落地[检索证据保存与受限回答协议](design/sprint-3-model-evidence.md)，已提供[固定模型适配器与一次性执行器](design/sprint-3-model-agent-executor.md)，已接入[显式部署配置、两阶段 HTTP 授权与页面](design/sprint-3-model-agent-app.md)，已提供[模型 Agent 配置查询、主动停用与共享账本核对](design/sprint-3-model-agent-operations.md)，已实现 [Scheduler 一次性提醒授权、取消与任务仓储](design/sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内提醒投递](design/sprint-3-scheduler-delivery.md)，已接入[Scheduler 管理/提醒 API 与页面](design/sprint-3-scheduler-app.md)，下一步补齐 Scheduler 运维查询和积压/租约状态核对。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
+
+- [x] Scheduler 会话/CSRF 保护 API 与定时提醒页面：时间预览、精确确认、原请求重试、取消和提醒分页。
 
 - [x] Scheduler 默认关闭的后台进程、跨进程租约领取/恢复、取消竞争保护和幂等站内提醒投递。
 
@@ -82,7 +84,8 @@
 - [x] 模型 Agent 显式部署配置、两阶段 HTTP 授权与页面接入
 - [ ] 模型 Agent 运维配置查询、主动停用与账本核对
 - [x] Scheduler 内部授权、取消、租约与幂等投递
-- [ ] Scheduler 管理/提醒 API 与页面
+- [x] Scheduler 管理/提醒 API 与页面
+- [ ] Scheduler 运维查询与积压/租约核对
 - [x] Redis 短期记忆适配器（用户/对话键隔离、TTL、条目/活跃对话配额及真实 Redis 测试）
 - [x] 对话归属与元数据 API（认证、CSRF、会话撤销、删除墓碑、创建额度与幂等）
 - [x] 用户消息接口与 Redis 快照缓存（持久化幂等、删除并发保护及失败恢复）

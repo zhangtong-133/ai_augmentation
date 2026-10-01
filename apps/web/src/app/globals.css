@@ -153,3 +153,13 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .modelAgentPanel pre, .modelAgentAnswer { white-space: pre-wrap; overflow-wrap: anywhere; }
 .modelAgentPanel small { overflow-wrap: anywhere; }
 .modelAgentPanel button { margin: .25rem; }
+
+.schedulePanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 20px; overflow-wrap: anywhere; }
+.schedulePanel form { display: grid; gap: 10px; max-width: 650px; }
+.schedulePanel textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; resize: vertical; }
+.schedulePanel input { min-width: 0; max-width: 100%; box-sizing: border-box; }
+.schedulePanel input[type="checkbox"] { width: auto; margin-right: 8px; }
+.schedulePanel button { margin: 6px 8px 6px 0; white-space: normal; }
+.schedulePanel li { margin: 16px 0; }
+.scheduleReview { margin: 16px 0; padding: 16px; border: 1px solid var(--muted); border-radius: 8px; }
+.schedulePanel :focus-visible { outline: 2px solid var(--warm); outline-offset: 3px; }

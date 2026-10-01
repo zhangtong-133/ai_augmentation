@@ -1252,3 +1252,80 @@ test("model agent UI stops polling on failure and preserves cancellation across 
   await page.getByRole("button", { name: "退出登录", exact: true }).click(); await expect(region).toHaveCount(0);
   const loggedOut = reads; await page.waitForTimeout(2500); expect(reads).toBe(loggedOut);
 });
+
+test("scheduled reminders require exact confirmation and retry the original operation", async ({ page }, testInfo) => {
+  const account = await createAccount();
+  const bodies = { create: [], approve: [] };
+  const drop = { create: true, approve: true };
+  await page.route("**/api/schedules", async route => {
+    if (route.request().method() !== "POST") return route.continue();
+    bodies.create.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    expect(response.status()).toBe(201);
+    expect(response.headers()["cache-control"]).toContain("no-store");
+    if (drop.create) { drop.create = false; return route.abort("failed"); }
+    return route.fulfill({ response });
+  });
+  await page.route("**/api/schedules/*/approve", async route => {
+    bodies.approve.push(route.request().postDataJSON());
+    const response = await route.fetch();
+    expect(response.status()).toBe(200);
+    if (drop.approve) { drop.approve = false; return route.abort("failed"); }
+    return route.fulfill({ response });
+  });
+  await page.goto("/"); await login(page, account);
+  const panel = page.getByRole("region", { name: "定时提醒", exact: true });
+  await expect(panel.getByText("暂无提醒任务。", { exact: true })).toBeVisible();
+  await panel.getByLabel("提醒标题", { exact: true }).fill("明日复习 <script>unsafe</script>");
+  await panel.getByLabel("提醒内容", { exact: true }).fill("复习今日笔记 <img src=x onerror=alert(1)>");
+  const local = await page.evaluate(() => {
+    const d = new Date(Date.now() + 3600000); const pad = n => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  await panel.getByLabel("提醒时间（当前设备时区）", { exact: true }).fill(local);
+  await panel.getByRole("button", { name: "创建提醒预览", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "重试原操作", exact: true })).toBeEnabled();
+  await expect(panel.getByRole("button", { name: "创建提醒预览", exact: true })).toBeDisabled();
+  await panel.getByRole("button", { name: "重试原操作", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "确认投递提醒", exact: true })).toBeDisabled();
+  expect(bodies.create).toHaveLength(2); expect(bodies.create[1]).toEqual(bodies.create[0]);
+  expect(typeof bodies.create[0].run_at_unix_ms).toBe("string");
+  await expect(panel.locator("script, img")).toHaveCount(0);
+  await panel.getByLabel("我已核对时间和内容，同意一次性站内提醒").check();
+  await panel.getByRole("button", { name: "确认投递提醒", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "重试原操作", exact: true })).toBeEnabled();
+  await panel.getByRole("button", { name: "重试原操作", exact: true }).click();
+  await expect(panel.getByRole("status").filter({ hasText: "任务等待投递。" })).toBeVisible();
+  expect(bodies.approve).toHaveLength(2); expect(bodies.approve[1]).toEqual(bodies.approve[0]);
+  expect(bodies.approve[0].accepted_amount_micro).toBe("0");
+  await page.reload();
+  await expect(panel.getByRole("button", { name: "取消提醒", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "取消提醒", exact: true }).click();
+  await panel.getByRole("button", { name: "确认取消提醒", exact: true }).click();
+  await expect(panel.getByRole("status").filter({ hasText: "任务已取消。" })).toBeVisible();
+  const screenshot = testInfo.outputPath("schedules.png");
+  await panel.screenshot({ path: screenshot }); await testInfo.attach("schedules", { path: screenshot, contentType: "image/png" });
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+});
+
+test("delivered reminders paginate, retain text safely and surface read failures", async ({ page }) => {
+  const account = await createAccount(); let unavailable = false;
+  const cursor = randomUUID();
+  await page.route("**/api/reminders*", async route => {
+    if (unavailable) return route.fulfill({ status: 503, json: { error: { code: "scheduler_unavailable" } } });
+    const second = new URL(route.request().url()).searchParams.get("after") === cursor;
+    return route.fulfill({ json: { items: [{ request_id: second ? randomUUID() : cursor, title: second ? "第二页提醒" : "已投递提醒", body: "<script>不执行</script>", delivered_at_unix_ms: String(Date.now()) }], next_cursor: second ? null : cursor } });
+  });
+  await page.goto("/"); await login(page, account);
+  const panel = page.getByRole("region", { name: "定时提醒", exact: true });
+  await expect(panel.getByRole("heading", { name: "已投递提醒", exact: true })).toBeVisible();
+  await expect(panel.locator("script")).toHaveCount(0);
+  await panel.getByRole("button", { name: "下一页已收提醒", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "第二页提醒", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "上一页已收提醒", exact: true }).click();
+  await expect(panel.getByRole("heading", { name: "已投递提醒", exact: true })).toBeVisible();
+  unavailable = true;
+  await panel.getByRole("button", { name: "刷新提醒", exact: true }).click();
+  await expect(panel.getByRole("alert")).toBeVisible();
+});

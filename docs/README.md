@@ -30,6 +30,7 @@
 - [回复预算领取与持久化配置停用](design/sprint-3-reply-dispatch.md)
 - [预算回复供应商执行器](design/sprint-3-reply-executor.md)
 - [显式付费回复部署与金额确认](design/sprint-3-paid-replies.md)
+- [Scheduler 管理与提醒页面](design/sprint-3-scheduler-app.md)：会话保护、精确时间确认、原请求重试及提醒列表。
 - [Scheduler 租约与提醒投递](design/sprint-3-scheduler-delivery.md)：后台进程、租约恢复、取消竞争和幂等站内投递。
 - [Scheduler 授权与任务仓储](design/sprint-3-scheduler-store.md)：一次性站内提醒、精确确认、取消和持久化。
 - [模型 Agent 配置与账本运维](design/sprint-3-model-agent-operations.md)：分阶段配置查询、显式停用与共享金额核对。

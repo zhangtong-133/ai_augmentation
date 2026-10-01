@@ -5,6 +5,7 @@ import { KnowledgePanel } from "./knowledge-panel";
 import { OverviewPanel } from "./overview-panel";
 import { ServiceStatus } from "./service-status";
 import { RetrievalPanel } from "./retrieval-panel";
+import { SchedulePanel } from "./schedule-panel";
 import { MemoryPanel } from "./memory-panel";
 import { ConversationPanel } from "./conversation-panel";
 
@@ -96,6 +97,7 @@ export function AccountPanel() {
       {user && <OverviewPanel key={`overview-${user.id}`} revision={revision} />}
       {user && <KnowledgePanel key={user.id} onImported={() => setRevision(value => value + 1)} />}
       {user && <RetrievalPanel key={`retrieval-${user.id}`} />}
+      {user && <SchedulePanel key={`schedules-${user.id}`} />}
       {user && <MemoryPanel key={`memory-${user.id}`} />}
       {user && <ConversationPanel key={`conversations-${user.id}`} />}
     </section>

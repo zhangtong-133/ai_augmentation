@@ -127,6 +127,7 @@ impl Fixture {
             paid: Some(paid),
         });
         let state = AppState {
+            schedules: Some(store.clone()),
             model_agents: None,
             agent_plans: Some(store.clone()),
             tool_calls: Some(store.clone()),
@@ -399,3 +400,6 @@ async fn expired_configuration_cannot_reserve_or_send_and_legacy_replay_stays_fr
 
 #[path = "model_agent_tests.rs"]
 mod model_agents;
+
+#[path = "schedule_tests.rs"]
+mod schedules;
