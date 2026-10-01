@@ -137,6 +137,14 @@ impl ModelAgentExecutor {
     ) -> StorageResult<ModelPlanningRequest> {
         self.ready().await?;
         self.store
+            .check_model_planning_request_configuration(
+                owner,
+                conversation,
+                request,
+                &self.planning.budget.configuration_version,
+            )
+            .await?;
+        self.store
             .check_model_planning_configuration(&self.planning)
             .await?;
         let authorization = self
@@ -146,6 +154,14 @@ impl ModelAgentExecutor {
         if !authorization.started {
             return Ok(authorization.request);
         }
+        self.run_planning(owner, conversation, request).await
+    }
+    async fn run_planning(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+    ) -> StorageResult<ModelPlanningRequest> {
         let claim = self
             .store
             .claim_model_planning_request(owner, conversation, request)
@@ -233,6 +249,14 @@ impl ModelAgentExecutor {
     ) -> StorageResult<ModelExecutionRequest> {
         self.ready().await?;
         self.store
+            .check_model_execution_request_configuration(
+                owner,
+                conversation,
+                request,
+                &self.execution.version,
+            )
+            .await?;
+        self.store
             .check_model_execution_configuration(&self.execution)
             .await?;
         let authorization = self
@@ -242,7 +266,22 @@ impl ModelAgentExecutor {
         if !authorization.started {
             return Ok(authorization.request);
         }
-        for ordinal in 0..=authorization.request.calls.tool {
+        self.run_execution(
+            owner,
+            conversation,
+            request,
+            authorization.request.calls.tool,
+        )
+        .await
+    }
+    async fn run_execution(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        calls: u32,
+    ) -> StorageResult<ModelExecutionRequest> {
+        for ordinal in 0..=calls {
             let claim = self
                 .store
                 .claim_model_execution_step(owner, conversation, request, ordinal)
@@ -279,6 +318,91 @@ impl ModelAgentExecutor {
         self.store
             .get_model_execution_request(owner, conversation, request)
             .await
+    }
+    /// 授权事务成功后后台派发，立即返回元数据；重放不会启动第二份任务。
+    /// # Errors
+    /// 配置或精确授权失败时同步返回错误，不启动任务。
+    pub async fn start_planning(
+        self: &Arc<Self>,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        approval: &AgentQuoteApproval,
+    ) -> StorageResult<ModelPlanningRequest> {
+        self.ready().await?;
+        self.store
+            .check_model_planning_request_configuration(
+                owner,
+                conversation,
+                request,
+                &self.planning.budget.configuration_version,
+            )
+            .await?;
+        self.store
+            .check_model_planning_configuration(&self.planning)
+            .await?;
+        let authorization = self
+            .store
+            .approve_model_planning_request(owner, conversation, request, approval)
+            .await?;
+        if authorization.started {
+            let executor = self.clone();
+            let (owner, conversation, request) =
+                (owner.clone(), conversation.to_owned(), request.to_owned());
+            tokio::spawn(async move {
+                if executor
+                    .run_planning(&owner, &conversation, &request)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!("model planning dispatch stopped; no retry");
+                }
+            });
+        }
+        Ok(authorization.request)
+    }
+    /// 第二次授权独立提交后后台执行；未收到确认不能调用此入口。
+    /// # Errors
+    /// 配置或精确授权失败时同步返回错误，不启动任务。
+    pub async fn start_execution(
+        self: &Arc<Self>,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        approval: &AgentQuoteApproval,
+    ) -> StorageResult<ModelExecutionRequest> {
+        self.ready().await?;
+        self.store
+            .check_model_execution_request_configuration(
+                owner,
+                conversation,
+                request,
+                &self.execution.version,
+            )
+            .await?;
+        self.store
+            .check_model_execution_configuration(&self.execution)
+            .await?;
+        let authorization = self
+            .store
+            .approve_model_execution_request(owner, conversation, request, approval)
+            .await?;
+        if authorization.started {
+            let executor = self.clone();
+            let calls = authorization.request.calls.tool;
+            let (owner, conversation, request) =
+                (owner.clone(), conversation.to_owned(), request.to_owned());
+            tokio::spawn(async move {
+                if executor
+                    .run_execution(&owner, &conversation, &request, calls)
+                    .await
+                    .is_err()
+                {
+                    tracing::warn!("model execution dispatch stopped; no retry");
+                }
+            });
+        }
+        Ok(authorization.request)
     }
     async fn execute_step(
         &self,

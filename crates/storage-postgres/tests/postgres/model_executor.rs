@@ -414,3 +414,68 @@ async fn executor_commit_failure_never_resends_after_replay_or_restart() {
         assert_eq!(f.money().await, AMOUNT);
     }
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn executor_configuration_switch_rejects_old_quotes_before_reserving_money() {
+    let f = Fixture::new(20000, 100).await;
+    let (_, provider, retriever, c) = setup(&f, 0, vec![]).await;
+    let request = f.draft().await;
+    let mut changed = f.configuration.clone();
+    changed.budget.configuration_version = id();
+    f.store
+        .register_model_planning_configuration(&changed)
+        .await
+        .unwrap();
+    let executor = Arc::new(ModelAgentExecutor::new(
+        f.store.clone(),
+        provider.clone(),
+        retriever.clone(),
+        changed,
+        c.clone(),
+    ));
+    assert!(
+        executor
+            .start_planning(
+                &f.owner,
+                &f.conversation,
+                &request.request_id,
+                &approval(&request)
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(f.money().await, 0);
+    assert_eq!(f.get(&request).await.status, "draft");
+    let planning = planned(&f, 1).await;
+    let second = stage_two(&f, &planning, &c).await;
+    let mut changed = c.clone();
+    changed.version = id();
+    changed.answer.configuration_version = changed.version.clone();
+    f.store
+        .register_model_execution_configuration(&changed)
+        .await
+        .unwrap();
+    let executor = Arc::new(ModelAgentExecutor::new(
+        f.store.clone(),
+        provider.clone(),
+        retriever,
+        f.configuration.clone(),
+        changed,
+    ));
+    assert!(
+        executor
+            .start_execution(
+                &f.owner,
+                &f.conversation,
+                &second.request_id,
+                &consent(&second)
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(f.money().await, AMOUNT);
+    assert_eq!(tool_count(&f).await, 0);
+    assert!(provider.calls.lock().unwrap().is_empty());
+    assert_eq!(provider.embeddings.load(Ordering::SeqCst), 0);
+}

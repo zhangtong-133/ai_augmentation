@@ -251,6 +251,27 @@ pub(super) async fn delete_conversation(
 }
 
 impl ModelPlanningStore for PostgresStore {
+    fn check_model_planning_request_configuration(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        version: &str,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        let ids = keys(owner, conversation, request);
+        let version = version.to_owned();
+        Box::pin(async move {
+            let ids = ids?;
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            replies::lock(&mut tx, ids.0, ids.1).await?;
+            let s = read(&mut tx, ids).await?;
+            if s.configuration.budget.configuration_version != version {
+                return Err(conflict());
+            }
+            tx.commit().await.map_err(map_error)
+        })
+    }
+
     fn register_model_planning_configuration(
         &self,
         configuration: &ModelPlanningConfiguration,

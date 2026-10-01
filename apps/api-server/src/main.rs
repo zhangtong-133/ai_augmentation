@@ -31,6 +31,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let replies = api_server::ReplyRuntime::from_env(store.clone())
         .await
         .map_err(std::io::Error::other)?;
+    let model_agents = api_server::ModelAgentRuntime::from_env(store.clone())
+        .await
+        .map_err(std::io::Error::other)?;
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     let reply_task = {
         let replies = replies.clone();
@@ -45,6 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            model_agents: Some(model_agents),
             agent_plans: Some(store.clone()),
             tool_calls: Some(store.clone()),
             replies: Some(replies),

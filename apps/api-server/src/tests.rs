@@ -429,6 +429,7 @@ impl MetadataStore for MemoryStore {
 fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -545,6 +546,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 #[tokio::test]
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -905,6 +907,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         other.id.to_string(),
     );
     let app = router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -1109,6 +1112,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         user.id.to_string(),
     );
     let app = router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -1186,6 +1190,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     }
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -1413,6 +1418,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         2,
     );
     let state = AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -1534,6 +1540,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         assert!(!String::from_utf8_lossy(&bytes).contains("secret"));
     }
     let disabled = router(AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
@@ -1597,6 +1604,7 @@ async fn retrieval_fixture() -> (
         .unwrap();
     assert!(indexer.index_batch(&owner.id, &document, 0).await.is_ok());
     let state = AppState {
+        model_agents: None,
         agent_plans: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,

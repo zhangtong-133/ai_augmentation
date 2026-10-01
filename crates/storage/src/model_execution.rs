@@ -85,6 +85,15 @@ pub enum ModelExecutionOutcome {
     Unknown,
 }
 pub trait ModelExecutionStore: Send + Sync {
+    /// 授权前确认请求属于当前部署版本，配置切换不能先扣款再拒绝发送。
+    fn check_model_execution_request_configuration(
+        &self,
+        owner: &UserId,
+        conversation: &str,
+        request: &str,
+        version: &str,
+    ) -> BoxFuture<'_, StorageResult<()>>;
+
     fn register_model_execution_configuration(
         &self,
         configuration: &ModelExecutionConfiguration,

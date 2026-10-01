@@ -147,3 +147,9 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
   .agentPlanList > li { padding: 10px; }
   .agentPlanPanel button { width: 100%; margin-right: 0; }
 }
+
+.modelAgentPanel { margin-top: 1.5rem; border-top: 1px solid var(--border, #ddd); padding-top: 1rem; }
+.modelAgentPanel li, .modelAgentStage { margin-block: 1rem; }
+.modelAgentPanel pre, .modelAgentAnswer { white-space: pre-wrap; overflow-wrap: anywhere; }
+.modelAgentPanel small { overflow-wrap: anywhere; }
+.modelAgentPanel button { margin: .25rem; }

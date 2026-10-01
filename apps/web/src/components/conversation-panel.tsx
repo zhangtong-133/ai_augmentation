@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { requestError, useIdempotentPost } from "./use-idempotent-post";
 import { ReplyPanel } from "./reply-panel";
+import { ModelAgentPanel } from "./model-agent-panel";
 import { AgentPlanPanel } from "./agent-plan-panel";
 
 type Conversation = { id: string; title: string };
@@ -108,6 +109,7 @@ export function ConversationPanel() {
 
 function MessageThread({ conversation, onLock, disabled }: { conversation: Conversation; onLock: (value: boolean) => void; disabled: boolean }) {
   const [replyLocked, setReplyLocked] = useState(false);
+  const [modelLocked, setModelLocked] = useState(false);
   const [agentLocked, setAgentLocked] = useState(false);
   const [content, setContent] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -117,7 +119,7 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
   const [inputError, setInputError] = useState("");
   const post = useIdempotentPost<Message>(`/api/conversations/${conversation.id}/messages`, () => { setContent(""); setRevision(value => value + 1); });
   const bytes = new TextEncoder().encode(content).length;
-  useEffect(() => { onLock(post.busy || !!post.pending || replyLocked || agentLocked); return () => onLock(false); }, [onLock, post.busy, post.pending, replyLocked, agentLocked]);
+  useEffect(() => { onLock(post.busy || !!post.pending || replyLocked || agentLocked || modelLocked); return () => onLock(false); }, [onLock, post.busy, post.pending, replyLocked, agentLocked, modelLocked]);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
@@ -139,7 +141,7 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
   }
   return <section className="messageThread" aria-label="当前对话消息">
     <h3>{conversation.title}</h3>
-    <button disabled={loading || post.busy || disabled || replyLocked || agentLocked} onClick={() => setRevision(value => value + 1)}>刷新消息</button>
+    <button disabled={loading || post.busy || disabled || replyLocked || agentLocked || modelLocked} onClick={() => setRevision(value => value + 1)}>刷新消息</button>
     {readError && <p role="alert">{readError}</p>}
     {loading ? <p role="status">正在读取消息…</p> : snapshot && <>
       <p>已保存 {snapshot.messages.length}/100 条用户消息</p>
@@ -147,9 +149,9 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
     </>}
     <form onSubmit={submit}>
       <label htmlFor="conversation-message">用户消息（最多 4096 字节）</label>
-      <textarea id="conversation-message" rows={4} value={content} onChange={event => setContent(event.target.value)} disabled={post.busy || !!post.pending || disabled || replyLocked || agentLocked} required />
+      <textarea id="conversation-message" rows={4} value={content} onChange={event => setContent(event.target.value)} disabled={post.busy || !!post.pending || disabled || replyLocked || agentLocked || modelLocked} required />
       <p>{bytes}/4096 字节；仅保存，不会调用模型。</p>
-      <button disabled={post.busy || !!post.pending || disabled || replyLocked || agentLocked || loading || !snapshot || snapshot.messages.length >= 100}>发送用户消息</button>
+      <button disabled={post.busy || !!post.pending || disabled || replyLocked || agentLocked || modelLocked || loading || !snapshot || snapshot.messages.length >= 100}>发送用户消息</button>
     </form>
     {inputError && <p role="alert">{inputError}</p>}
     {post.error && <p role="alert">{post.error}</p>}
@@ -158,7 +160,8 @@ function MessageThread({ conversation, onLock, disabled }: { conversation: Conve
       <button disabled={disabled} onClick={() => void post.submit({ content })}>重试发送原请求</button>
       <PendingWarning busy={post.busy || disabled} discard={post.discard} />
     </>}
-    <ReplyPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending || agentLocked} onLock={setReplyLocked} />
-    <AgentPlanPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending || replyLocked} onLock={setAgentLocked} />
+    <ReplyPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending || agentLocked || modelLocked} onLock={setReplyLocked} />
+    <ModelAgentPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending || replyLocked || agentLocked} onLock={setModelLocked} />
+    <AgentPlanPanel conversation={conversation.id} revision={loading ? null : snapshot?.revision ?? null} disabled={disabled || post.busy || !!post.pending || replyLocked || modelLocked} onLock={setAgentLocked} />
   </section>;
 }

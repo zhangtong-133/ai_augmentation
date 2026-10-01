@@ -1,4 +1,7 @@
 mod agent_plans;
+mod model_agent_config;
+mod model_agents;
+pub use model_agents::ModelAgentRuntime;
 mod answering;
 pub use answering::answering_from_env;
 mod index_jobs;
@@ -72,6 +75,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub model_agents: Option<Arc<ModelAgentRuntime>>,
     pub agent_plans: Option<Arc<dyn personal_ai_storage::agent_plans::AgentPlanStore>>,
     pub tool_calls: Option<Arc<dyn personal_ai_storage::tool_calls::ToolCallStore>>,
     pub replies: Option<Arc<ReplyRuntime>>,
@@ -110,6 +114,7 @@ pub fn router(state: AppState) -> Router {
         .merge(index_jobs::routes())
         .merge(tool_execution::routes(tools.clone()))
         .merge(agent_plans::routes(tools))
+        .merge(model_agents::routes())
         .route("/api/overview", get(overview::get))
         .route("/healthz", get(health))
         .route("/api/healthz", get(health))

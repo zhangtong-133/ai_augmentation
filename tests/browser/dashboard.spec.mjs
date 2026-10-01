@@ -1155,3 +1155,100 @@ test("reply UI preserves paid history and integer amounts after disabling new re
   await login(page, await createAccount());
   await expect(page.getByRole("region", { name: "对话与消息", exact: true })).not.toContainText("9223372036854");
 });
+
+test("model agent UI requires two exact confirmations and replays lost approval without new requests", async ({ page }, testInfo) => {
+  const account = await createAccount();
+  let item = null, lost = true;
+  const approvals = [];
+  await page.route("**/api/conversations/*/model-agents**", async route => {
+    const req = route.request(); const parts = new URL(req.url()).pathname.split("/");
+    if (req.method() === "GET") return route.fulfill({ json: { enabled: true, items: item ? [item] : [] } });
+    expect(req.headers()["x-requested-with"]).toBe("personal-ai");
+    const body = req.postDataJSON(); const action = parts.at(-1);
+    if (action === "model-agents") {
+      item = { planning: { request_id: body.request_id, conversation_id: parts.at(-2), revision: body.expected_revision, digest: "a".repeat(64), status: "draft", currency: "USD", amount_micro: "9007199254740993", calls: { chat: 1, embedding: 0, tool: 0 }, expires_at_unix_ms: Date.now() + 300000, searches: null }, execution: null };
+      return route.fulfill({ json: item.planning });
+    }
+    if (action === "approve-planning") {
+      approvals.push(body);
+      item.planning = { ...item.planning, status: "succeeded", searches: [{ query: "研究资料", limit: 5 }] };
+      if (lost) { lost = false; return route.abort("failed"); }
+      return route.fulfill({ status: 202, json: item.planning });
+    }
+    if (action === "preview-execution") {
+      item.execution = { ...item.planning, digest: "b".repeat(64), status: "draft", amount_micro: "1224", calls: { chat: 1, embedding: 1, tool: 1 }, evidence: [], answer: null };
+      return route.fulfill({ json: item.execution });
+    }
+    expect(action).toBe("approve-execution");
+    approvals.push(body);
+    item.execution = { ...item.execution, status: "succeeded", evidence: [{ id: 1, document_id: randomUUID(), ordinal: 0, title: "可信文档", source: "private.md", text: "<script>window.badEvidence=true</script>" }], answer: { insufficient_evidence: false, answer: "根据本次资料得到的回答", citations: [1] } };
+    return route.fulfill({ status: 202, json: item.execution });
+  });
+  await page.goto("/"); await login(page, account); await prepareReplyConversation(page, "模型费用确认验收");
+  const region = page.getByRole("region", { name: "模型知识助手", exact: true });
+  await region.getByRole("button", { name: "生成规划报价（不调用模型）", exact: true }).click();
+  await expect(region).toContainText("USD 9007199254.740993");
+  expect(approvals).toHaveLength(0);
+  await region.getByRole("button", { name: "审阅规划费用", exact: true }).click();
+  await expect(region.getByRole("button", { name: "确认金额并执行本阶段", exact: true })).toBeDisabled();
+  await region.getByLabel("我确认本阶段金额上限与调用次数", { exact: true }).check();
+  await region.getByRole("button", { name: "确认金额并执行本阶段", exact: true }).click();
+  await expect(region.getByRole("button", { name: "重试模型助手原请求", exact: true })).toBeVisible();
+  await region.getByRole("button", { name: "重试模型助手原请求", exact: true }).click();
+  await expect(region).toContainText("研究资料");
+  expect(approvals).toHaveLength(2); expect(approvals[0]).toEqual(approvals[1]);
+  expect(approvals[0].accepted_amount_micro).toBe("9007199254740993");
+  await region.getByRole("button", { name: "预览检索回答报价（不调用模型）", exact: true }).click();
+  await expect(region).toContainText("USD 0.001224"); expect(approvals).toHaveLength(2);
+  await region.getByRole("button", { name: "审阅检索回答费用", exact: true }).click();
+  await expect(region.getByLabel("我确认本阶段金额上限与调用次数", { exact: true })).not.toBeChecked();
+  await region.getByLabel("我确认本阶段金额上限与调用次数", { exact: true }).check();
+  await region.getByRole("button", { name: "确认金额并执行本阶段", exact: true }).click();
+  await expect(region).toContainText("根据本次资料得到的回答"); expect(approvals).toHaveLength(3);
+  expect(approvals[2].accepted_calls).toEqual({ chat: 1, embedding: 1, tool: 1 });
+  await region.getByText("[1] 可信文档 · 查看原文", { exact: true }).click();
+  await expect(region).toContainText("<script>window.badEvidence=true</script>");
+  expect(await page.evaluate(() => window.badEvidence)).toBeUndefined();
+  const screenshot = testInfo.outputPath("model-agent.png");
+  await region.screenshot({ path: screenshot });
+  await testInfo.attach("model-agent", { path: screenshot, contentType: "image/png" });
+  await page.reload();
+  await page.getByRole("button", { name: "模型费用确认验收", exact: true }).click();
+  await expect(region).toContainText("根据本次资料得到的回答"); expect(approvals).toHaveLength(3);
+});
+
+test("model agent UI stops polling on failure and preserves cancellation across logout", async ({ page }) => {
+  const account = await createAccount();
+  let item = null, mode = "ok", lost = true, reads = 0;
+  const cancellations = [];
+  await page.route("**/api/conversations/*/model-agents**", async route => {
+    const req = route.request(); const parts = new URL(req.url()).pathname.split("/");
+    if (req.method() === "GET") {
+      reads += 1;
+      if (mode === "error") return route.fulfill({ status: 503, json: {} });
+      return route.fulfill({ json: { enabled: mode !== "disabled", items: item ? [item] : [] } });
+    }
+    const action = parts.at(-1);
+    if (action === "model-agents") {
+      const body = req.postDataJSON();
+      item = { planning: { request_id: body.request_id, conversation_id: parts.at(-2), revision: 1, digest: "a".repeat(64), status: "dispatching", currency: "USD", amount_micro: "2148", calls: { chat: 1, embedding: 0, tool: 0 }, expires_at_unix_ms: Date.now() + 300000, searches: null }, execution: null };
+      return route.fulfill({ json: item.planning });
+    }
+    expect(action).toBe("cancel-planning"); cancellations.push(req.url()); item.planning.status = "cancelled";
+    if (lost) { lost = false; return route.abort("failed"); }
+    return route.fulfill({ json: item.planning });
+  });
+  await page.goto("/"); await login(page, account); await prepareReplyConversation(page);
+  const region = page.getByRole("region", { name: "模型知识助手", exact: true });
+  await region.getByRole("button", { name: "生成规划报价（不调用模型）", exact: true }).click();
+  await expect(region).toContainText("正在规划");
+  mode = "error"; await expect(region.getByRole("alert")).toContainText("已停止自动刷新");
+  const stopped = reads; await page.waitForTimeout(2500); expect(reads).toBe(stopped);
+  mode = "disabled"; await region.getByRole("button", { name: "刷新模型助手历史", exact: true }).click();
+  await expect(region).toContainText("管理员尚未启用模型助手");
+  await region.getByRole("button", { name: "取消规划", exact: true }).click();
+  await region.getByRole("button", { name: "重试模型助手原请求", exact: true }).click();
+  await expect(region).toContainText("已取消"); expect(cancellations).toHaveLength(2); expect(cancellations[0]).toBe(cancellations[1]);
+  await page.getByRole("button", { name: "退出登录", exact: true }).click(); await expect(region).toHaveCount(0);
+  const loggedOut = reads; await page.waitForTimeout(2500); expect(reads).toBe(loggedOut);
+});

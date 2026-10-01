@@ -4,7 +4,7 @@
 
 `agent_core::model_executor::ModelAgentExecutor` 在两次独立精确授权后，分别执行规划，以及顺序查询向量化、知识检索和受限回答。复用已有 PostgreSQL 领取、金额/次数预留、证据核验及原子结算。新增供应商端口 `ModelAgentProvider`、无模型调用的 `ModelRetriever`、官方固定模型实现 `OpenAiAgentModels` 和 `KnowledgeModelRetriever`。
 
-本步提供内部可组装能力，不注册 HTTP 路由、不读取环境变量、不启动后台任务、不启用真实付费调用。下一步为显式部署配置、两阶段 HTTP 授权与页面接入；不得复用普通知识搜索入口绕过第二阶段预算。
+内部执行器现已接入[显式部署配置、两阶段 HTTP 授权与页面](sprint-3-model-agent-app.md)，付费功能默认关闭。不得复用普通知识搜索入口绕过第二阶段预算。
 
 ## 授权与派发
 

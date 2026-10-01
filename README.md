@@ -11,7 +11,7 @@
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
 
-导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API 及[调用次数预算与审计](docs/design/sprint-3-tool-call-audit.md)、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复页面](docs/design/sprint-3-reply-ui.md)支持请求、历史、轮询与取消；执行默认关闭。已提供[受限 Agent 计划 API](docs/design/sprint-3-agent-plans.md)：用户预览并授权后，最多顺序执行三次知识检索，支持持久化结果与取消。已提供[计划预览、费用确认与取消页面](docs/design/sprint-3-agent-plan-ui.md)，支持状态/原文及原请求恢复。模型规划已提供[内部固定模型适配器与两阶段一次性执行器](docs/design/sprint-3-model-agent-executor.md)，部署配置、HTTP 和页面接入尚待完成；定时任务待实现。下一步见 [路线图](docs/ROADMAP.md)。
+导入不会自动索引或调用模型。已提供受限只读 `knowledge_search` 工具 API 及[调用次数预算与审计](docs/design/sprint-3-tool-call-audit.md)、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复页面](docs/design/sprint-3-reply-ui.md)支持请求、历史、轮询与取消；执行默认关闭。已提供[受限 Agent 计划 API](docs/design/sprint-3-agent-plans.md)：用户预览并授权后，最多顺序执行三次知识检索，支持持久化结果与取消。已提供[计划预览、费用确认与取消页面](docs/design/sprint-3-agent-plan-ui.md)，支持状态/原文及原请求恢复。模型规划已提供[内部固定模型适配器与两阶段一次性执行器](docs/design/sprint-3-model-agent-executor.md)，已接入[显式部署配置与两阶段费用页面](docs/design/sprint-3-model-agent-app.md)，默认关闭；定时任务待实现。下一步见 [路线图](docs/ROADMAP.md)。
 
 显式回复支持本地夹具和管理员配置的固定模型付费模式；使用前需设置价格有效期及额度，用户在页面确认金额。配置见 [付费回复部署设计](docs/design/sprint-3-paid-replies.md)；管理员可使用 [reply-operations](docs/design/sprint-3-reply-operations.md)查询配置、显式停用及核对用户日账本。
 
