@@ -1,6 +1,6 @@
 //! 输入应来自服务端同一用户的完整快照，不是客户端可提交的可信评估。
 use personal_ai_domain::UserId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -64,7 +64,8 @@ pub struct LearningRequest {
     pub budget_minutes: u16,
     pub goal_skill_ids: Vec<String>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillState {
     Unavailable,
@@ -73,7 +74,8 @@ pub enum SkillState {
     NeedsPractice,
     Satisfied,
 }
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SkillEvaluation {
     pub skill_id: String,
     pub skill_revision: u64,
@@ -84,13 +86,15 @@ pub struct SkillEvaluation {
     /// 全部未满足的传递先修技能，按规范 UUID 排序。
     pub blocking_skill_ids: Vec<String>,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 #[serde(rename_all = "snake_case")]
 pub enum TrainingKind {
     SelfAssessment,
     Practice,
 }
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TrainingTask {
     pub task_id: String,
     pub skill_id: String,
@@ -101,7 +105,8 @@ pub struct TrainingTask {
     pub target_minutes: u16,
     pub target_score: u8,
 }
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LearningPlan {
     pub version: String,
     pub user_id: String,
@@ -124,6 +129,20 @@ impl LearningPlan {
     pub fn digest(&self) -> Result<String, LearningError> {
         hash(self)
     }
+}
+
+/// 校验并规范化完整技能图，供仓储写入前检查使用。
+/// # Errors
+/// 拒绝跨用户、无效节点、重复/缺失先修引用、循环和超限图。
+pub fn normalize_skill_graph(
+    owner: &UserId,
+    skills: &[SkillNode],
+) -> Result<Vec<SkillNode>, LearningError> {
+    let owner = canonical_id(owner.as_str())?;
+    Ok(Snapshot::load(&owner, 0, skills, &[])?
+        .skills
+        .into_values()
+        .collect())
 }
 
 /// 校验完整快照，生成显式目标的离线计划；不会更改自评或认为任务已完成。

@@ -6,6 +6,7 @@ mod documents;
 mod feed_operations;
 mod feeds;
 mod index_jobs;
+mod learning;
 mod long_memory;
 mod mcp_credentials;
 mod mcp_operations;

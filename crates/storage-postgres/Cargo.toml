@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+sha2.workspace = true
+personal-ai-learning.workspace = true
 personal-ai-feeds.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-storage.workspace = true

@@ -703,3 +703,6 @@ mod mcp_credentials;
 
 #[path = "postgres/feeds.rs"]
 mod feeds;
+
+#[path = "postgres/learning.rs"]
+mod learning;

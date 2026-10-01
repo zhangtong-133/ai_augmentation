@@ -7,6 +7,7 @@ pub mod documents;
 pub mod feed_operations;
 pub mod feeds;
 pub mod index_jobs;
+pub mod learning;
 pub mod long_memory;
 pub mod mcp_credentials;
 pub mod mcp_operations;

@@ -1554,6 +1554,7 @@ version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
  "personal-ai-feeds",
+ "personal-ai-learning",
  "serde",
  "serde_json",
 ]
@@ -1565,12 +1566,14 @@ dependencies = [
  "personal-ai-agent-core",
  "personal-ai-domain",
  "personal-ai-feeds",
+ "personal-ai-learning",
  "personal-ai-llm",
  "personal-ai-storage",
  "personal-ai-storage-s3",
  "personal-ai-tools",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
  "uuid",
