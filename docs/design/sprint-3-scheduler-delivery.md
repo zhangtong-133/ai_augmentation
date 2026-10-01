@@ -34,7 +34,7 @@ SCHEDULER_MODE=local cargo run -p scheduler
 SCHEDULER_MODE=local RUN_FOREVER=1 cargo run -p scheduler
 ```
 
-Compose 的 scheduler 服务已传递该开关并使用 `RUN_FOREVER=1`，默认仍禁用。进程支持 Ctrl-C 和 Unix SIGTERM：停止正在等待的批次，未提交事务回滚，已提交租约后续可恢复。首次数据库连接失败会退出，由部署进程管理器重启；已连接后的批次错误在循环模式下退避重试。缺少新迁移时不执行任务，等待部署完成后下一批重试。
+Compose 的 scheduler 服务传递 `SCHEDULER_MODE`、`RUN_FOREVER=1` 和 `DATABASE_URL`，默认仍禁用。服务启动只等待 PostgreSQL 健康，不依赖 Redis，也不再传递未读取的 `APP_ENV`、`RUST_LOG` 或 `REDIS_URL`。进程支持 Ctrl-C 和 Unix SIGTERM：停止正在等待的批次，未提交事务回滚，已提交租约后续可恢复。首次数据库连接失败会退出，由部署进程管理器重启；已连接后的批次错误在循环模式下退避重试。缺少新迁移时不执行任务，等待部署完成后下一批重试。
 
 日志仅输出批次投递数量和脱敏错误，不记录用户 ID、提醒内容或连接凭据。禁用并重启进程会停止后续领取，已提交的提醒不会撤回；要撤销单个未完成任务，应走持久化取消协议。
 

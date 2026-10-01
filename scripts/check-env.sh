@@ -30,9 +30,6 @@ required Node node
 required npm npm
 required Docker docker
 required Git git
-optional pnpm pnpm
-optional just just
-optional protoc protoc
 
 if [ "$(uname -s)" = "Linux" ]; then
   optional pdftotext pdftotext

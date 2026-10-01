@@ -6,6 +6,8 @@
 
 ## 最近交付
 
+- [x] 清理 scheduler 的 Redis 启动依赖和未使用环境变量，将仅供测试的依赖移至 dev-dependencies；移除环境检查中未使用的 pnpm、just、protoc 提示。
+
 - [x] 清理 API、MCP、Qdrant 和 S3 的六条未使用直接依赖声明，同步锁文件并逐 crate 验证构建；适配 Rust 1.99 的空集合断言检查，修复 CI 的 Clippy 失败。
 
 - [x] 清理无调用方的早期通用 Agent/LLM 协议、闲置领域状态和阶段占位测试；修正浏览器退出后立即刷新造成的请求竞争。
