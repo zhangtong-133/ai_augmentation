@@ -1530,6 +1530,7 @@ name = "personal-ai-storage"
 version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
+ "personal-ai-feeds",
  "serde",
  "serde_json",
 ]
@@ -1540,6 +1541,7 @@ version = "0.1.0"
 dependencies = [
  "personal-ai-agent-core",
  "personal-ai-domain",
+ "personal-ai-feeds",
  "personal-ai-llm",
  "personal-ai-storage",
  "personal-ai-storage-s3",

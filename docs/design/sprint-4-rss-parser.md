@@ -43,4 +43,4 @@ scoped_key 要求有效且非空的用户/订阅 UUID，返回 (user_id, subscri
 
 验证使用 make check，以及前端 lint、typecheck 和 build。没有 API、存储、迁移或 UI 改动，本步不运行需要数据库/容器的 PostgreSQL、Redis 等外部服务集成测试、Compose smoke 或浏览器验收，也不发送真实订阅请求。
 
-下一步实现订阅仓储、一次性采集授权与审计事务；随后实现 DNS/连接固定/超时/字节限制完整的传输适配器，再接入 HTTP 管理与页面。自动轮询、价值评分和 Daily Brief 尚未实现。
+[订阅仓储、一次性采集授权与审计事务](sprint-4-rss-store.md)已实现；下一步实现 DNS/连接固定/超时/字节限制完整的传输适配器，再接入 HTTP 管理与页面。自动轮询、价值评分和 Daily Brief 尚未实现。

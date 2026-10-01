@@ -700,3 +700,6 @@ mod schedules;
 
 #[path = "postgres/mcp_credentials.rs"]
 mod mcp_credentials;
+
+#[path = "postgres/feeds.rs"]
+mod feeds;

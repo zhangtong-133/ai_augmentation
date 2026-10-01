@@ -2,6 +2,7 @@
 mod agent_plans;
 mod conversations;
 mod documents;
+mod feeds;
 mod index_jobs;
 mod long_memory;
 mod mcp_credentials;
