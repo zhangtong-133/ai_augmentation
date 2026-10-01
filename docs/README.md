@@ -83,3 +83,5 @@
 - [Sprint 4：Daily Brief 偏好与不可变计划仓储](design/sprint-4-rss-brief-store.md)：偏好版本、幂等快照、事务额度、来源删除清理及历史分页。
 
 - [Sprint 4：Daily Brief HTTP 与页面](design/sprint-4-rss-brief-app.md)：会话/CSRF、显式生成、历史与删除、原请求核对及双入口验收。
+
+- [Sprint 4：Skill Graph、自评与训练计划纯规划](design/sprint-4-learning-planning.md)：先修 DAG 校验、版本化自评、明确阻塞原因与确定性时间预算。

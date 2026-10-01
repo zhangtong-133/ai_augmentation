@@ -1498,6 +1498,10 @@ name = "personal-ai-learning"
 version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
 ]
 
 [[package]]

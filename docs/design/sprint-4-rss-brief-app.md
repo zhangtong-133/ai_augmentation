@@ -33,4 +33,4 @@ HTTP 集成测试覆盖会话、CSRF、未知字段、请求上限、版本精�
 
 Playwright 使用真实应用和一次性数据库，验证 Next.js 桌面与 Nginx 移动入口的偏好、生成、重载、删除和账户隔离；故障夹具验证丢失响应后原请求重试、偏好结果核对、晚到数据隔离、分页、纯文本渲染与登录过期清理，并保存两种视口截图。沿用 Rust 检查、前端 lint/typecheck/build 和完整 browser-test（含 PostgreSQL、HTTP smoke）。
 
-本步无新增迁移或环境变量。下一步进入 Skill Graph、能力评估与训练任务的边界设计和纯规划。
+本步无新增迁移或环境变量。后续 [Skill Graph、自评与训练计划纯规划](sprint-4-learning-planning.md)已实现，接下来落地学习仓储。
