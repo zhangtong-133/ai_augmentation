@@ -79,25 +79,10 @@ nav {
 .brandMark { display: grid; place-items: center; width: 30px; height: 30px; color: var(--surface); background: var(--acid); }
 .environment { color: var(--muted); }
 
-.hero { min-height: 600px; padding: 108px 0 92px; position: relative; }
-.kicker, article > p:first-of-type { color: var(--acid); font: 700 11px/1.4 monospace; letter-spacing: .19em; }
+.hero { padding: 108px 0 92px; position: relative; }
+.kicker { color: var(--acid); font: 700 11px/1.4 monospace; letter-spacing: .19em; }
 h1 { max-width: 850px; margin: 24px 0; font: 400 clamp(52px, 8vw, 104px)/.96 Georgia, "Songti SC", serif; letter-spacing: -.055em; }
 .intro { width: min(580px, 100%); color: var(--muted); font-size: 18px; line-height: 1.8; }
-
-.prompt { width: min(650px, 100%); margin-top: 54px; }
-.prompt label { display: block; margin-bottom: 10px; color: var(--warm); font: 700 10px/1 monospace; letter-spacing: .16em; }
-.prompt div { display: flex; border-bottom: 1px solid var(--muted); }
-.prompt input { flex: 1; padding: 16px 0; border: 0; color: var(--ink); background: transparent; font-size: 17px; outline: none; }
-.prompt button { width: 50px; border: 0; color: var(--muted); background: transparent; font-size: 26px; }
-.prompt small { display: block; margin-top: 10px; color: #657169; }
-
-.moduleGrid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
-article { min-height: 330px; padding: 30px; position: relative; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: rgba(20,34,30,.62); }
-.cardNumber { position: absolute; right: 26px; top: 25px; color: #516158; font: 13px monospace; }
-article h2 { margin: 52px 0 18px; font: 400 30px/1.2 Georgia, "Songti SC", serif; }
-.cardCopy { max-width: 270px; color: var(--muted); line-height: 1.7; }
-.status { position: absolute; left: 30px; bottom: 30px; color: var(--warm); font: 11px monospace; text-transform: uppercase; }
-.status i { display: inline-block; width: 6px; height: 6px; margin-right: 8px; border-radius: 50%; background: var(--acid); }
 
 footer { display: flex; justify-content: space-between; padding: 35px 0 50px; color: #657169; font: 10px monospace; letter-spacing: .12em; }
 
@@ -105,7 +90,6 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
   main { width: min(100% - 30px, 1180px); }
   .environment { display: none; }
   .hero { padding-top: 70px; }
-  .moduleGrid { grid-template-columns: 1fr; }
   footer { gap: 20px; flex-direction: column; }
 }
 

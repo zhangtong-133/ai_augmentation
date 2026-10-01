@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-- `apps/api-server` contains the Axum API; `apps/worker` and `apps/scheduler` are background-process shells.
+- `apps/api-server` contains the Axum API and background executors; `apps/scheduler` delivers explicitly authorized one-time reminders.
 - `apps/web/src/app` holds Next.js routes, `src/components` holds React components, and `public/` holds static assets.
 - `crates/` contains domain logic and storage, LLM, tool, and agent interfaces. Keep vendor SDKs in adapters such as `storage-postgres`; wire implementations in application entry points.
 - Rust unit tests live beside code or in `src/tests.rs`; PostgreSQL integration tests and migrations live under `crates/storage-postgres/tests/` and `migrations/`.

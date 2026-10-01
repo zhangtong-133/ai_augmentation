@@ -104,27 +104,6 @@ services:
       minio-init:
         condition: service_completed_successfully
 
-  worker:
-    <<: *backend-service
-    build:
-      context: .
-      dockerfile: apps/Dockerfile
-      args:
-        APP: worker
-    environment:
-      RUN_FOREVER: "1"
-      APP_ENV: ${APP_ENV:-development}
-      RUST_LOG: ${RUST_LOG:-info}
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      QDRANT_URL: ${QDRANT_URL}
-      OBJECT_STORE_ENDPOINT: ${OBJECT_STORE_ENDPOINT}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
   scheduler:
     <<: *backend-service
     build:

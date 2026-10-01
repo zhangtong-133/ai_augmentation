@@ -7,7 +7,6 @@ members = [
   "crates/storage-qdrant",
   "crates/llm-openai",
   "apps/api-server",
-  "apps/worker",
   "apps/scheduler",
   "crates/domain",
   "crates/agent-core",
