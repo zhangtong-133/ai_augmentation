@@ -134,7 +134,10 @@ async fn tools(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, ApiError> {
     owner(&state, &headers).await?;
-    Ok(tool_execution::manifest(&executor))
+    Ok(tool_execution::manifest(
+        &executor,
+        Some("knowledge_search"),
+    ))
 }
 async fn search(
     State(state): State<AppState>,

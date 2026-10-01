@@ -1781,11 +1781,14 @@ async fn tools_require_session_csrf_and_server_owned_context() {
     assert_eq!(manifest.headers()[header::CACHE_CONTROL], "no-store");
     let manifest: serde_json::Value =
         serde_json::from_slice(&to_bytes(manifest.into_body(), 16384).await.unwrap()).unwrap();
-    assert_eq!(manifest["tools"][0]["name"], "knowledge_search");
-    assert_eq!(
-        manifest["tools"][0]["input_schema"]["additionalProperties"],
-        false
-    );
+    let search = manifest["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "knowledge_search")
+        .unwrap();
+    assert_eq!(search["may_incur_cost"], true);
+    assert_eq!(search["input_schema"]["additionalProperties"], false);
     for input in [
         json!({"query":""}),
         json!({"query":"x","user_id":"forged"}),
@@ -1883,13 +1886,11 @@ async fn tools_require_session_csrf_and_server_owned_context() {
         false,
     )
     .await;
-    assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(
-            &to_bytes(manifest.into_body(), 16384).await.unwrap()
-        )
-        .unwrap(),
-        json!({"tools":[]})
-    );
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&to_bytes(manifest.into_body(), 16384).await.unwrap()).unwrap();
+    assert_eq!(manifest["tools"].as_array().unwrap().len(), 1);
+    assert_eq!(manifest["tools"][0]["name"], "file_reader");
+    assert_eq!(manifest["tools"][0]["may_incur_cost"], false);
     assert_eq!(
         auth_request(
             disabled,

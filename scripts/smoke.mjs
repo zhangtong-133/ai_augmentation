@@ -456,6 +456,31 @@ try {
       Number(document.created_at_unix_ms >= overview.data.day_start_unix_ms &&
         document.created_at_unix_ms < overview.data.day_end_unix_ms));
   }
+  for (const base of [web, gateway]) {
+    const path = "/api/tools/file_reader";
+    const input = { document_id: document.id, offset: 2, limit: 7 };
+    const requestId = randomUUID();
+    const manifest = (await request(base, "/api/tools", 200, { cookie })).data;
+    const reader = manifest.tools.find(tool => tool.name === "file_reader");
+    assert.equal(reader.may_incur_cost, false);
+    assert.equal(reader.read_only, true);
+    await request(base, path, 401, { method: "POST", body: input, requestId });
+    await request(base, path, 403, { method: "POST", cookie, body: input, requestId, csrf: false });
+    await request(base, path, 400, { method: "POST", cookie, body: { path: "/etc/passwd" }, requestId });
+    await request(base, path, 400, { method: "POST", cookie, body: input });
+    const result = await request(base, path, 200, { method: "POST", cookie, body: input, requestId });
+    assert.equal(result.data.output.text, Array.from(body.markdown).slice(2, 9).join(""));
+    assert.equal(result.data.output.next_offset, 9);
+    assert.equal(result.data.call.status, "succeeded");
+    assert.equal(result.response.headers.get("cache-control"), "no-store");
+    await request(base, path, 409, { method: "POST", cookie, body: input, requestId });
+    await request(base, path, 403, { method: "POST", cookie: otherCookie, body: input, requestId: randomUUID() });
+    const audit = (await request(base, "/api/tool-calls/" + requestId, 200, { cookie })).data;
+    assert.equal(audit.tool, "file_reader");
+    assert.equal(JSON.stringify(audit).includes("知识积累"), false);
+    await request(base, "/api/tool-calls/" + requestId, 404, { cookie: otherCookie });
+  }
+  console.log("PASS: FileReader Unicode pages, no-model manifest, CSRF, isolation and one-time audit on both gateways");
   if (process.argv.includes("--index")) {
     await request(web, path + "/index", 403, { method: "POST", cookie, csrf: false });
     await request(gateway, path + "/index", 404, { method: "POST", cookie: otherCookie });
@@ -490,7 +515,9 @@ try {
     await request(api, "/api/mcp/tools", 401, { cookie });
     await request(api, "/api/mcp/tools", 401, { token, cookie });
     await request(api, "/api/mcp/tools", 401, { token: "pai_mcp_" + "0".repeat(64) });
-    await request(api, "/api/mcp/tools", 200, { token });
+    const mcpTools = (await request(api, "/api/mcp/tools", 200, { token })).data.tools;
+    assert.deepEqual(mcpTools.map(tool => tool.name), ["knowledge_search"]);
+    await request(api, "/api/tools/file_reader", 401, { method: "POST", token, body: { document_id: document.id }, requestId: randomUUID() });
     await request(api, "/api/mcp/tools/knowledge_search", 403, { method: "POST", token, csrf: false, body: { query: "test" } });
     await request(api, "/api/mcp/tools/knowledge_search", 400, { method: "POST", token, body: { query: "test", user_id: owner.id }, requestId: randomUUID() });
     const revokePath = credentialPath + "/" + issued.data.credential.id + "/revoke";
@@ -527,12 +554,13 @@ try {
       assert.deepEqual(isolated.data.hits, []);
       await request(base, "/api/tools", 401);
       const manifest = await request(base, "/api/tools", 200, { cookie });
-      assert.equal(manifest.data.tools.length, 1);
-      assert.equal(manifest.data.tools[0].name, "knowledge_search");
-      assert.equal(manifest.data.tools[0].read_only, true);
-      assert.equal(manifest.data.tools[0].may_incur_cost, true);
-      assert.equal(manifest.data.tools[0].request_id_header, "Idempotency-Key");
-      assert.equal(manifest.data.tools[0].daily_call_limit, 100);
+      assert.equal(manifest.data.tools.length, 2);
+      const searchTool = manifest.data.tools.find(tool => tool.name === "knowledge_search");
+      assert.equal(searchTool.name, "knowledge_search");
+      assert.equal(searchTool.read_only, true);
+      assert.equal(searchTool.may_incur_cost, true);
+      assert.equal(searchTool.request_id_header, "Idempotency-Key");
+      assert.equal(searchTool.daily_call_limit, 100);
       const toolPath = "/api/tools/knowledge_search";
       await request(base, toolPath, 401, { method: "POST", body });
       await request(base, toolPath, 403, { method: "POST", cookie, body, csrf: false });

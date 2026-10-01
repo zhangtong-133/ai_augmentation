@@ -54,6 +54,10 @@ impl Error for ToolError {}
 pub trait Tool: Send + Sync {
     fn name(&self) -> &'static str;
     fn description(&self) -> &'static str;
+    /// 默认保守标记可能产生供应商费用；纯本地工具可覆盖。
+    fn may_incur_cost(&self) -> bool {
+        true
+    }
     fn input_schema_json(&self) -> &'static str;
     /// 执行前的纯参数校验；实现不得调用外部服务或产生副作用。
     ///

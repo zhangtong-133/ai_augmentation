@@ -112,9 +112,20 @@ async fn call(
     body: &str,
     csrf: bool,
 ) -> axum::response::Response {
+    named_call(app, "knowledge_search", cookie, id, body, csrf).await
+}
+
+async fn named_call(
+    app: Router,
+    name: &str,
+    cookie: Option<&str>,
+    id: Option<&str>,
+    body: &str,
+    csrf: bool,
+) -> axum::response::Response {
     let mut request = Request::builder()
         .method("POST")
-        .uri("/api/tools/knowledge_search")
+        .uri(format!("/api/tools/{name}"))
         .header("content-type", "application/json");
     if let Some(cookie) = cookie {
         request = request.header("cookie", cookie);
@@ -341,5 +352,185 @@ async fn tool_audits_and_call_ids_are_scoped_by_authenticated_user() {
         .await;
         assert_eq!(report["used"], 1);
         assert_eq!(report["items"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn file_reader_pages_unicode_without_indexing_and_audits_once() {
+    let (mut state, store, dependencies, owner, cookie, mut document) = retrieval_fixture().await;
+    state.indexing = None;
+    let ledger = Arc::new(MemoryToolCalls::default());
+    state.tool_calls = Some(ledger.clone());
+    document.markdown = "中文🙂abc".into();
+    store
+        .documents
+        .lock()
+        .unwrap()
+        .get_mut(&document.summary.id)
+        .unwrap()
+        .2 = document.clone();
+    let app = router(state);
+    for (offset, expected, next) in [
+        (0, "中文", Some(2)),
+        (2, "🙂a", Some(4)),
+        (4, "bc", None),
+        (6, "", None),
+    ] {
+        let id = Uuid::new_v4().to_string();
+        let body = json!({"document_id":document.summary.id,"offset":offset,"limit":2}).to_string();
+        let response = named_call(
+            app.clone(),
+            "file_reader",
+            Some(&cookie),
+            Some(&id),
+            &body,
+            true,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let output = value(response).await;
+        assert_eq!(output["output"]["text"], expected);
+        assert_eq!(output["output"]["next_offset"], json!(next));
+        assert_eq!(output["output"]["total_chars"], 6);
+        assert_eq!(output["call"]["status"], "succeeded");
+        assert_eq!(
+            named_call(
+                app.clone(),
+                "file_reader",
+                Some(&cookie),
+                Some(&id),
+                &body,
+                true
+            )
+            .await
+            .status(),
+            StatusCode::CONFLICT
+        );
+    }
+    assert_eq!(dependencies.calls.load(Ordering::SeqCst), 1); // 只有夹具准备时索引，读取不调用模型。
+    let audit = ledger.audit_tool_calls(&owner, None).await.unwrap();
+    assert_eq!(audit.used, 4);
+    assert!(!serde_json::to_string(&audit).unwrap().contains("中文"));
+}
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn file_reader_rejects_untrusted_arguments_and_private_documents_and_honors_quota() {
+    let (mut state, store, _, _, cookie, document) = retrieval_fixture().await;
+    state.indexing = None;
+    let ledger = Arc::new(MemoryToolCalls::default());
+    state.tool_calls = Some(ledger.clone());
+    let app = router(state);
+    let valid = json!({"document_id":document.summary.id});
+    let id = Uuid::new_v4().to_string();
+    for (session, csrf, status) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            named_call(
+                app.clone(),
+                "file_reader",
+                session,
+                Some(&id),
+                &valid.to_string(),
+                csrf
+            )
+            .await
+            .status(),
+            status
+        );
+    }
+    for input in [
+        json!({"path":"/etc/passwd"}),
+        json!({"document_id":"https://example.com"}),
+        json!({"document_id":document.summary.id,"user_id":"forged"}),
+        json!({"document_id":document.summary.id,"offset":-1}),
+        json!({"document_id":document.summary.id,"offset":2_000_001}),
+        json!({"document_id":document.summary.id,"limit":0}),
+        json!({"document_id":document.summary.id,"limit":4001}),
+    ] {
+        assert_eq!(
+            named_call(
+                app.clone(),
+                "file_reader",
+                Some(&cookie),
+                Some(&id),
+                &input.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    for key in [None, Some("invalid")] {
+        assert_eq!(
+            named_call(
+                app.clone(),
+                "file_reader",
+                Some(&cookie),
+                key,
+                &valid.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(ledger.calls.lock().unwrap().len(), 0);
+    ledger.mode.store(3, Ordering::SeqCst);
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "file_reader",
+            Some(&cookie),
+            Some(&id),
+            &valid.to_string(),
+            true
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    ledger.mode.store(0, Ordering::SeqCst);
+    let beyond = json!({"document_id":document.summary.id,"offset":1000});
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "file_reader",
+            Some(&cookie),
+            Some(&id),
+            &beyond.to_string(),
+            true
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    store
+        .documents
+        .lock()
+        .unwrap()
+        .get_mut(&document.summary.id)
+        .unwrap()
+        .0 = Uuid::new_v4().to_string();
+    for document_id in [document.summary.id, Uuid::new_v4().to_string()] {
+        let response = named_call(
+            app.clone(),
+            "file_reader",
+            Some(&cookie),
+            Some(&Uuid::new_v4().to_string()),
+            &json!({"document_id":document_id}).to_string(),
+            true,
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            value(response).await,
+            json!({"error":{"code":"tool_denied"}})
+        );
     }
 }

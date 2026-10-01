@@ -4,6 +4,7 @@ mod model_agents;
 pub use model_agents::ModelAgentRuntime;
 mod answering;
 pub use answering::answering_from_env;
+mod file_reader;
 mod index_jobs;
 mod indexing;
 mod object_storage;

@@ -7,7 +7,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const endpoint = path.join("/");
   const allowed = request.method === "GET"
     ? ["healthz", "readyz", "auth/me", "documents", "overview", "tools", "memories", "conversations"]
-    : request.method === "POST" ? ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer", "tools/knowledge_search", "memories", "conversations"] : [];
+    : request.method === "POST" ? ["auth/login", "auth/logout", "documents", "knowledge/search", "knowledge/answer", "tools/knowledge_search", "tools/file_reader", "memories", "conversations"] : [];
   const conversationDetail = ["GET", "DELETE"].includes(request.method) && /^conversations\/[a-f0-9-]{36}$/i.test(endpoint);
   const conversationMessages = ["GET", "POST"].includes(request.method) && /^conversations\/[a-f0-9-]{36}\/messages$/i.test(endpoint);
   const conversationReplies = (request.method === "POST" && /^conversations\/[a-f0-9-]{36}\/replies(?:\/[a-f0-9-]{36}\/cancel)?$/i.test(endpoint))
@@ -48,7 +48,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
-  if (request.method === "POST" && endpoint === "tools/knowledge_search") {
+  if (request.method === "POST" && ["tools/knowledge_search", "tools/file_reader"].includes(endpoint)) {
     const requestId = request.headers.get("idempotency-key");
     if (requestId) headers.set("idempotency-key", requestId);
   }
@@ -74,7 +74,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     }
     const response = await fetch(
       new URL("/api/" + endpoint + request.nextUrl.search, process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080"),
-      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(feedConfirmation ? 25000 : endpoint === "knowledge/answer" ? 60000 : (documentIndex || endpoint === "knowledge/search" || endpoint === "tools/knowledge_search") ? 40000 : 10000) },
+      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(feedConfirmation ? 25000 : endpoint === "knowledge/answer" ? 60000 : (documentIndex || endpoint === "knowledge/search" || ["tools/knowledge_search", "tools/file_reader"].includes(endpoint)) ? 40000 : 10000) },
     );
     const output = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
     const cookie = response.headers.get("set-cookie");

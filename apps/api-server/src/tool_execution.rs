@@ -79,7 +79,7 @@ impl Tool for KnowledgeSearch {
 }
 
 pub(super) fn executor(state: &AppState) -> Arc<ToolExecutor> {
-    let tools: Vec<Arc<dyn Tool>> = state
+    let mut tools: Vec<Arc<dyn Tool>> = state
         .indexing
         .as_ref()
         .map(|indexing| {
@@ -89,6 +89,9 @@ pub(super) fn executor(state: &AppState) -> Arc<ToolExecutor> {
             }) as Arc<dyn Tool>]
         })
         .unwrap_or_default();
+    tools.push(Arc::new(crate::file_reader::FileReader(
+        state.documents.clone(),
+    )));
     Arc::new(ToolExecutor::new(tools).expect("static unique tool registry"))
 }
 
@@ -107,14 +110,14 @@ async fn list(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, ApiError> {
     auth::current_user(&state, &headers).await?;
-    Ok(manifest(&executor))
+    Ok(manifest(&executor, None))
 }
 
-pub(super) fn manifest(executor: &ToolExecutor) -> impl IntoResponse + use<> {
-    let tools: Vec<_> = executor.tools().map(|tool| json!({
+pub(super) fn manifest(executor: &ToolExecutor, scope: Option<&str>) -> impl IntoResponse + use<> {
+    let tools: Vec<_> = executor.tools().filter(|tool| scope.is_none_or(|name| tool.name() == name)).map(|tool| json!({
         "name": tool.name(), "description": tool.description(),
         "input_schema": serde_json::from_str::<Value>(tool.input_schema_json()).unwrap_or(Value::Null),
-        "read_only": true, "may_incur_cost": true,
+        "read_only": true, "may_incur_cost": tool.may_incur_cost(),
         "request_id_header": "Idempotency-Key", "daily_call_limit": DAILY_TOOL_CALL_LIMIT,
     })).collect();
     (
