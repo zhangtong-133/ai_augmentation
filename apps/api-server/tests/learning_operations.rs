@@ -143,7 +143,7 @@ fn invalid_cli_arguments_never_connect_or_expose_configuration() {
     ] {
         let out = cli("postgres://private-password@invalid/db", &args);
         assert_eq!(out.status.code(), Some(1));
-        assert!(out.stdout.is_empty());
+        assert_eq!(out.stdout, [] as [u8; 0]);
         assert!(!String::from_utf8_lossy(&out.stderr).contains("private-password"));
     }
     assert_eq!(cli("invalid", &["--help"]).status.code(), Some(0));
@@ -203,7 +203,7 @@ async fn metadata_reader_paginates_without_private_columns_writes_or_migrations(
         .to_string();
     let out = cli(&limited, &["audit", "--user", f.owner.as_str()]);
     assert_eq!(out.status.code(), Some(0));
-    assert!(out.stderr.is_empty());
+    assert_eq!(out.stderr, [] as [u8; 0]);
     let text = String::from_utf8(out.stdout).unwrap();
     for secret in [
         "private-owner",

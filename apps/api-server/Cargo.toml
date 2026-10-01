@@ -30,7 +30,6 @@ personal-ai-storage-postgres.workspace = true
 personal-ai-agent-core.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-knowledge.workspace = true
-personal-ai-learning.workspace = true
 personal-ai-llm.workspace = true
 personal-ai-storage.workspace = true
 personal-ai-tools.workspace = true

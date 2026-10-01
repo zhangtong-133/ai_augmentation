@@ -10,7 +10,7 @@ use std::sync::Arc;
 struct Planner(ReplyBudget);
 impl ReplyBudgetPlanner for Planner {
     fn plan(&self, context: &ReplyContext) -> StorageResult<ReplyBudget> {
-        assert!(!context.system.is_empty());
+        assert_ne!(context.system, "");
         assert_eq!(context.user_messages, ["问题"]);
         assert_eq!(context.configuration, configuration());
         assert_eq!(context.max_output_tokens, 1024);

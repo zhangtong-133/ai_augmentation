@@ -158,7 +158,7 @@ fn stdio_emits_only_json_and_bounds_frames() {
     child.stdin.take().unwrap().write_all(b"{}\n{\n").unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(output.status.success());
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let text = String::from_utf8(output.stdout).unwrap();
     assert_eq!(text.lines().count(), 2);
     for line in text.lines() {
@@ -184,7 +184,7 @@ fn stdio_emits_only_json_and_bounds_frames() {
         .unwrap();
     let output = child.wait_with_output().unwrap();
     assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     assert_eq!(
         String::from_utf8(output.stderr).unwrap().trim(),
         "MCP input frame exceeds 16 KiB"

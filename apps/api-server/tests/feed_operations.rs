@@ -61,7 +61,7 @@ async fn metadata_only_cli_has_stable_exit_codes_and_never_reads_private_columns
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(report["counts"]["collections"], 1);
     assert_eq!(report["consistent"], true);
-    assert!(result.stderr.is_empty());
+    assert_eq!(result.stderr, [] as [u8; 0]);
     let reader = sqlx::PgPool::connect(&limited).await.unwrap();
     assert!(
         sqlx::query("SELECT plan FROM feed_collections")

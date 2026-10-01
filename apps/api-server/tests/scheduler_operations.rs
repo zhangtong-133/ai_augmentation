@@ -126,7 +126,7 @@ fn invalid_arguments_fail_before_connecting_without_exposing_credentials() {
         &["audit", "--user", "invalid"],
     );
     assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     assert!(!String::from_utf8_lossy(&output.stderr).contains("private-password"));
     assert!(cli("invalid", &["--help"]).status.success());
 }

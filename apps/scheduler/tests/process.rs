@@ -71,13 +71,13 @@ async fn local_scheduler_process_delivers_once_and_survives_restart() {
     sqlx::query("INSERT INTO schedules(user_id,request_id,version,title,body,run_at_ms,digest,status,created_ms,approval_expires_ms,approved_ms,approval) VALUES($1,$2,$3,$4,$5,$6,$7,'scheduled',$6-3600000,$6-1800000,$6-3500000,$8)")
         .bind(Uuid::parse_str(owner.as_str()).unwrap()).bind(Uuid::parse_str(&input.request_id).unwrap()).bind(SCHEDULE_VERSION).bind(&input.title).bind(&input.body).bind(input.run_at_unix_ms).bind(digest).bind(serde_json::to_value(approval).unwrap()).execute(&pool).await.unwrap();
     assert!(run(None, &url).status.success());
-    assert!(
+    assert_eq!(
         store
             .list_schedule_reminders(&owner, None)
             .await
             .unwrap()
-            .items
-            .is_empty()
+            .items,
+        [] as [personal_ai_storage::schedules::ScheduleReminder; 0]
     );
     for _ in 0..2 {
         let output = run(Some("local"), &url);

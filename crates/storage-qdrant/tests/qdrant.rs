@@ -43,12 +43,12 @@ async fn persistent_vectors_are_idempotent_and_owner_and_model_scoped() {
         .insert_embeddings(&owner, &[doc.clone()])
         .await
         .unwrap();
-    assert!(
+    assert_eq!(
         store
             .similar_search(&other, &[1.0, 0.0, 0.0], 20)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [personal_ai_storage::VectorMatch; 0]
     );
     let reopened = QdrantStore::new(&url, &collection, None, "m", 3).unwrap();
     let found = reopened
@@ -75,12 +75,12 @@ async fn persistent_vectors_are_idempotent_and_owner_and_model_scoped() {
         1
     );
     store.remove(&owner, &[doc.id]).await.unwrap();
-    assert!(
+    assert_eq!(
         store
             .similar_search(&owner, &[1.0, 0.0, 0.0], 20)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [personal_ai_storage::VectorMatch; 0]
     );
     assert_eq!(
         store

@@ -194,7 +194,7 @@ async fn tls_rejects_untrusted_certificates_and_hostname_mismatch() {
             fixture(response("Content-Type: text/xml", b"<rss/>"), trust, wrong).await;
         assert_eq!(send(&client, url).await, Err(Error::Unavailable));
         let (request, count) = server.await.unwrap();
-        assert!(request.is_empty());
+        assert_eq!(request, "");
         assert_eq!(count, 1);
     }
 }

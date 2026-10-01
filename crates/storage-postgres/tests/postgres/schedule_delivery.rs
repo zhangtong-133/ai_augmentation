@@ -94,13 +94,13 @@ async fn scheduler_claims_once_recovers_expired_lease_and_delivers_idempotently(
             .status,
         "delivered"
     );
-    assert!(
+    assert_eq!(
         f.store
             .list_schedule_reminders(&f.other, None)
             .await
             .unwrap()
-            .items
-            .is_empty()
+            .items,
+        [] as [personal_ai_storage::schedules::ScheduleReminder; 0]
     );
     let forged = ScheduleLease {
         owner: f.other.clone(),

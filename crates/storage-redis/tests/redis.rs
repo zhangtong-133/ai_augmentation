@@ -75,19 +75,16 @@ async fn isolation_capacity_and_expiration() {
         store.recent(&owner, &conversation, 2).await.unwrap(),
         vec![entry("3"), entry("4")]
     );
-    assert!(
-        store
-            .recent(&other, &conversation, 3)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        store.recent(&other, &conversation, 3).await.unwrap(),
+        [] as [personal_ai_storage::MemoryEntry; 0]
     );
-    assert!(
+    assert_eq!(
         store
             .recent(&owner, &ConversationId::new("two"), 3)
             .await
-            .unwrap()
-            .is_empty()
+            .unwrap(),
+        [] as [personal_ai_storage::MemoryEntry; 0]
     );
     assert!(store.recent(&owner, &conversation, 4).await.is_err());
     assert!(store.recent(&owner, &conversation, 0).await.is_err());
@@ -108,20 +105,14 @@ async fn isolation_capacity_and_expiration() {
     );
     // 读取不得续期；两次读取跨越最初的写入 TTL。
     tokio::time::sleep(Duration::from_millis(1100)).await;
-    assert!(
-        !store
-            .recent(&owner, &conversation, 3)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_ne!(
+        store.recent(&owner, &conversation, 3).await.unwrap(),
+        [] as [personal_ai_storage::MemoryEntry; 0]
     );
     tokio::time::sleep(Duration::from_millis(1100)).await;
-    assert!(
-        store
-            .recent(&owner, &conversation, 3)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        store.recent(&owner, &conversation, 3).await.unwrap(),
+        [] as [personal_ai_storage::MemoryEntry; 0]
     );
 
     // 过期后可以重新创建；写入会为整个窗口续期。

@@ -93,13 +93,9 @@ async fn schedules_are_private_immutable_idempotent_and_persist_consent() {
             .await,
         Err(StorageError::NotFound)
     ));
-    assert!(
-        f.store
-            .list_schedules(&f.other, None)
-            .await
-            .unwrap()
-            .items
-            .is_empty()
+    assert_eq!(
+        f.store.list_schedules(&f.other, None).await.unwrap().items,
+        [] as [personal_ai_storage::schedules::Schedule; 0]
     );
     let mut changed = input.clone();
     changed.body.push('!');

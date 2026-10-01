@@ -55,7 +55,7 @@ fn invalid_arguments_fail_without_connecting_or_printing_secrets() {
         &UserId::new("bad"),
     );
     assert_eq!(output.status.code(), Some(1));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
     assert!(!String::from_utf8_lossy(&output.stderr).contains("private-password"));
 }
 
@@ -128,7 +128,7 @@ async fn mcp_audit_is_paginated_private_and_works_with_column_only_read_permissi
         .to_string();
     let output = cli(&read_url, &owner);
     assert_eq!(output.status.code(), Some(2));
-    assert!(output.stderr.is_empty());
+    assert_eq!(output.stderr, [] as [u8; 0]);
     let stdout = String::from_utf8(output.stdout).unwrap();
     for secret in [
         "private-host",

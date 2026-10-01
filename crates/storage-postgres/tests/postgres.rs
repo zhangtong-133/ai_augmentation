@@ -37,7 +37,10 @@ async fn conversations_are_private_idempotent_and_deleted_without_resurrection()
         store.list_conversations(&owner.id).await.unwrap(),
         vec![first.clone()]
     );
-    assert!(store.list_conversations(&foreign).await.unwrap().is_empty());
+    assert_eq!(
+        store.list_conversations(&foreign).await.unwrap(),
+        [] as [personal_ai_storage::conversations::Conversation; 0]
+    );
     assert!(matches!(
         store.get_conversation(&foreign, &first.id).await,
         Err(StorageError::NotFound)
@@ -76,12 +79,9 @@ async fn conversations_are_private_idempotent_and_deleted_without_resurrection()
         store.create_conversation(&owner.id, &request, "学习").await,
         Err(StorageError::Conflict(_))
     ));
-    assert!(
-        store
-            .list_conversations(&owner.id)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        store.list_conversations(&owner.id).await.unwrap(),
+        [] as [personal_ai_storage::conversations::Conversation; 0]
     );
     let pool = sqlx::PgPool::connect(&url).await.unwrap();
     let title: String = sqlx::query_scalar("SELECT title FROM conversations WHERE id=$1")
@@ -102,12 +102,9 @@ async fn conversations_are_private_idempotent_and_deleted_without_resurrection()
         .execute(&pool)
         .await
         .unwrap();
-    assert!(
-        store
-            .list_conversations(&owner.id)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        store.list_conversations(&owner.id).await.unwrap(),
+        [] as [personal_ai_storage::conversations::Conversation; 0]
     );
 }
 
@@ -602,12 +599,9 @@ async fn documents_persist_and_are_owner_scoped() {
         reopened.list_documents(&owner.id, 0).await.unwrap(),
         vec![document.summary.clone()]
     );
-    assert!(
-        reopened
-            .list_documents(&other.id, 0)
-            .await
-            .unwrap()
-            .is_empty()
+    assert_eq!(
+        reopened.list_documents(&other.id, 0).await.unwrap(),
+        [] as [personal_ai_storage::documents::DocumentSummary; 0]
     );
     assert!(matches!(
         reopened.get_document(&other.id, &document.summary.id).await,

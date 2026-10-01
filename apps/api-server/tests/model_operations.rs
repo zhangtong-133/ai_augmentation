@@ -93,7 +93,7 @@ fn invalid_database_environment_does_not_print_credentials() {
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
     assert!(!String::from_utf8_lossy(&output.stderr).contains("private-test-password"));
-    assert!(output.stdout.is_empty());
+    assert_eq!(output.stdout, [] as [u8; 0]);
 }
 
 fn budget(revision: &str) -> ModelCallBudget {

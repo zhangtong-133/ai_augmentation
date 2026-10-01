@@ -180,7 +180,7 @@ async fn live_public_html_import() {
         .import("https://example.com/")
         .await
         .unwrap();
-    assert!(!page.text.is_empty());
+    assert_ne!(page.text, "");
     assert_eq!(page.source, "https://example.com/");
     assert!(page.html.contains("<html"));
 }

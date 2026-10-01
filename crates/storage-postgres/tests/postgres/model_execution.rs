@@ -931,7 +931,10 @@ async fn execution_empty_evidence_refunds_answer_without_claim_and_replays_resul
         .get_model_execution_request(&f.owner, &f.conversation, &request.request_id)
         .await
         .unwrap();
-    assert!(result.evidence.is_empty());
+    assert_eq!(
+        result.evidence,
+        [] as [personal_ai_storage::model_execution::ModelEvidence; 0]
+    );
     assert!(result.answer.unwrap().insufficient_evidence);
     assert_eq!(f.audit().await.difference_micro, "0");
 }
@@ -1014,7 +1017,10 @@ async fn execution_rejects_foreign_stale_out_of_range_and_oversized_evidence() {
         let chunks = if case == 5 { vec![hit; 6] } else { vec![hit] };
         let result = finish(&f, &c, ModelExecutionOutcome::Retrieved(chunks), None).await;
         assert_eq!(result.status, "failed");
-        assert!(result.evidence.is_empty());
+        assert_eq!(
+            result.evidence,
+            [] as [personal_ai_storage::model_execution::ModelEvidence; 0]
+        );
         assert!(result.answer.is_none());
         assert_eq!((f.money().await, f.calls().await), (AMOUNT + 100, 2));
         assert_eq!(f.audit().await.difference_micro, "0");
@@ -1151,7 +1157,10 @@ async fn execution_cancellation_clears_evidence_and_discards_late_answer() {
     .await;
     let c = claim(&f, &request, 1).await;
     let cancelled = cancel(&f, &request).await;
-    assert!(cancelled.evidence.is_empty());
+    assert_eq!(
+        cancelled.evidence,
+        [] as [personal_ai_storage::model_execution::ModelEvidence; 0]
+    );
     let late = finish(&f, &c, valid_answer(), None).await;
     assert_eq!(late, cancelled);
     assert!(late.answer.is_none());

@@ -57,13 +57,13 @@ async fn brief_preferences_use_normalization_and_compare_and_swap() {
             .await,
         Err(StorageError::InvalidData(_))
     ));
-    assert!(
+    assert_eq!(
         f.store
             .get_brief_preferences(&f.other)
             .await
             .unwrap()
-            .keywords
-            .is_empty()
+            .keywords,
+        [] as [std::string::String; 0]
     );
     let normalized = f
         .store

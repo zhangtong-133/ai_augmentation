@@ -106,13 +106,13 @@ async fn tool_call_ids_are_concurrent_durable_owner_scoped_and_conflicts_never_s
             .await,
         Err(StorageError::NotFound)
     ));
-    assert!(
+    assert_eq!(
         f.store
             .audit_tool_calls(&f.foreign, None)
             .await
             .unwrap()
-            .items
-            .is_empty()
+            .items,
+        [] as [personal_ai_storage::tool_calls::ToolCall; 0]
     );
     let reopened = PostgresStore::connect_existing(&std::env::var("TEST_DATABASE_URL").unwrap())
         .await
@@ -180,13 +180,13 @@ async fn tool_daily_limit_is_atomic_and_failed_or_unknown_attempts_do_not_refund
         f.store.start_tool_call(&f.owner, &input()).await,
         Err(StorageError::Conflict(_))
     ));
-    assert!(
+    assert_eq!(
         f.store
             .audit_tool_calls(&f.owner, Some("2000-01-01"))
             .await
             .unwrap()
-            .items
-            .is_empty()
+            .items,
+        [] as [personal_ai_storage::tool_calls::ToolCall; 0]
     );
     assert!(matches!(
         f.store.audit_tool_calls(&f.owner, Some("2026-02-29")).await,

@@ -11,9 +11,5 @@ personal-ai-storage.workspace = true
 object_store = { version = "0.12", default-features = false, features = ["aws"] }
 url = "2"
 
-[dev-dependencies]
-tokio.workspace = true
-uuid.workspace = true
-
 [lints]
 workspace = true
