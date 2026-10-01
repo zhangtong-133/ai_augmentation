@@ -364,3 +364,6 @@ async fn schedules_failed_commit_returns_no_draft_or_authorization() {
     .unwrap();
     f.cleanup().await;
 }
+
+#[path = "schedule_delivery.rs"]
+mod delivery;

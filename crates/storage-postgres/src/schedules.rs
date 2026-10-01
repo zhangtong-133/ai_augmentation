@@ -10,14 +10,14 @@ use personal_ai_storage::{
 use sqlx::{Row, postgres::PgRow};
 use uuid::Uuid;
 
-const FIELDS: &str = "request_id,version,title,body,run_at_ms,digest,CASE WHEN status='draft' AND approval_expires_ms<=floor(extract(epoch FROM clock_timestamp())*1000)::bigint THEN 'expired' ELSE status END AS effective_status,created_ms,approval_expires_ms,approved_ms,cancelled_ms";
-fn uuid(value: &str) -> StorageResult<Uuid> {
+pub(super) const FIELDS: &str = "request_id,version,title,body,run_at_ms,digest,CASE WHEN status='draft' AND approval_expires_ms<=floor(extract(epoch FROM clock_timestamp())*1000)::bigint THEN 'expired' ELSE status END AS effective_status,created_ms,approval_expires_ms,approved_ms,cancelled_ms,delivered_ms";
+pub(super) fn uuid(value: &str) -> StorageResult<Uuid> {
     Uuid::parse_str(value).map_err(|_| StorageError::InvalidData("invalid schedule id".into()))
 }
 fn conflict() -> StorageError {
     StorageError::Conflict("schedule changed or authorization expired".into())
 }
-fn record(row: &PgRow) -> Schedule {
+pub(super) fn record(row: &PgRow) -> Schedule {
     Schedule {
         request_id: row.get::<Uuid, _>("request_id").to_string(),
         version: row.get("version"),
@@ -32,9 +32,10 @@ fn record(row: &PgRow) -> Schedule {
         approval_expires_at_unix_ms: row.get("approval_expires_ms"),
         approved_at_unix_ms: row.get("approved_ms"),
         cancelled_at_unix_ms: row.get("cancelled_ms"),
+        delivered_at_unix_ms: row.get("delivered_ms"),
     }
 }
-async fn lock_owner(tx: &mut sqlx::PgConnection, owner: Uuid) -> StorageResult<()> {
+pub(super) async fn lock_owner(tx: &mut sqlx::PgConnection, owner: Uuid) -> StorageResult<()> {
     sqlx::query("SELECT id FROM users WHERE id=$1 FOR UPDATE")
         .bind(owner)
         .fetch_one(tx)
@@ -42,7 +43,7 @@ async fn lock_owner(tx: &mut sqlx::PgConnection, owner: Uuid) -> StorageResult<(
         .map_err(map_error)?;
     Ok(())
 }
-async fn now(tx: &mut sqlx::PgConnection) -> StorageResult<i64> {
+pub(super) async fn now(tx: &mut sqlx::PgConnection) -> StorageResult<i64> {
     sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint")
         .fetch_one(tx)
         .await
@@ -167,7 +168,7 @@ impl ScheduleStore for PostgresStore {
             {
                 return Err(conflict());
             }
-            if saved.status == "scheduled" {
+            if matches!(saved.status.as_str(), "scheduled" | "running" | "delivered") {
                 tx.commit().await.map_err(map_error)?;
                 return Ok(saved);
             }
@@ -193,8 +194,12 @@ impl ScheduleStore for PostgresStore {
             let (owner, request) = ids?;
             let mut tx = self.pool.begin().await.map_err(map_error)?;
             lock_owner(&mut tx, owner).await?;
-            read(&mut tx, owner, request).await?;
-            sqlx::query("UPDATE schedules SET status='cancelled',cancelled_ms=COALESCE(cancelled_ms,floor(extract(epoch FROM clock_timestamp())*1000)::bigint) WHERE user_id=$1 AND request_id=$2")
+            let saved = read(&mut tx, owner, request).await?;
+            if saved.status == "delivered" {
+                tx.commit().await.map_err(map_error)?;
+                return Ok(saved);
+            }
+            sqlx::query("UPDATE schedules SET status='cancelled',claim_id=NULL,lease_until_ms=NULL,cancelled_ms=COALESCE(cancelled_ms,floor(extract(epoch FROM clock_timestamp())*1000)::bigint) WHERE user_id=$1 AND request_id=$2")
                 .bind(owner).bind(request).execute(&mut *tx).await.map_err(map_error)?;
             let saved = read(&mut tx, owner, request).await?;
             tx.commit().await.map_err(map_error)?;

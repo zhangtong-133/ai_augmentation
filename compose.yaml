@@ -133,6 +133,7 @@ services:
         APP: scheduler
     environment:
       RUN_FOREVER: "1"
+      SCHEDULER_MODE: ${SCHEDULER_MODE:-disabled}
       APP_ENV: ${APP_ENV:-development}
       RUST_LOG: ${RUST_LOG:-info}
       DATABASE_URL: ${DATABASE_URL}

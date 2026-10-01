@@ -220,4 +220,5 @@ impl MetadataStore for PostgresStore {
     }
 }
 
+mod schedule_delivery;
 mod schedules;

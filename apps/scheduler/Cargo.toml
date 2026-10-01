@@ -9,6 +9,13 @@ rust-version.workspace = true
 personal-ai-agent-core.workspace = true
 personal-ai-domain.workspace = true
 personal-ai-storage.workspace = true
+personal-ai-storage-postgres.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+sqlx.workspace = true
+uuid.workspace = true
+serde_json.workspace = true

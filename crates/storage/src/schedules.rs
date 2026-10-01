@@ -55,6 +55,7 @@ pub struct Schedule {
     pub approval_expires_at_unix_ms: i64,
     pub approved_at_unix_ms: Option<i64>,
     pub cancelled_at_unix_ms: Option<i64>,
+    pub delivered_at_unix_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -87,4 +88,42 @@ pub trait ScheduleStore: Send + Sync {
         owner: &UserId,
         request: &str,
     ) -> BoxFuture<'_, StorageResult<Schedule>>;
+}
+
+/// 内部租约凭据，不从 HTTP 接受，不包含可替换的提醒正文。
+#[derive(Clone, Debug)]
+pub struct ScheduleLease {
+    pub owner: UserId,
+    pub request_id: String,
+    pub claim_id: String,
+    pub lease_until_unix_ms: i64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct ScheduleReminder {
+    pub request_id: String,
+    pub title: String,
+    pub body: String,
+    pub delivered_at_unix_ms: i64,
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct ReminderPage {
+    pub items: Vec<ScheduleReminder>,
+    pub next_cursor: Option<String>,
+}
+
+pub trait ScheduleDeliveryStore: Send + Sync {
+    /// 内部跨用户领取；事务复核授权后返回，过期租约可被新凭据替换。
+    fn claim_due_schedule(&self) -> BoxFuture<'_, StorageResult<Option<ScheduleLease>>>;
+    /// 只使用保存的正文；旧租约、取消或授权改变时不投递。
+    fn deliver_schedule(
+        &self,
+        lease: &ScheduleLease,
+    ) -> BoxFuture<'_, StorageResult<ScheduleReminder>>;
+    fn list_schedule_reminders(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<ReminderPage>>;
 }
