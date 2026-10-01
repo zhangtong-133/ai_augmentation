@@ -26,7 +26,7 @@ fn invalid() -> StorageError {
 fn conflict() -> StorageError {
     StorageError::Conflict("learning version, snapshot or quota changed".into())
 }
-fn id(value: &str) -> StorageResult<Uuid> {
+pub(super) fn id(value: &str) -> StorageResult<Uuid> {
     let id = Uuid::parse_str(value).map_err(|_| invalid())?;
     if id.is_nil() {
         return Err(invalid());

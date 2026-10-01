@@ -89,3 +89,5 @@
 - [Sprint 4：技能图、自评与不可变训练计划仓储](design/sprint-4-learning-store.md)：图版本与 CAS、计划/任务原子写入、来源删除清理和持久化额度。
 
 - [Sprint 4：学习管理 HTTP、页面与显式训练结果](design/sprint-4-learning-app.md)：技能管理、自评、计划历史、幂等结果及删除清理。
+
+- [Sprint 4：学习数据只读运维核对与额度诊断](design/sprint-4-learning-operations.md)：元数据列权限、一致快照、图/版本/结果状态检查及持久化额度。

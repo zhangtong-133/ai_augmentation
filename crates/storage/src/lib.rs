@@ -219,3 +219,5 @@ pub trait MemoryStore: Send + Sync {
 pub mod schedules;
 
 pub mod schedule_operations;
+
+pub mod learning_operations;

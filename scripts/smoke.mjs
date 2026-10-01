@@ -228,6 +228,9 @@ try {
   await command("make", ["test-feed-operations"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("make", ["test-learning-operations"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   await command("make", ["test-feeds"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
@@ -279,6 +282,11 @@ try {
     const modelConfigs = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "configurations", stage], true));
     assert.ok(Array.isArray(modelConfigs.items));
   }
+  const learningAudit = JSON.parse(await compose(["exec", "-T", "api-server", "learning-operations", "audit", "--user", owner.id], true));
+  assert.equal(learningAudit.consistent, true);
+  assert.equal(learningAudit.counts.plans, 0);
+  assert.equal(learningAudit.quotas.plans_today.remaining, 10);
+  console.log("PASS: packaged learning metadata audit");
   const feedAudit = JSON.parse(await compose(["exec", "-T", "api-server", "feed-operations", "audit", "--user", owner.id], true));
   assert.equal(feedAudit.consistent, true);
   assert.equal(feedAudit.counts.collections, 0);
