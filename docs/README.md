@@ -71,3 +71,5 @@
 - [Sprint 4：RSS 订阅仓储与一次性采集事务](design/sprint-4-rss-store.md)：订阅版本、精确同意、并发/额度控制、原子条目写回及私有审计。
 
 - [Sprint 4：RSS 公网传输与一次性执行器](design/sprint-4-rss-executor.md)：DNS 公网检查、TLS/连接固定、禁止重试、进程并发和未知结果边界；包含 RSS CI 失败排查。
+
+- [Sprint 4：RSS 管理与一次性采集 HTTP 接口](design/sprint-4-rss-http.md)：会话/CSRF、默认关闭、精确确认、私有状态与显式恢复，以及 Next.js 双入口代理。

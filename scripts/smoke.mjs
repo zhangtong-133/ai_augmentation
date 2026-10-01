@@ -225,6 +225,9 @@ try {
   await command("cargo", ["test", "-p", "api-server", "--lib", "agent_plans", "--", "--ignored"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("make", ["test-feeds"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
@@ -293,6 +296,32 @@ try {
   await request(web, "/api/overview", 401);
   const empty = await request(web, "/api/overview", 200, { cookie });
   assert.equal(empty.data.knowledge.total_documents, 0);
+  for (const base of [web, gateway]) {
+    await request(base, "/api/feeds/config", 401);
+    const config = await request(base, "/api/feeds/config", 200, { cookie });
+    assert.deepEqual(config.data, { mode: "disabled", execution_enabled: false });
+    const input = { id: randomUUID(), name: "RSS smoke", source_url: "https://example.com/rss", enabled: true };
+    await request(base, "/api/feed-subscriptions", 403, { method: "POST", cookie, body: input, csrf: false });
+    const sub = await request(base, "/api/feed-subscriptions", 201, { method: "POST", cookie, body: input });
+    assert.equal(sub.data.snapshot.revision, "1");
+    const path = `/api/feed-subscriptions/${input.id}`;
+    await request(base, path, 404, { cookie: otherCookie });
+    const draft = await request(base, `${path}/collections`, 201, { method: "POST", cookie, body: { request_id: randomUUID() } });
+    const collection = `/api/feed-collections/${draft.data.plan.request_id}`;
+    const consent = { accepted_digest: draft.data.digest, acknowledge_source_request: true };
+    const disabled = await request(base, `${collection}/confirm`, 503, { method: "POST", cookie, body: consent });
+    assert.equal(disabled.data.error.code, "feed_execution_disabled");
+    assert.equal((await request(base, collection, 200, { cookie })).data.status, "draft");
+    await request(base, `${collection}/claim`, 404, { method: "POST", cookie, body: {} });
+    const changed = await request(base, path, 200, { method: "PUT", cookie, body: { revision: "1", name: "Disabled", source_url: input.source_url, enabled: false } });
+    assert.equal(changed.data.snapshot.revision, "2");
+    await request(base, `${collection}/cancel`, 200, { method: "POST", cookie, body: {} });
+    await request(base, `${collection}/audit`, 200, { cookie });
+    await request(base, `${path}/entries`, 200, { cookie });
+    await request(base, path, 200, { method: "DELETE", cookie, body: { revision: "2" } });
+    await request(base, path, 404, { cookie });
+  }
+  console.log("PASS: RSS private management, immutable preview and disabled execution on both gateways");
   const persistedMemories = [];
   const persistedConversations = [];
   for (const base of [web, gateway]) {

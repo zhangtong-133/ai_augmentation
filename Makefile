@@ -100,3 +100,7 @@ smoke-index: ## 验证隔离 Qdrant、Embedding HTTP 夹具和双入口文档索
 .PHONY: browser-test-index
 browser-test-index: ## 使用本地模型夹具验证索引任务及双入口无头 UI
 	node scripts/smoke.mjs --index --browser
+
+.PHONY: test-feeds
+test-feeds: ## 使用一次性 TEST_DATABASE_URL 验证 RSS 会话、授权及 HTTP 隔离
+	cargo test -p api-server --lib feed_tests -- --ignored

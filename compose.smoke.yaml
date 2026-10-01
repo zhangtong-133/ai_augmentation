@@ -42,6 +42,7 @@ services:
       SESSION_COOKIE_SECURE: "false"
       MESSAGE_CACHE_ENABLED: "true"
       CONVERSATION_REPLY_MODE: "fixture"
+      RSS_COLLECTION_MODE: "disabled"
       REDIS_URL: redis://redis:6379/0
     ports:
       - "127.0.0.1::8080"

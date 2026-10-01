@@ -41,6 +41,8 @@ dependencies = [
  "base64",
  "personal-ai-agent-core",
  "personal-ai-domain",
+ "personal-ai-feed-http",
+ "personal-ai-feeds",
  "personal-ai-knowledge",
  "personal-ai-learning",
  "personal-ai-llm",

@@ -127,6 +127,7 @@ impl Fixture {
             paid: Some(paid),
         });
         let state = AppState {
+            feeds: None,
             schedules: Some(store.clone()),
             model_agents: None,
             agent_plans: Some(store.clone()),

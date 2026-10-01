@@ -29,9 +29,11 @@ use uuid::Uuid;
 mod auth;
 mod conversations;
 mod documents;
+mod feeds;
 mod mcp_credentials;
 mod memories;
 mod schedules;
+pub use feeds::FeedRuntime;
 pub use schedules::SchedulerStore;
 mod messages;
 mod paid_replies;
@@ -78,6 +80,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub feeds: Option<Arc<FeedRuntime>>,
     pub schedules: Option<Arc<dyn SchedulerStore>>,
     pub model_agents: Option<Arc<ModelAgentRuntime>>,
     pub agent_plans: Option<Arc<dyn personal_ai_storage::agent_plans::AgentPlanStore>>,
@@ -110,6 +113,7 @@ pub fn router(state: AppState) -> Router {
         .merge(documents::routes())
         .merge(memories::routes())
         .merge(schedules::routes())
+        .merge(feeds::routes())
         .merge(messages::routes())
         .merge(replies::routes())
         .merge(conversations::routes())
