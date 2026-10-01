@@ -207,3 +207,71 @@ async fn briefs_work_with_collection_disabled_and_preserve_large_revisions_exact
     assert_eq!(f.transport.calls.load(Ordering::SeqCst), 0);
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn brief_schedules_require_explicit_consent_versions_and_private_sessions() {
+    let f = Fixture::new(false).await;
+    let path = "/api/feed-brief-schedule";
+    let input = json!({"revision":"0","enabled":true,"minute_utc":540,"acknowledge_schedule":true});
+    assert_eq!(
+        f.send("GET", path, json!({}), None, false).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        f.send("PUT", path, input.clone(), Some(&f.cookie), false)
+            .await
+            .status(),
+        StatusCode::FORBIDDEN
+    );
+    for body in [
+        json!({"revision":"0","enabled":true,"minute_utc":540,"acknowledge_schedule":false}),
+        json!({"revision":"0","enabled":true,"minute_utc":1440,"acknowledge_schedule":true}),
+        json!({"revision":"00","enabled":true,"minute_utc":540,"acknowledge_schedule":true}),
+        json!({"revision":"0","enabled":true,"minute_utc":540,"acknowledge_schedule":true,"owner":"forged"}),
+    ] {
+        assert!(f.call("PUT", path, body).await.0.is_client_error());
+    }
+    assert_eq!(
+        f.call("GET", "/api/feed-brief-schedule?user_id=forged", json!({}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    let response = f
+        .send("PUT", path, input.clone(), Some(&f.cookie), true)
+        .await;
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    assert_eq!(response.status(), StatusCode::OK);
+    let (_, saved) = f.call("PUT", path, input).await;
+    assert_eq!(saved["revision"], "1");
+    assert!(saved["next_run_unix_ms"].is_string());
+    assert_eq!(
+        f.call(
+            "PUT",
+            path,
+            json!({"revision":"0","enabled":false,"minute_utc":540,"acknowledge_schedule":false})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let response = f
+        .send("GET", path, json!({}), Some(&f.other_cookie), false)
+        .await;
+    let other: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 65536).await.unwrap()).unwrap();
+    assert_eq!(other["revision"], "0");
+    assert_eq!(other["enabled"], false);
+    assert_eq!(
+        f.call(
+            "PUT",
+            path,
+            json!({"revision":"1","enabled":false,"minute_utc":540,"acknowledge_schedule":false})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    f.cleanup().await;
+}

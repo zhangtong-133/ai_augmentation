@@ -43,7 +43,10 @@ async fn locked(store: &PostgresStore, owner: Uuid) -> StorageResult<Transaction
     lock_owner(&mut tx, owner).await?;
     Ok(tx)
 }
-async fn preferences(tx: &mut PgConnection, owner: Uuid) -> StorageResult<BriefPreferences> {
+pub(super) async fn preferences(
+    tx: &mut PgConnection,
+    owner: Uuid,
+) -> StorageResult<BriefPreferences> {
     let row = sqlx::query("SELECT revision,keywords FROM feed_brief_preferences WHERE user_id=$1")
         .bind(owner)
         .fetch_optional(tx)
@@ -252,6 +255,19 @@ async fn create(
     expected: u64,
 ) -> StorageResult<SavedBrief> {
     let mut tx = locked(store, owner).await?;
+    let time = now(&mut tx).await?;
+    let saved = create_in_transaction(&mut tx, owner, request, expected, time).await?;
+    tx.commit().await.map_err(map_error)?;
+    Ok(saved)
+}
+
+pub(super) async fn create_in_transaction(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    request: Uuid,
+    expected: u64,
+    time: i64,
+) -> StorageResult<SavedBrief> {
     if let Some(row) = sqlx::query(&format!(
         "SELECT {FIELDS} FROM feed_briefs WHERE user_id=$1 AND request_id=$2"
     ))
@@ -267,11 +283,10 @@ async fn create(
         }
         return Ok(saved);
     }
-    let pref = preferences(&mut tx, owner).await?;
+    let pref = preferences(&mut *tx, owner).await?;
     if pref.revision != expected {
         return Err(conflict());
     }
-    let time = now(&mut tx).await?;
     let start = time / 86_400_000 * 86_400_000;
     let limits=sqlx::query("SELECT count(*) AS total,count(*) FILTER(WHERE day_start_ms=$2) AS daily FROM feed_briefs WHERE user_id=$1")
         .bind(owner).bind(start).fetch_one(&mut *tx).await.map_err(map_error)?;
@@ -279,7 +294,7 @@ async fn create(
         return Err(conflict());
     }
     let entries = candidates(
-        &mut tx,
+        &mut *tx,
         owner,
         start,
         start.checked_add(86_400_000).ok_or_else(invalid)?,
@@ -310,7 +325,6 @@ async fn create(
         .await
         .map_err(map_error)?;
     }
-    let saved = read(&mut tx, owner, request).await?;
-    tx.commit().await.map_err(map_error)?;
+    let saved = read(&mut *tx, owner, request).await?;
     Ok(saved)
 }

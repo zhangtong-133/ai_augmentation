@@ -20,12 +20,14 @@
 
 `list_schedule_reminders` 是内部按用户查询接口，每页 20 条，按请求 UUID 排序，游标规则与任务列表一致。不存在跨用户读取，用户删除级联清理任务与提醒。提醒当前随任务保留，尚无已读、单条删除和归档功能。
 
+后续已接入[每日定时日报](daily-brief-schedule.md)，local 模式也处理用户明确启用的日报配置；默认仍关闭。
+
 ## 启用与进程行为
 
 追加 `0022_schedule_delivery.sql`，扩展任务状态和租约/投递字段，创建站内提醒表及待领取索引。先由 API 或部署流程完成迁移；Scheduler 使用 `connect_existing`，不执行迁移，不组装模型、缓存或网络通知适配器。
 
 - `SCHEDULER_MODE=disabled` 为默认值：不连接数据库，不处理任务。
-- `SCHEDULER_MODE=local`：连接 `DATABASE_URL`，只投递已批准的站内提醒。其他值和非 UTF-8 模式拒绝启动。
+- `SCHEDULER_MODE=local`：连接 `DATABASE_URL`，投递已批准的站内提醒，并处理用户显式启用的定时日报。其他值和非 UTF-8 模式拒绝启动。
 - `RUN_FOREVER=1`：循环运行，每批最多处理 100 个任务，正常批次后等待 2 秒，数据库错误后等待 5 秒；等待期间支持终止。未设置时只运行一个批次，错误返回非零退出码。
 
 ```sh

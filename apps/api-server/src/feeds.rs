@@ -14,6 +14,7 @@ use personal_ai_agent_core::feeds::{FeedExecutionError, FeedExecutor};
 use personal_ai_feeds::transport::FeedTransport;
 use personal_ai_storage::{
     StorageError,
+    brief_schedules::BriefScheduleStore,
     briefs::BriefStore,
     feeds::{FeedStore, SubscriptionInput},
 };
@@ -25,6 +26,7 @@ mod briefs;
 
 pub struct FeedRuntime {
     briefs: Arc<dyn BriefStore>,
+    brief_schedules: Arc<dyn BriefScheduleStore>,
     store: Arc<dyn FeedStore>,
     executor: Option<FeedExecutor>,
 }
@@ -32,7 +34,7 @@ impl FeedRuntime {
     /// 默认只提供管理/预览；public 模式才允许确认后执行公网 GET。
     /// # Errors
     /// 未知 `RSS_COLLECTION_MODE` 导致启动失败，不隐式启用。
-    pub fn from_env<S: FeedStore + BriefStore + 'static>(
+    pub fn from_env<S: FeedStore + BriefStore + BriefScheduleStore + 'static>(
         store: Arc<S>,
     ) -> Result<Arc<Self>, String> {
         let enabled = mode(std::env::var("RSS_COLLECTION_MODE").ok().as_deref())?;
@@ -43,13 +45,14 @@ impl FeedRuntime {
     }
     /// 仅应用装配和测试使用，传输实现不由 HTTP 输入选择。
     #[must_use]
-    pub fn new<S: FeedStore + BriefStore + 'static>(
+    pub fn new<S: FeedStore + BriefStore + BriefScheduleStore + 'static>(
         store: Arc<S>,
         transport: Option<Arc<dyn FeedTransport>>,
     ) -> Self {
         let executor = transport.map(|transport| FeedExecutor::new(store.clone(), transport));
         Self {
             briefs: store.clone(),
+            brief_schedules: store.clone(),
             store,
             executor,
         }

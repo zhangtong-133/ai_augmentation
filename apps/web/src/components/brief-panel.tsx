@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+
+import { BriefSchedule } from "./brief-schedule";
 
 type Preferences = { revision: string; keywords: string[] };
 type Summary = { request_id: string; day_start_unix_ms: string; created_at_unix_ms: string; status: "ready" | "deleted" | "invalidated" };
@@ -36,12 +38,13 @@ export function BriefPanel() {
   const active = useRef<AbortController | null>(null);
   const alive = useRef(true);
   const sessionExpired = useRef(false);
+  const expire = useCallback(() => { sessionExpired.current = true; setExpired(true); setReady(false); setPreferences(null); setKeywords(""); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setDeleting(false); setNotice(""); active.current?.abort(); active.current = null; setBusy(false); setError("登录已失效，请重新登录。"); }, []);
   const valid = (c: AbortController) => alive.current && active.current === c && !c.signal.aborted;
   async function request<T>(path: string, c: AbortController, operation?: Operation): Promise<T> {
     const response = await fetch(path, { method: operation?.method ?? "GET", cache: "no-store", headers: operation ? { "Content-Type": "application/json", "X-Requested-With": "personal-ai" } : undefined, body: operation ? JSON.stringify(operation.body) : undefined, signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) {
       if (response.status === 401 && valid(c)) {
-        sessionExpired.current = true; setExpired(true); setReady(false); setPreferences(null); setKeywords(""); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setDeleting(false); setNotice("");
+        expire();
       }
       throw new Error(message(response.status));
     }
@@ -109,6 +112,7 @@ export function BriefPanel() {
   const dirty = preferences !== null && keywords !== preferences.keywords.join("\n");
   return <section className="feedPanel briefPanel" aria-label="Daily Brief 日报">
     <h2>Daily Brief 日报</h2>
+    {!expired && <BriefSchedule onExpired={expire} />}
     <p>按关键词与新鲜度整理已保存的 RSS 条目。不会采集新内容、调用模型或发送通知。</p>
     <form onSubmit={save}>
       <label htmlFor="brief-keywords">日报关键词（每行一个，最多 5 个）</label>

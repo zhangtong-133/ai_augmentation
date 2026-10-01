@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 use personal_ai_agent_core::schedules::deliver_due_reminders;
+use personal_ai_storage::brief_schedules::BriefScheduleStore;
 use personal_ai_storage_postgres::PostgresStore;
 use std::{env, process::ExitCode, time::Duration};
 
@@ -37,9 +38,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     // 迁移由 API/部署流程执行；调度进程不初始化供应商或缓存。
     let store = PostgresStore::connect_existing(&url).await?;
     loop {
-        let delay = match deliver_due_reminders(&store).await {
-            Ok(count) => {
-                println!("scheduler delivered {count} reminders");
+        let delay = match tick(&store).await {
+            Ok((reminders, briefs)) => {
+                println!(
+                    "scheduler delivered {reminders} reminders; processed {briefs} brief schedules"
+                );
                 2
             }
             Err(error) if forever => {
@@ -53,6 +56,18 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         tokio::time::sleep(Duration::from_secs(delay)).await;
     }
+}
+
+async fn tick(store: &PostgresStore) -> Result<(u32, u32), personal_ai_storage::StorageError> {
+    let reminders = deliver_due_reminders(store).await?;
+    let mut briefs = 0;
+    for _ in 0..100 {
+        if !store.generate_due_brief().await? {
+            break;
+        }
+        briefs += 1;
+    }
+    Ok((reminders, briefs))
 }
 
 async fn shutdown() {

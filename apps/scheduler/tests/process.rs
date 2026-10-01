@@ -26,11 +26,14 @@ fn disabled_scheduler_does_not_connect_and_invalid_mode_is_rejected() {
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]
+#[allow(clippy::too_many_lines)] // 同一进程生命周期验证提醒和定时日报的禁用、投递及重启幂等。
 async fn local_scheduler_process_delivers_once_and_survives_restart() {
     use personal_ai_agent_core::schedules::schedule_digest;
     use personal_ai_domain::{User, UserId};
     use personal_ai_storage::{
         MetadataStore,
+        brief_schedules::BriefScheduleStore,
+        briefs::BriefStore,
         schedules::{
             NewSchedule, SCHEDULE_VERSION, ScheduleApproval, ScheduleDeliveryStore, ScheduleStore,
         },
@@ -70,7 +73,17 @@ async fn local_scheduler_process_delivers_once_and_survives_restart() {
     };
     sqlx::query("INSERT INTO schedules(user_id,request_id,version,title,body,run_at_ms,digest,status,created_ms,approval_expires_ms,approved_ms,approval) VALUES($1,$2,$3,$4,$5,$6,$7,'scheduled',$6-3600000,$6-1800000,$6-3500000,$8)")
         .bind(Uuid::parse_str(owner.as_str()).unwrap()).bind(Uuid::parse_str(&input.request_id).unwrap()).bind(SCHEDULE_VERSION).bind(&input.title).bind(&input.body).bind(input.run_at_unix_ms).bind(digest).bind(serde_json::to_value(approval).unwrap()).execute(&pool).await.unwrap();
+    store.save_brief_schedule(&owner, 0, true, 0).await.unwrap();
+    sqlx::query("UPDATE feed_brief_schedules SET next_run_ms=0 WHERE user_id=$1")
+        .bind(Uuid::parse_str(owner.as_str()).unwrap())
+        .execute(&pool)
+        .await
+        .unwrap();
     assert!(run(None, &url).status.success());
+    assert_eq!(
+        store.list_briefs(&owner, None).await.unwrap().items.len(),
+        0
+    );
     assert_eq!(
         store
             .list_schedule_reminders(&owner, None)
@@ -90,6 +103,19 @@ async fn local_scheduler_process_delivers_once_and_survives_restart() {
             assert!(!String::from_utf8_lossy(text).contains("private-reminder"));
             assert!(!String::from_utf8_lossy(text).contains(&url));
         }
+        assert_eq!(
+            store.list_briefs(&owner, None).await.unwrap().items.len(),
+            1
+        );
+        assert_eq!(
+            store
+                .get_brief_schedule(&owner)
+                .await
+                .unwrap()
+                .last_outcome
+                .as_deref(),
+            Some("generated")
+        );
         let reminders = store.list_schedule_reminders(&owner, None).await.unwrap();
         assert_eq!(reminders.items.len(), 1);
         assert_eq!(reminders.items[0].body, input.body);

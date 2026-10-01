@@ -95,3 +95,5 @@
 - [Sprint 4：学习进度概览](design/sprint-4-learning-progress.md)：只读当前自评覆盖、现存训练结果与 UTC 今日统计，包含页面刷新及故障隔离。
 
 - [FileReader 只读文档工具](design/file-reader-tool.md)：已导入文档的无模型分页读取、用户隔离、次数审计及 MCP 范围隔离。
+
+- [每日定时日报](design/daily-brief-schedule.md)：按用户显式启用，UTC 调度、单日去重及生成/配置原子提交。

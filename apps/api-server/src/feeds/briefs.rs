@@ -6,6 +6,7 @@ use super::{
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route("/api/feed-brief-schedule", get(schedule).put(save_schedule))
         .route("/api/feed-brief-preferences", get(preferences).put(save))
         .route("/api/feed-briefs", get(history).post(create))
         .route("/api/feed-briefs/{id}", get(detail).delete(delete))
@@ -123,4 +124,55 @@ async fn delete(
         .await
         .map_err(error)?;
     output(&json!({"deleted":true}))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScheduleInput {
+    revision: String,
+    enabled: bool,
+    minute_utc: u16,
+    acknowledge_schedule: bool,
+}
+async fn schedule(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    query: Result<Query<Empty>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    query.map_err(|_| invalid())?;
+    output(
+        &runtime(&state)?
+            .brief_schedules
+            .get_brief_schedule(&user.id)
+            .await
+            .map_err(error)?,
+    )
+}
+async fn save_schedule(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Result<Json<ScheduleInput>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    if input.enabled && !input.acknowledge_schedule {
+        return Err(ApiError(
+            StatusCode::BAD_REQUEST,
+            "schedule_consent_required",
+        ));
+    }
+    output(
+        &runtime(&state)?
+            .brief_schedules
+            .save_brief_schedule(
+                &user.id,
+                version(&input.revision)?,
+                input.enabled,
+                input.minute_utc,
+            )
+            .await
+            .map_err(error)?,
+    )
 }
