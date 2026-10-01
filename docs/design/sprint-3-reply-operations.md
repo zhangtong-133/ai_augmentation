@@ -18,7 +18,7 @@ cargo run -p api-server --bin reply-operations -- ledger \
   --user "$REPLY_AUDIT_USER_ID" --day 2026-09-30 --currency USD
 ```
 
-部署栈中可使用 `./scripts/compose.sh exec -T api-server reply-operations`，后续参数与上述一致。查询和预览支持只读数据库账号：需对 `users`、`conversations`、`conversation_replies`、`reply_configurations`、`reply_money_daily`、`reply_money_reservations` 有 SELECT 权限；接入模型规划后，还需对 `model_planning_requests` 的 `user_id`、`conversation_id`、`request_id`、`status` 列授予 SELECT，不需读取冻结快照。配置查询只需对应配置表权限。执行停用另需对 `reply_configurations` 的 UPDATE 权限。命令没有重新启用、覆盖配置或修改金额端口。
+部署栈中可使用 `./scripts/compose.sh exec -T api-server reply-operations`，后续参数与上述一致。查询和预览支持只读数据库账号：需对 `users`、`conversations`、`conversation_replies`、`reply_configurations`、`reply_money_daily`、`reply_money_reservations` 有 SELECT 权限；接入模型规划后，还需对 `model_planning_requests` 的 `user_id`、`conversation_id`、`request_id`、`status` 列授予 SELECT，不需读取冻结快照。接入第二阶段后，还需对 `model_execution_call_audit` 的相同四列授予 SELECT，不需读取阶段 JSON。配置查询只需对应配置表权限。执行停用另需对 `reply_configurations` 的 UPDATE 权限。命令没有重新启用、覆盖配置或修改金额端口。
 
 配置结果包含版本、固定模型、币种、价格/计数版本、价格、token 上界、单次/日限额、创建/停用时间及数据库时钟下的有效性。失效或停用版本仍可查询。新价格或有效期继续使用新版本登记，沿用[不可变配置协议](sprint-3-reply-dispatch.md)。停用阻止新的预留和领取，不能撤回已发出的网络请求；queued 请求仍按已有取消协议退款。
 

@@ -53,6 +53,8 @@ async fn readonly_role(pool: &sqlx::PgPool, url: &str) -> (String, String) {
     .unwrap();
     sqlx::query(&format!("GRANT SELECT ON users,conversations,conversation_replies,reply_configurations,reply_money_daily,reply_money_reservations TO {role}"))
         .execute(pool).await.unwrap();
+    sqlx::query(&format!("GRANT SELECT (user_id,conversation_id,request_id,status) ON model_execution_call_audit TO {role}"))
+        .execute(pool).await.unwrap();
     sqlx::query(&format!("GRANT SELECT (user_id,conversation_id,request_id,status) ON model_planning_requests TO {role}"))
         .execute(pool).await.unwrap();
     let options = sqlx::postgres::PgConnectOptions::from_str(url)

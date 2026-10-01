@@ -653,3 +653,23 @@ async fn reserve(
         .bind(ids.0).bind(ids.1).bind(ids.2).bind(day).bind(&stored.request.currency).bind(&stored.configuration.budget.model).bind(&stored.configuration.budget.configuration_version).bind(encode(&money_budget(&stored.configuration))?).bind(stored.request.amount).execute(tx).await.map_err(map_error)?;
     Ok(())
 }
+
+// 第二阶段只能从已成功持久化的建议恢复，不信任客户端传入的查询。
+pub(super) async fn execution_source(
+    tx: &mut PgConnection,
+    ids: Keys,
+) -> StorageResult<(
+    ModelPlanningQuote,
+    MessageSnapshot,
+    Vec<personal_ai_storage::agent_plans::KnowledgeQuery>,
+)> {
+    let stored = read(tx, ids).await?;
+    if stored.request.status != "succeeded" {
+        return Err(conflict());
+    }
+    Ok((
+        frozen(ids, &stored)?,
+        stored.snapshot.ok_or_else(corrupt)?,
+        stored.request.searches.ok_or_else(corrupt)?,
+    ))
+}

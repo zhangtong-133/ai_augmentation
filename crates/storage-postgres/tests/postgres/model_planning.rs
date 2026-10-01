@@ -1003,3 +1003,6 @@ async fn model_planning_failed_commit_returns_no_authorization_or_dispatch_claim
         .await
         .unwrap();
 }
+
+#[path = "model_execution.rs"]
+mod execution;

@@ -511,3 +511,21 @@ pub fn quote_model_execution(
 #[cfg(test)]
 #[path = "model_plan_tests.rs"]
 mod tests;
+
+/// 验证第二阶段单次费用及配置，供事务仓储冻结每步预留。
+/// # Errors
+/// 拒绝非法价格、窗口、输出上限、币种混用及阶段超额。
+pub fn quote_model_execution_budgets(
+    budgets: &ExecutionBudgets,
+    limits: AgentBudgetLimits,
+    window: QuoteWindow,
+) -> Result<(CostReservation, CostReservation), ModelPlanError> {
+    validate_parameters(limits, window)?;
+    if budgets.embedding.currency != budgets.answer.currency {
+        return Err(ModelPlanError::InvalidBudget);
+    }
+    Ok((
+        quote_call(&budgets.embedding, 0, limits, window)?,
+        quote_call(&budgets.answer, MAX_OUTPUT_TOKENS, limits, window)?,
+    ))
+}

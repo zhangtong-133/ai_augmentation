@@ -113,7 +113,19 @@ pub(super) async fn settle_kind(
         .bind(owner).bind(conversation).bind(request).bind(kind).fetch_optional(&mut *tx).await.map_err(map_error)? else { return Ok(()); };
     let budget: ReplyBudget = serde_json::from_str(row.get("budget"))
         .map_err(|_| StorageError::Unavailable("invalid stored reply budget".into()))?;
-    let quote = quote(&budget)?;
+    let quote = if kind == "model_execution"
+        && budget.output_token_bound == 0
+        && budget.output_price_per_million == 0
+    {
+        CostReservation::quote_input(
+            budget.input_price_per_million,
+            budget.input_token_bound,
+            budget.request_limit,
+        )
+        .map_err(budget_error)?
+    } else {
+        quote(&budget)?
+    };
     let reserved: i64 = row.get("reserved");
     if quote.amount() != reserved {
         return Err(StorageError::Unavailable(

@@ -192,10 +192,11 @@ impl ReplyOperationsStore for PostgresStore {
                     b.reserved::text,b.charged::text,b.settlement,
                     floor(extract(epoch FROM b.created_at)*1000)::bigint::text AS created_ms,
                     floor(extract(epoch FROM b.settled_at)*1000)::bigint::text AS settled_ms,
-                    c.id IS NULL OR c.deleted_at IS NOT NULL AS conversation_deleted,COALESCE(r.status,p.status) AS reply_status
+                    c.id IS NULL OR c.deleted_at IS NOT NULL AS conversation_deleted,COALESCE(r.status,p.status,e.status) AS reply_status
                 FROM reply_money_reservations b
                 LEFT JOIN conversations c ON c.id=b.conversation_id AND c.user_id=b.user_id
                 LEFT JOIN conversation_replies r ON r.conversation_id=c.id AND r.request_id=b.request_id AND b.request_kind='reply'
+                LEFT JOIN model_execution_call_audit e ON e.user_id=b.user_id AND e.conversation_id=b.conversation_id AND e.request_id=b.request_id AND b.request_kind='model_execution'
                 LEFT JOIN model_planning_requests p ON p.user_id=b.user_id AND p.conversation_id=c.id AND p.request_id=b.request_id AND b.request_kind='model_planning'
                 WHERE b.user_id=$1 AND b.day=$2::text::date AND b.currency=$3
                     AND ($4::uuid IS NULL OR (b.conversation_id,b.request_id)>($4,$5::uuid))
