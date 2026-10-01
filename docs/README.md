@@ -87,3 +87,5 @@
 - [Sprint 4：Skill Graph、自评与训练计划纯规划](design/sprint-4-learning-planning.md)：先修 DAG 校验、版本化自评、明确阻塞原因与确定性时间预算。
 
 - [Sprint 4：技能图、自评与不可变训练计划仓储](design/sprint-4-learning-store.md)：图版本与 CAS、计划/任务原子写入、来源删除清理和持久化额度。
+
+- [Sprint 4：学习管理 HTTP、页面与显式训练结果](design/sprint-4-learning-app.md)：技能管理、自评、计划历史、幂等结果及删除清理。

@@ -91,6 +91,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test
 
+      - run: make test-learning
+        env:
+          TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test
+
       - run: make test-replies
         env:
           TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test

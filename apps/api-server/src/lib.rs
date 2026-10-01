@@ -30,6 +30,7 @@ mod auth;
 mod conversations;
 mod documents;
 mod feeds;
+mod learning;
 mod mcp_credentials;
 mod memories;
 mod schedules;
@@ -80,6 +81,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub learning: Option<Arc<dyn personal_ai_storage::learning::LearningStore>>,
     pub feeds: Option<Arc<FeedRuntime>>,
     pub schedules: Option<Arc<dyn SchedulerStore>>,
     pub model_agents: Option<Arc<ModelAgentRuntime>>,
@@ -114,6 +116,7 @@ pub fn router(state: AppState) -> Router {
         .merge(memories::routes())
         .merge(schedules::routes())
         .merge(feeds::routes())
+        .merge(learning::routes())
         .merge(messages::routes())
         .merge(replies::routes())
         .merge(conversations::routes())

@@ -193,3 +193,7 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 @media (max-width: 760px) { .feedPanel button { width: 100%; margin-right: 0; } .feedReview { padding: 10px; } }
 .briefPanel textarea { width: 100%; min-width: 0; box-sizing: border-box; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; resize: vertical; }
 .briefPanel .feedList p { white-space: pre-wrap; }
+.learningPanel fieldset { display: grid; gap: 8px; min-width: 0; padding: 12px; margin: 0; border: 1px solid var(--line); }
+.learningPanel label { display: block; margin-block: 6px; }
+.learningPanel select { width: 100%; min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; }
+.learningPanel input { box-sizing: border-box; }

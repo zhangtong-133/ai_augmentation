@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
 mod plans;
+mod results;
 mod skills;
 fn invalid() -> StorageError {
     StorageError::InvalidData("invalid learning input".into())
@@ -104,6 +105,20 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn record_training_result(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &personal_ai_storage::learning::TrainingResultInput,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>> {
+        let owner = id(owner.as_str());
+        let plan = id(plan);
+        let task = id(task);
+        let input = input.clone();
+        Box::pin(async move { results::record(self, owner?, plan?, task?, input).await })
+    }
+
     fn learning_snapshot(&self, owner: &UserId) -> BoxFuture<'_, StorageResult<LearningSnapshot>> {
         let owner = id(owner.as_str());
         Box::pin(async move {

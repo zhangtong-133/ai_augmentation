@@ -49,6 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     axum::serve(
         listener,
         router(AppState {
+            learning: Some(store.clone()),
             feeds: Some(feeds),
             schedules: Some(store.clone()),
             model_agents: Some(model_agents),

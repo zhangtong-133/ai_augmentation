@@ -38,6 +38,7 @@ pub enum LearningPlanStatus {
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct SavedLearningPlan {
+    pub results: Vec<TrainingResult>,
     pub request_id: String,
     pub snapshot_revision: u64,
     pub created_at_unix_ms: u64,
@@ -57,6 +58,14 @@ pub struct LearningPlanPage {
     pub next_cursor: Option<String>,
 }
 pub trait LearningStore: Send + Sync {
+    fn record_training_result(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &TrainingResultInput,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+
     fn learning_snapshot(&self, owner: &UserId) -> BoxFuture<'_, StorageResult<LearningSnapshot>>;
     /// `expected_revision=0` 创建技能，否则比较技能版本再修改。
     fn save_skill(
@@ -99,4 +108,28 @@ pub trait LearningStore: Send + Sync {
         owner: &UserId,
         request: &str,
     ) -> BoxFuture<'_, StorageResult<()>>;
+}
+
+/// 用户显式记录的终结结果，不构成能力评估。
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TrainingOutcome {
+    Completed,
+    Cancelled,
+}
+#[derive(Clone, PartialEq, Eq)]
+pub struct TrainingResultInput {
+    pub request_id: String,
+    pub outcome: TrainingOutcome,
+    pub note: String,
+    pub actual_minutes: u16,
+}
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct TrainingResult {
+    pub task_id: String,
+    pub request_id: String,
+    pub outcome: TrainingOutcome,
+    pub note: String,
+    pub actual_minutes: u16,
+    pub recorded_at_unix_ms: u64,
 }

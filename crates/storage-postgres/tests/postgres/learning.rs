@@ -765,3 +765,243 @@ async fn learning_oversized_or_future_snapshot_never_creates_partial_plans() {
     );
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn learning_results_are_atomic_terminal_private_and_do_not_change_assessments() {
+    use personal_ai_storage::learning::{TrainingOutcome, TrainingResultInput};
+    let f = Fixture::new().await;
+    let node = f.skill(&[]).await;
+    let input = f.plan_input(&node).await;
+    let plan_id = key();
+    let plan = f
+        .store
+        .create_learning_plan(&f.owner, &plan_id, &input)
+        .await
+        .unwrap();
+    let task = &plan.plan.as_ref().unwrap().tasks[0].task_id;
+    let completed = TrainingResultInput {
+        request_id: key(),
+        outcome: TrainingOutcome::Completed,
+        note: "私有训练记录".into(),
+        actual_minutes: 5,
+    };
+    let cancelled = TrainingResultInput {
+        request_id: key(),
+        outcome: TrainingOutcome::Cancelled,
+        note: "取消理由".into(),
+        actual_minutes: 0,
+    };
+    assert!(matches!(
+        f.store
+            .record_training_result(&f.other, &plan_id, task, &completed)
+            .await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(matches!(
+        f.store
+            .record_training_result(&f.owner, &plan_id, &key(), &completed)
+            .await,
+        Err(StorageError::NotFound)
+    ));
+    let (a, b) = tokio::join!(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, &completed),
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, &cancelled)
+    );
+    assert_ne!(a.is_ok(), b.is_ok());
+    let (winner, loser) = if a.is_ok() {
+        (&completed, &cancelled)
+    } else {
+        (&cancelled, &completed)
+    };
+    let saved = f
+        .store
+        .record_training_result(&f.owner, &plan_id, task, winner)
+        .await
+        .unwrap();
+    assert!(saved.plan == plan.plan);
+    assert_eq!(saved.digest, plan.digest);
+    assert_eq!(saved.results.len(), 1);
+    conflict(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, loser)
+            .await,
+    );
+    let snapshot = f.store.learning_snapshot(&f.owner).await.unwrap();
+    assert_eq!(snapshot.revision, input.expected_revision);
+    assert!(snapshot.assessments.is_empty());
+    let mut changed = winner.clone();
+    changed.note = "不同记录".into();
+    conflict(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, &changed)
+            .await,
+    );
+    f.store
+        .delete_learning_plan(&f.owner, &plan_id)
+        .await
+        .unwrap();
+    let erased = f.store.get_learning_plan(&f.owner, &plan_id).await.unwrap();
+    assert!(erased.results.is_empty());
+    assert!(erased.plan.is_none());
+    conflict(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, winner)
+            .await,
+    );
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+#[allow(clippy::too_many_lines)]
+async fn learning_results_validate_deduplicate_and_clear_with_sources_and_accounts() {
+    use personal_ai_storage::learning::{TrainingOutcome, TrainingResultInput};
+    let f = Fixture::new().await;
+    let node = f.skill(&[]).await;
+    let input = f.plan_input(&node).await;
+    let plan_id = key();
+    let plan = f
+        .store
+        .create_learning_plan(&f.owner, &plan_id, &input)
+        .await
+        .unwrap();
+    let task = &plan.plan.as_ref().unwrap().tasks[0].task_id;
+    let base = TrainingResultInput {
+        request_id: key(),
+        outcome: TrainingOutcome::Completed,
+        note: "  私有记录\n第二行  ".into(),
+        actual_minutes: 1,
+    };
+    for (note, minutes, outcome) in [
+        ("\0".into(), 1, TrainingOutcome::Completed),
+        ("字".repeat(2001), 1, TrainingOutcome::Completed),
+        (String::new(), 0, TrainingOutcome::Completed),
+        (String::new(), 181, TrainingOutcome::Completed),
+        (String::new(), 1, TrainingOutcome::Cancelled),
+    ] {
+        let mut bad = base.clone();
+        bad.note = note;
+        bad.actual_minutes = minutes;
+        bad.outcome = outcome;
+        assert!(matches!(
+            f.store
+                .record_training_result(&f.owner, &plan_id, task, &bad)
+                .await,
+            Err(StorageError::InvalidData(_))
+        ));
+    }
+    let saved = f
+        .store
+        .record_training_result(&f.owner, &plan_id, task, &base)
+        .await
+        .unwrap();
+    assert_eq!(saved.results[0].note, "私有记录\n第二行");
+    assert!(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, &base)
+            .await
+            .unwrap()
+            == saved
+    );
+    let second_id = key();
+    let second = f
+        .store
+        .create_learning_plan(&f.owner, &second_id, &input)
+        .await
+        .unwrap();
+    let task2 = &second.plan.as_ref().unwrap().tasks[0].task_id;
+    conflict(
+        f.store
+            .record_training_result(&f.owner, &second_id, task2, &base)
+            .await,
+    );
+    assert!(
+        f.store
+            .get_learning_plan(&f.owner, &second_id)
+            .await
+            .unwrap()
+            .results
+            .is_empty()
+    );
+    // A later skill revision does not rewrite an old plan or prohibit recording historical practice.
+    f.store
+        .save_skill(&f.owner, &node.skill_id, 1, &skill_input("已修改技能", &[]))
+        .await
+        .unwrap();
+    let mut another = base.clone();
+    another.request_id = key();
+    f.store
+        .record_training_result(&f.owner, &second_id, task2, &another)
+        .await
+        .unwrap();
+    // Force a revision failure after delete cleanup, proving result erasure rolls back as well.
+    sqlx::query("UPDATE learning_state SET revision=9223372036854775807 WHERE user_id=$1")
+        .bind(f.owner())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    conflict(f.store.delete_skill(&f.owner, &node.skill_id, 2).await);
+    assert_eq!(
+        f.store
+            .get_learning_plan(&f.owner, &plan_id)
+            .await
+            .unwrap()
+            .results
+            .len(),
+        1
+    );
+    sqlx::query("UPDATE learning_state SET revision=3 WHERE user_id=$1")
+        .bind(f.owner())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.store
+        .delete_skill(&f.owner, &node.skill_id, 2)
+        .await
+        .unwrap();
+    assert!(
+        f.store
+            .get_learning_plan(&f.owner, &plan_id)
+            .await
+            .unwrap()
+            .results
+            .is_empty()
+    );
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM learning_results WHERE user_id=$1")
+        .bind(f.owner())
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+    conflict(
+        f.store
+            .record_training_result(&f.owner, &plan_id, task, &base)
+            .await,
+    );
+    let fresh = f.skill(&[]).await;
+    let id3 = key();
+    let plan3 = f
+        .store
+        .create_learning_plan(&f.owner, &id3, &f.plan_input(&fresh).await)
+        .await
+        .unwrap();
+    f.store
+        .record_training_result(
+            &f.owner,
+            &id3,
+            &plan3.plan.as_ref().unwrap().tasks[0].task_id,
+            &base,
+        )
+        .await
+        .unwrap();
+    f.cleanup().await;
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM learning_results WHERE user_id=$1")
+        .bind(f.owner())
+        .fetch_one(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
