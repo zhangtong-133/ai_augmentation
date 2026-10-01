@@ -44,9 +44,9 @@ test-model-agent: ## 使用一次性 TEST_DATABASE_URL 验证模型规划、检�
 test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金额 HTTP 与运维命令
 	cargo test -p api-server --test replies -- --ignored
 	cargo test -p api-server --lib paid_tests -- --ignored
-	cargo test -p api-server --test reply_operations -- --ignored
-	cargo test -p api-server --test model_operations -- --ignored
-	# 这些测试修改共享表的列权限；串行运行，避免 PostgreSQL ACL 元组并发更新。
+	# 运维角色夹具修改共享表权限；串行运行，避免 GRANT/DROP OWNED 的 ACL 元组竞争。
+	cargo test -p api-server --test reply_operations -- --ignored --test-threads=1
+	cargo test -p api-server --test model_operations -- --ignored --test-threads=1
 	cargo test -p api-server --test scheduler_operations -- --ignored --test-threads=1
 	cargo test -p api-server --test mcp_operations -- --ignored --test-threads=1
 

@@ -77,3 +77,5 @@
 - [Sprint 4：RSS 订阅与采集确认页面](design/sprint-4-rss-ui.md)：订阅/条目/历史分页、来源确认、结果核对与双入口浏览器验收。
 
 - [Sprint 4：RSS 只读运维核对与状态诊断](design/sprint-4-rss-operations.md)：元数据列权限、只读一致快照、额度/超时提示与审计核对。
+
+- [Sprint 4：RSS 规则评分与 Daily Brief 纯规划](design/sprint-4-rss-brief-planning.md)：显式 UTC 窗口、关键词解释、稳定排名、保守去重与不可变摘要。

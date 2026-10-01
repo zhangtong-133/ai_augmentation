@@ -1,6 +1,7 @@
 //! RSS 订阅采集的纯规划、受限解析及去重；无网络、存储写入或模型执行。
 #![forbid(unsafe_code)]
 
+pub mod brief;
 pub mod parser;
 pub mod transport;
 
