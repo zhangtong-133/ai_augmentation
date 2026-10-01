@@ -607,6 +607,7 @@ impl ModelExecutionStore for PostgresStore {
             let query = searches.get(index).cloned();
             tx.commit().await.map_err(map_error)?;
             Ok(ModelExecutionClaim {
+                configuration: s.configuration,
                 request: s.request,
                 ordinal,
                 claim_id: claim.to_string(),

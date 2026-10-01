@@ -12,6 +12,7 @@ pulldown-cmark = { version = "0.13", default-features = false }
 personal-ai-domain.workspace = true
 personal-ai-llm.workspace = true
 personal-ai-storage.workspace = true
+personal-ai-agent-core.workspace = true
 
 [lints]
 workspace = true

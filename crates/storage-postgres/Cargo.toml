@@ -16,6 +16,7 @@ sqlx.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+personal-ai-llm.workspace = true
 personal-ai-storage-s3 = { path = "../storage-s3" }
 tokio.workspace = true
 

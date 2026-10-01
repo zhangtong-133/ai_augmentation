@@ -277,7 +277,10 @@ struct Message {
     function_call: Option<Value>,
     audio: Option<Value>,
 }
-fn decode(bytes: &[u8], budget: &ReplyBudget) -> Result<ReplyCompletion, ReplySendError> {
+pub(crate) fn decode(
+    bytes: &[u8],
+    budget: &ReplyBudget,
+) -> Result<ReplyCompletion, ReplySendError> {
     let response: Completion =
         serde_json::from_slice(bytes).map_err(|_| ReplySendError::InvalidResponse)?;
     if response.model != REPLY_MODEL || response.service_tier != "default" {

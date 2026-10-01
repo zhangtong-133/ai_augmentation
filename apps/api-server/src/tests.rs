@@ -2237,3 +2237,43 @@ async fn answers_require_verified_evidence_and_never_call_chat_for_empty_results
 mod agent_plans;
 #[path = "tool_call_tests.rs"]
 mod tool_calls;
+
+#[tokio::test]
+async fn model_retriever_reuses_vector_and_preserves_owner_checks_without_model_call() {
+    use personal_ai_agent_core::model_executor::ModelRetriever;
+    use std::sync::atomic::Ordering;
+    let (_, store, dependencies, owner, _, document) = retrieval_fixture().await;
+    let retriever = personal_ai_knowledge::model_retrieval::KnowledgeModelRetriever::new(
+        store,
+        dependencies.clone(),
+        "m".into(),
+        2,
+    )
+    .unwrap();
+    let embedding = personal_ai_llm::Embedding {
+        model: "m".into(),
+        values: vec![1.0, 0.0],
+    };
+    let hits = retriever.retrieve(&owner, &embedding, 5).await.unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].document_id, document.summary.id);
+    assert_eq!(hits[0].text, document.chunks[0]);
+    let foreign = UserId::new(Uuid::new_v4().to_string());
+    assert!(
+        retriever
+            .retrieve(&foreign, &embedding, 5)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(retriever.retrieve(&owner, &embedding, 6).await.is_err());
+    let wrong = personal_ai_llm::Embedding {
+        model: "wrong-model".into(),
+        ..embedding.clone()
+    };
+    assert!(retriever.retrieve(&owner, &wrong, 5).await.is_err());
+    dependencies.mode.store(3, Ordering::SeqCst);
+    assert!(retriever.retrieve(&owner, &embedding, 5).await.is_err());
+    // 唯一的向量化来自建立索引的夹具；检索不增加它。
+    assert_eq!(dependencies.calls.load(Ordering::SeqCst), 1);
+}

@@ -1455,6 +1455,7 @@ version = "0.1.0"
 name = "personal-ai-knowledge"
 version = "0.1.0"
 dependencies = [
+ "personal-ai-agent-core",
  "personal-ai-domain",
  "personal-ai-llm",
  "personal-ai-storage",
@@ -1518,6 +1519,7 @@ version = "0.1.0"
 dependencies = [
  "personal-ai-agent-core",
  "personal-ai-domain",
+ "personal-ai-llm",
  "personal-ai-storage",
  "personal-ai-storage-s3",
  "personal-ai-tools",

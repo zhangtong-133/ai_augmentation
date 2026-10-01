@@ -34,6 +34,7 @@
 - [受限 Agent 计划与用户授权](design/sprint-3-agent-plans.md)：固定只读步骤、精确授权、每计划上限、取消与一次性派发。
 - [Agent 检索计划页面](design/sprint-3-agent-plan-ui.md)：固定预览、费用确认、执行结果、取消及原请求恢复。
 - [模型 Agent 纯规划与两阶段费用授权](design/sprint-3-model-agent-budget.md)：严格查询建议、独立规划/执行确认、金额与模型/工具次数边界；尚未接入模型。
+- [模型 Agent 固定供应商与一次性执行器](design/sprint-3-model-agent-executor.md)：两次独立授权、离线计数、顺序执行、契约停用及失败不重发。
 - [模型 Agent 检索证据与受限回答](design/sprint-3-model-evidence.md)：权威文本复核、稳定引用、严格 JSON 回答与空证据退款。
 - [模型 Agent 检索/回答阶段仓储](design/sprint-3-model-execution-store.md)：独立费用确认、共享金额/次数账本、逐步领取与取消/删除保护。
 - [模型规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)：第一阶段报价、精确批准、金额/次数预留、一次性领取、建议保存、取消及删除。

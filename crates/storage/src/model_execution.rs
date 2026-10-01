@@ -41,6 +41,7 @@ pub struct ModelExecutionAuthorization {
 }
 /// COMMIT 确认后返回的内部凭据。不能序列化给用户，也不能跨调用重复使用。
 pub struct ModelExecutionClaim {
+    pub configuration: ModelExecutionConfiguration,
     pub request: ModelExecutionRequest,
     pub ordinal: u32,
     pub claim_id: String,

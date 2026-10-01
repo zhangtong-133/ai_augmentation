@@ -43,65 +43,86 @@ impl DocumentIndexer {
                 "invalid query embedding".into(),
             )));
         };
-        if embedding.model != self.model
-            || embedding.values.len() != self.dimensions
-            || embedding.values.iter().any(|v| !v.is_finite())
-            || !embedding.values.iter().any(|v| *v != 0.0)
-        {
-            return Err(IndexError::Model(LlmError::InvalidResponse(
-                "invalid query embedding".into(),
-            )));
-        }
-        let matches = self
-            .vectors
-            .similar_search(owner, &embedding.values, 20)
-            .await
-            .map_err(IndexError::Storage)?;
-        let mut documents_cache = HashMap::new();
-        let mut seen = HashSet::new();
-        let mut hits = Vec::new();
-        for matched in matches.into_iter().take(20) {
-            let record = matched.record;
-            if !matched.score.is_finite()
-                || matched.score < 0.3
-                || record.model != self.model
-                || Uuid::parse_str(&record.document_id).is_err()
-                || record.id != format!("{}:{}", record.document_id, record.ordinal)
-            {
-                continue;
-            }
-            if !documents_cache.contains_key(&record.document_id) {
-                let document = match documents
-                    .get_document_text(owner, &record.document_id)
-                    .await
-                {
-                    Ok(document) => Some(document),
-                    Err(StorageError::NotFound) => None,
-                    Err(error) => return Err(IndexError::Storage(error)),
-                };
-                documents_cache.insert(record.document_id.clone(), document);
-            }
-            let Some(document) = &documents_cache[&record.document_id] else {
-                continue;
-            };
-            if document.chunks.get(record.ordinal) != Some(&record.text)
-                || document.summary.id != record.document_id
-                || !seen.insert((record.document_id.clone(), record.ordinal))
-            {
-                continue;
-            }
-            hits.push(SearchHit {
-                document_id: document.summary.id.clone(),
-                title: document.summary.title.clone(),
-                source: document.summary.source.clone(),
-                ordinal: record.ordinal,
-                text: document.chunks[record.ordinal].clone(),
-                score: matched.score,
-            });
-            if hits.len() == limit {
-                break;
-            }
-        }
-        Ok(hits)
+        retrieve(
+            owner,
+            documents,
+            &*self.vectors,
+            embedding,
+            &self.model,
+            self.dimensions,
+            limit,
+        )
+        .await
     }
+}
+
+pub(crate) async fn retrieve(
+    owner: &UserId,
+    documents: &dyn DocumentStore,
+    vectors: &dyn personal_ai_storage::VectorStore,
+    embedding: &personal_ai_llm::Embedding,
+    model: &str,
+    dimensions: usize,
+    limit: usize,
+) -> Result<Vec<SearchHit>, IndexError> {
+    if !(1..=20).contains(&limit)
+        || embedding.model != model
+        || embedding.values.len() != dimensions
+        || embedding.values.iter().any(|v| !v.is_finite())
+        || !embedding.values.iter().any(|v| *v != 0.0)
+    {
+        return Err(IndexError::Model(LlmError::InvalidResponse(
+            "invalid query embedding".into(),
+        )));
+    }
+    let matches = vectors
+        .similar_search(owner, &embedding.values, 20)
+        .await
+        .map_err(IndexError::Storage)?;
+    let mut documents_cache = HashMap::new();
+    let mut seen = HashSet::new();
+    let mut hits = Vec::new();
+    for matched in matches.into_iter().take(20) {
+        let record = matched.record;
+        if !matched.score.is_finite()
+            || matched.score < 0.3
+            || record.model != model
+            || Uuid::parse_str(&record.document_id).is_err()
+            || record.id != format!("{}:{}", record.document_id, record.ordinal)
+        {
+            continue;
+        }
+        if !documents_cache.contains_key(&record.document_id) {
+            let document = match documents
+                .get_document_text(owner, &record.document_id)
+                .await
+            {
+                Ok(document) => Some(document),
+                Err(StorageError::NotFound) => None,
+                Err(error) => return Err(IndexError::Storage(error)),
+            };
+            documents_cache.insert(record.document_id.clone(), document);
+        }
+        let Some(document) = &documents_cache[&record.document_id] else {
+            continue;
+        };
+        if document.chunks.get(record.ordinal) != Some(&record.text)
+            || document.summary.id != record.document_id
+            || !seen.insert((record.document_id.clone(), record.ordinal))
+        {
+            continue;
+        }
+        hits.push(SearchHit {
+            document_id: document.summary.id.clone(),
+            title: document.summary.title.clone(),
+            source: document.summary.source.clone(),
+            ordinal: record.ordinal,
+            text: document.chunks[record.ordinal].clone(),
+            score: matched.score,
+        });
+        if hits.len() == limit {
+            break;
+        }
+    }
+    Ok(hits)
 }

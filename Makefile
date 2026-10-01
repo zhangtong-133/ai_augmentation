@@ -36,7 +36,7 @@ test-agent: ## 使用一次性 TEST_DATABASE_URL 验证受限计划、授权与�
 	cargo test -p api-server --lib agent_plans -- --ignored
 
 .PHONY: test-model-agent
-test-model-agent: ## 使用一次性 TEST_DATABASE_URL 验证模型规划及检索/回答阶段仓储和事务预算
+test-model-agent: ## 使用一次性 TEST_DATABASE_URL 验证模型规划、检索/回答仓储、事务预算及一次性执行器
 	cargo test -p personal-ai-agent-core model_
 	cargo test -p personal-ai-storage-postgres --test postgres model_planning -- --ignored
 

@@ -2,6 +2,7 @@
 
 pub mod answer;
 pub mod index;
+pub mod model_retrieval;
 pub mod retrieval;
 pub mod web;
 

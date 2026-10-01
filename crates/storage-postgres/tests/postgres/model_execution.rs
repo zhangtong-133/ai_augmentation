@@ -1157,3 +1157,6 @@ async fn execution_cancellation_clears_evidence_and_discards_late_answer() {
     assert!(late.answer.is_none());
     assert_eq!(f.money().await, AMOUNT + EXECUTION_AMOUNT);
 }
+
+#[path = "model_executor.rs"]
+mod executor;
