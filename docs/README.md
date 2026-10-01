@@ -59,3 +59,5 @@
 - [Sprint 3：MCP 本地 stdio 桥接](design/sprint-3-mcp-stdio.md)：默认关闭的只读检索与费用边界。
 
 - [Sprint 3：MCP 宿主专属凭据](design/sprint-3-mcp-credentials.md)：最小权限、有效期、签发/撤销 API 与密码重设联动。
+
+- [Sprint 3：MCP 凭据管理页面](design/sprint-3-mcp-credential-ui.md)：费用授权、一次性明文展示、故障核对与撤销。

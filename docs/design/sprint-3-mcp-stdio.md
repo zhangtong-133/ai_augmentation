@@ -51,4 +51,4 @@ JSON-RPC id 是进程内协议请求标识，必须唯一；request_id 是用户
 
 Rust 测试覆盖默认关闭、初始化、非法参数、身份注入、凭据/地址限制、固定请求头、重复调用映射、输出清理及真实 stdio 帧限制。`make smoke-index` 使用真实 PostgreSQL、Qdrant 和本地向量夹具，启动真实桥接进程验证检索、账户隔离、跨进程 UUID 去重及持久化审计，不访问付费模型。
 
-已提供[宿主专属凭据与授权 API](sprint-3-mcp-credentials.md)，后续提供授权管理页面，再评估远程 MCP 传输。此版本不宣称已完成第三方桌面客户端兼容验收。
+已提供[宿主专属凭据与授权 API](sprint-3-mcp-credentials.md)，已接入[凭据管理页面](sprint-3-mcp-credential-ui.md)，远程 MCP 传输仍待评估。此版本不宣称已完成第三方桌面客户端兼容验收。
