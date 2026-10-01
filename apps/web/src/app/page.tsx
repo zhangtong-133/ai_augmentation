@@ -10,8 +10,8 @@ const modules = [
   {
     eyebrow: "TODAY",
     title: "今日信息",
-    copy: "聚合高价值信息，并把噪音留在视野之外。",
-    status: "尚未启用",
+    copy: "管理 RSS 订阅，按需采集并阅读已保存的条目。",
+    status: "已支持 RSS 手动采集",
   },
   {
     eyebrow: "LEARNING",

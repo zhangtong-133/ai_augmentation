@@ -179,3 +179,15 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .mcpPanel small { color: var(--muted); }
 .mcpPanel :focus-visible { outline: 2px solid var(--warm); outline-offset: 3px; }
 @media (max-width: 760px) { .mcpPanel button { width: 100%; margin-right: 0; } }
+
+.feedPanel { border-top: 1px solid var(--line); margin-top: 28px; padding-top: 20px; min-width: 0; overflow-wrap: anywhere; }
+.feedPanel form { display: grid; gap: 10px; max-width: 650px; }
+.feedPanel input:not([type="checkbox"]) { width: 100%; min-width: 0; }
+.feedPanel input[type="checkbox"] { width: auto; margin-right: 8px; }
+.feedPanel button { margin: 6px 8px 6px 0; white-space: normal; overflow-wrap: anywhere; }
+.feedPanel :focus-visible { outline: 2px solid var(--warm); outline-offset: 3px; }
+.feedList { padding: 0; list-style: none; }
+.feedList > li, .feedReview { border: 1px solid var(--line); padding: 16px; margin: 16px 0; min-width: 0; }
+.feedText { white-space: pre-wrap; }
+.feedPanel code { overflow-wrap: anywhere; }
+@media (max-width: 760px) { .feedPanel button { width: 100%; margin-right: 0; } .feedReview { padding: 10px; } }
