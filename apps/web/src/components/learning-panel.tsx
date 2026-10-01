@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { type Snapshot, type Skill, type History, type SavedPlan, type Operation, statuses, date } from "./learning-types";
+import { LearningProgressView, type LearningProgress } from "./learning-progress";
 import { LearningPlanView } from "./learning-plan-view";
 const root = "/api/learning";
 const empty = (): History => ({ items: [], next_cursor: null });
@@ -11,7 +12,12 @@ function message(status: number) {
   if ([400, 413, 422].includes(status)) return "输入不符合要求：请检查名称、前置技能是否成环、分数及分钟范围。";
   return "服务暂不可用，操作可能已保存，请核对或重试原操作。";
 }
+class LearningHttpError extends Error {
+  constructor(readonly status: number) { super(message(status)); }
+}
 export function LearningPanel() {
+  const [progress, setProgress] = useState<LearningProgress | null>(null);
+  const [progressError, setProgressError] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [history, setHistory] = useState<History>(empty);
   const [pages, setPages] = useState<string[]>([]);
@@ -30,8 +36,8 @@ export function LearningPanel() {
   async function request<T>(path: string, c: AbortController, operation?: Operation): Promise<T> {
     const response = await fetch(path, { method: operation?.method ?? "GET", cache: "no-store", headers: operation ? { "Content-Type": "application/json", "X-Requested-With": "personal-ai" } : undefined, body: operation ? JSON.stringify(operation.body) : undefined, signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) {
-      if (response.status === 401 && valid(c)) { setExpired(true); setReady(false); setSnapshot(null); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setNotice(""); resetForms(); }
-      throw new Error(message(response.status));
+      if (response.status === 401 && valid(c)) { setExpired(true); setReady(false); setProgress(null); setProgressError(""); setSnapshot(null); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setNotice(""); resetForms(); }
+      throw new LearningHttpError(response.status);
     }
     return response.json();
   }
@@ -45,11 +51,21 @@ export function LearningPanel() {
     const data = await request<History>(`${root}/plans${cursors.length ? `?after=${encodeURIComponent(cursors.at(-1)!)}` : ""}`, c);
     if (valid(c)) { setHistory(data); setPages(cursors); }
   }
+  async function loadProgress(c: AbortController) {
+    setProgress(null); setProgressError("");
+    try {
+      const data = await request<LearningProgress>(`${root}/progress`, c);
+      if (valid(c)) setProgress(data);
+    } catch (e) {
+      if (e instanceof LearningHttpError && e.status === 401) throw e;
+      if (valid(c)) setProgressError("学习进度暂不可用，请刷新重试。管理功能仍可使用。");
+    }
+  }
   async function load(c: AbortController) {
-    setSelected(null); setReady(false); resetForms();
+    setSelected(null); setReady(false); setProgress(null); setProgressError(""); resetForms();
     const data = await request<Snapshot>(`${root}/snapshot`, c);
     await list(c, []);
-    if (valid(c)) { setSnapshot(data); setReady(true); }
+    if (valid(c)) { setSnapshot(data); setReady(true); await loadProgress(c); }
   }
   useEffect(() => {
     alive.current = true; const timer = window.setTimeout(() => void run(load), 0);
@@ -59,7 +75,7 @@ export function LearningPanel() {
   }, []);
   async function mutate(operation: Operation) {
     await run(async c => {
-      setPending(operation); setNotice(""); setDeleting(null); setSelected(null);
+      setPending(operation); setNotice(""); setDeleting(null); setSelected(null); setProgress(null); setProgressError("");
       const result = await request<SavedPlan>(operation.path, c, operation);
       if (!valid(c)) return;
       setPending(null); setNotice("学习操作已保存。");
@@ -71,7 +87,7 @@ export function LearningPanel() {
     void run(async c => {
       setSelected(null);
       if (path === `${root}/snapshot`) await load(c);
-      else { const result = await request<SavedPlan>(path, c); if (valid(c)) setSelected(result); }
+      else { const result = await request<SavedPlan>(path, c); if (valid(c)) { setSelected(result); await loadProgress(c); } }
       if (recover && valid(c)) { setPending(null); setNotice("已查询当前保存状态，请核对内容。查询不会提交新操作。"); }
     });
   }
@@ -90,6 +106,7 @@ export function LearningPanel() {
     <button disabled={busy || expired} onClick={() => void run(load)}>刷新学习数据</button>
     {busy && <p role="status">正在处理学习数据…</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     {pending && <div className="feedReview"><p>操作结果未确认，请核对或重试原操作。</p><button disabled={busy || expired} onClick={() => inspect(pending.lookup, true)}>核对原学习操作</button><button disabled={busy || expired} onClick={() => void mutate(pending)}>重试原学习操作</button><button disabled={busy || expired} onClick={() => { setPending(null); setNotice("已关闭核对提示，已保存的内容仍可查询。"); }}>关闭学习核对提示</button></div>}
+    <LearningProgressView data={progress} error={progressError} busy={busy} expired={expired} refresh={() => void run(loadProgress)} />
     <h3>技能与前置关系</h3><p>最多 100 项技能（含已删除），每项最多 8 个前置技能。修改技能后需重新自评，旧评分不用于新版本。</p>
     <form onSubmit={save}><h4>{editing ? "修改技能" : "添加技能"}</h4>
       <label>技能名称<input required maxLength={120} value={name} disabled={locked} onChange={e => setName(e.target.value)} /></label>

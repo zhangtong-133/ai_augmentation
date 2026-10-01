@@ -27,7 +27,12 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await panel.getByRole("group", { name: "前置技能", exact: false }).getByLabel("Rust 基础", { exact: true }).check();
   await panel.getByRole("button", { name: "保存技能", exact: true }).click();
   await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("Rust 异步");
+  const progress = panel.getByRole("region", { name: "学习进度", exact: true });
+  const metric = name => progress.getByText(name, { exact: true }).locator("..").locator("dd");
+  await expect(metric("启用技能")).toHaveText("2");
+  await expect(metric("当前版本已自评")).toHaveText("1 / 2");
   const detail = await generate(panel, "Rust 异步");
+  await expect(metric("待记录训练")).toHaveText("1");
   await expect(detail).toContainText("前置技能未满足");
   const task = detail.getByRole("list", { name: "训练任务", exact: true }).locator("li"); await expect(task).toHaveCount(1);
   await task.getByLabel("训练记录", { exact: true }).fill("练习完成 <img src=x onerror=alert(1)>");
@@ -37,6 +42,9 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await task.getByRole("button", { name: "记录完成", exact: true }).click();
   await task.getByRole("button", { name: "确认训练结果", exact: true }).click();
   await expect(detail).toContainText("已记录完成 · 20 分钟");
+  await expect(metric("今日完成")).toHaveText("1");
+  await expect(metric("今日记录用时（分钟）")).toHaveText("20");
+  await expect(metric("待记录训练")).toHaveText("0");
   await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前自评 40 分");
   await expect(detail.locator("img,script")).toHaveCount(0);
   expect(await panel.evaluate(n => n.scrollWidth <= n.clientWidth)).toBe(true);
@@ -44,6 +52,9 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await panel.screenshot({ path: screenshot }); await testInfo.attach("learning-management", { path: screenshot, contentType: "image/png" });
   await page.reload(); await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
   await expect(detail).toContainText("已记录完成 · 20 分钟");
+  await expect(metric("今日完成")).toHaveText("1");
+  await expect(metric("今日记录用时（分钟）")).toHaveText("20");
+  await expect(metric("待记录训练")).toHaveText("0");
   await panel.getByRole("button", { name: "修改 Rust 基础", exact: true }).click();
   await panel.getByLabel("技能名称", { exact: true }).fill("Rust 新基础");
   await panel.getByRole("button", { name: "保存技能", exact: true }).click();
@@ -53,6 +64,8 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await panel.getByRole("button", { name: "删除 Rust 新基础", exact: true }).click();
   await panel.getByRole("button", { name: "确认删除技能", exact: true }).click();
   await expect(panel.getByRole("list", { name: "学习计划历史", exact: true })).toContainText("计划已失效");
+  await expect(metric("今日完成")).toHaveText("0");
+  await expect(metric("今日记录用时（分钟）")).toHaveText("0");
   await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
   await expect(detail).toContainText("正文及训练结果已清除"); await expect(detail).not.toContainText("练习完成");
   await detail.getByRole("button", { name: "删除学习计划", exact: true }).click();

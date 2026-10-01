@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
 mod plans;
+mod progress;
 mod results;
 mod skills;
 fn invalid() -> StorageError {
@@ -105,6 +106,14 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn learning_progress(
+        &self,
+        owner: &UserId,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::learning::LearningProgress>> {
+        let owner = id(owner.as_str());
+        Box::pin(async move { progress::read(self, owner?).await })
+    }
+
     fn record_training_result(
         &self,
         owner: &UserId,

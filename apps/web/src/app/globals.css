@@ -197,3 +197,5 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .learningPanel label { display: block; margin-block: 6px; }
 .learningPanel select { width: 100%; min-width: 0; padding: 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); font: inherit; }
 .learningPanel input { box-sizing: border-box; }
+.learningProgress .overviewMetrics { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
+.learningProgress .overviewMetrics > div { min-width: 0; }

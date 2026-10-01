@@ -258,6 +258,7 @@ async fn learning_http_guards_every_route_before_using_optional_store() {
     let id = Uuid::new_v4();
     for (method, path, body) in [
         ("GET", "/api/learning/snapshot".to_owned(), json!({})),
+        ("GET", "/api/learning/progress".to_owned(), json!({})),
         ("GET", "/api/learning/plans".to_owned(), json!({})),
         ("GET", format!("/api/learning/plans/{id}"), json!({})),
         (
@@ -321,4 +322,59 @@ async fn learning_http_guards_every_route_before_using_optional_store() {
             "learning_unavailable"
         );
     }
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn learning_progress_is_session_scoped_read_only_and_exact() {
+    let f = Fixture::new().await;
+    let path = "/api/learning/progress";
+    assert_eq!(
+        f.send("GET", path, json!({}), None, false).await.status(),
+        StatusCode::UNAUTHORIZED
+    );
+    let id = Uuid::new_v4();
+    f.call(
+        "PUT",
+        &format!("/api/learning/skills/{id}"),
+        json!({"revision":"0","name":"私有进度技能","enabled":true,"prerequisite_ids":[]}),
+    )
+    .await;
+    sqlx::query("UPDATE learning_state SET revision=9007199254740993 WHERE user_id=$1")
+        .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let response = f.send("GET", path, json!({}), Some(&f.cookie), false).await;
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let (status, p) = decode(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(p["enabled_skills"], 1);
+    assert_eq!(p["revision"], "9007199254740993");
+    assert_eq!(p["timezone"], "UTC");
+    assert!(p["as_of_unix_ms"].is_string());
+    assert!(p["day_start_unix_ms"].is_string());
+    assert!(p["day_end_unix_ms"].is_string());
+    assert!(!p.to_string().contains("私有进度技能"));
+    let (_, other) = decode(
+        f.send("GET", path, json!({}), Some(&f.other_cookie), false)
+            .await,
+    )
+    .await;
+    assert_eq!(other["enabled_skills"], 0);
+    assert_eq!(
+        f.call("GET", &format!("{path}?user={}", f.other), json!({}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        f.call("POST", path, json!({})).await.0,
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    assert_eq!(
+        f.store.learning_snapshot(&f.owner).await.unwrap().revision,
+        9_007_199_254_740_993
+    );
+    f.cleanup().await;
 }

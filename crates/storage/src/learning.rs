@@ -57,7 +57,30 @@ pub struct LearningPlanPage {
     pub items: Vec<LearningPlanSummary>,
     pub next_cursor: Option<String>,
 }
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct LearningProgress {
+    pub timezone: &'static str,
+    pub as_of_unix_ms: u64,
+    pub day_start_unix_ms: u64,
+    pub day_end_unix_ms: u64,
+    pub revision: u64,
+    pub target_score: u8,
+    pub enabled_skills: u64,
+    pub assessed_skills: u64,
+    pub target_reached_skills: u64,
+    pub ready_plans: u64,
+    pub historical_plans: u64,
+    pub pending_tasks: u64,
+    pub completed_tasks: u64,
+    pub cancelled_tasks: u64,
+    pub completed_today: u64,
+    pub cancelled_today: u64,
+    pub recorded_minutes_today: u64,
+}
 pub trait LearningStore: Send + Sync {
+    /// 当前用户现存记录的只读统计；今日按数据库时钟的 UTC 自然日计算。
+    fn learning_progress(&self, owner: &UserId) -> BoxFuture<'_, StorageResult<LearningProgress>>;
+
     fn record_training_result(
         &self,
         owner: &UserId,

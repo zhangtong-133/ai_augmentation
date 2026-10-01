@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/learning/snapshot", get(snapshot))
+        .route("/api/learning/progress", get(progress))
         .route(
             "/api/learning/skills/{id}",
             put(save_skill).delete(delete_skill),
@@ -331,6 +332,21 @@ async fn result(
                     actual_minutes: input.actual_minutes,
                 },
             )
+            .await
+            .map_err(error)?,
+    )
+}
+
+async fn progress(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    query: Result<Query<Empty>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    query.map_err(|_| invalid())?;
+    output(
+        &runtime(&state)?
+            .learning_progress(&user.id)
             .await
             .map_err(error)?,
     )

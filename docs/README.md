@@ -91,3 +91,5 @@
 - [Sprint 4：学习管理 HTTP、页面与显式训练结果](design/sprint-4-learning-app.md)：技能管理、自评、计划历史、幂等结果及删除清理。
 
 - [Sprint 4：学习数据只读运维核对与额度诊断](design/sprint-4-learning-operations.md)：元数据列权限、一致快照、图/版本/结果状态检查及持久化额度。
+
+- [Sprint 4：学习进度概览](design/sprint-4-learning-progress.md)：只读当前自评覆盖、现存训练结果与 UTC 今日统计，包含页面刷新及故障隔离。

@@ -1005,3 +1005,6 @@ async fn learning_results_validate_deduplicate_and_clear_with_sources_and_accoun
         .unwrap();
     assert_eq!(count, 0);
 }
+
+#[path = "learning/progress.rs"]
+mod progress;

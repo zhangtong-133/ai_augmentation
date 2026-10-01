@@ -24,7 +24,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const briefs = (["GET", "PUT"].includes(request.method) && endpoint === "feed-brief-preferences")
     || (["GET", "POST"].includes(request.method) && endpoint === "feed-briefs")
     || (["GET", "DELETE"].includes(request.method) && /^feed-briefs\/[a-f0-9-]{36}$/i.test(endpoint));
-  const learning = (request.method === "GET" && /^learning\/(?:snapshot|plans(?:\/[a-f0-9-]{36})?)$/i.test(endpoint))
+  const learning = (request.method === "GET" && /^learning\/(?:snapshot|progress|plans(?:\/[a-f0-9-]{36})?)$/i.test(endpoint))
     || (["PUT", "DELETE"].includes(request.method) && /^learning\/skills\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "DELETE" && /^learning\/plans\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:assessments|plans(?:\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/result)?)$/i.test(endpoint));
