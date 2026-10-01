@@ -694,3 +694,6 @@ async fn documents_persist_and_are_owner_scoped() {
         Err(StorageError::NotFound)
     ));
 }
+
+#[path = "postgres/schedules.rs"]
+mod schedules;
