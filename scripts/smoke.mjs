@@ -154,6 +154,37 @@ async function login(base, credentials) {
   return cookie.split(";")[0];
 }
 
+// Exercise the actual stdio executable against the disposable authenticated API.
+async function mcpSearch(api, cookie, query, requestId) {
+  const messages = [
+    { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "smoke", version: "1" } } },
+    { jsonrpc: "2.0", method: "notifications/initialized" },
+    { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "knowledge_search", arguments: { query, request_id: requestId, acknowledge_embedding_cost: true } } },
+  ];
+  const child = spawn(join(root, "target/debug/personal-ai-mcp"), [], {
+    env: { ...process.env, MCP_API_URL: api, MCP_SESSION_TOKEN: cookie.split("=")[1], MCP_ALLOW_EMBEDDING_COST: "1" },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  let stdout = "", stderr = "";
+  child.stdout.on("data", data => { stdout += data; });
+  child.stderr.on("data", data => { stderr += data; });
+  const completed = new Promise((resolve, reject) => {
+    child.on("error", reject);
+    child.on("close", code => code === 0 ? resolve() : reject(new Error("MCP bridge failed")));
+  });
+  const timeout = setTimeout(() => child.kill(), 60000);
+  try {
+    child.stdin.end(messages.map(message => JSON.stringify(message)).join("\n") + "\n");
+    await completed;
+  } finally { clearTimeout(timeout); }
+  assert.equal(stderr, "");
+  const replies = stdout.trim().split("\n").map(line => JSON.parse(line));
+  assert.equal(replies.length, 3);
+  assert.equal(replies[1].result.tools[0].name, "knowledge_search");
+  return replies[2].result;
+}
+
 async function verifyIndex(document) {
   const base = await endpoint("qdrant", 6333);
   const response = await fetch(base + "/collections/smoke_knowledge/points/count", {
@@ -171,6 +202,7 @@ try {
   try { await command("docker", ["compose", "version"], {}, true); }
   catch { binary = "docker-compose"; prefix = []; }
   console.log(`Smoke project: ${project}`);
+  if (process.argv.includes("--index")) await command("cargo", ["build", "-p", "personal-ai-mcp", "--bin", "personal-ai-mcp"]);
   started = true;
   if (process.argv.includes("--objects")) {
     console.log("Building pinned MinIO/mc sources and checking public base image access");
@@ -379,6 +411,18 @@ try {
       assert.equal(indexed.data.next_offset, null);
     }
     const { data: searchable } = await request(web, path, 200, { cookie });
+    const mcpId = randomUUID();
+    const mcp = await mcpSearch(api, cookie, searchable.chunks[0], mcpId);
+    assert.equal(mcp.isError, false);
+    assert.equal(mcp.structuredContent.hits[0].document_id, document.id);
+    const mcpReplay = await mcpSearch(api, cookie, searchable.chunks[0], mcpId);
+    assert.equal(mcpReplay.isError, true);
+    assert.equal(mcpReplay.content[0].text, "request_already_used_or_conflicting");
+    const mcpOther = await mcpSearch(api, otherCookie, searchable.chunks[0], randomUUID());
+    assert.deepEqual(mcpOther.structuredContent.hits, []);
+    const mcpAudit = await request(web, "/api/tool-calls/" + mcpId, 200, { cookie });
+    assert.equal(mcpAudit.data.status, "succeeded");
+    console.log("PASS: MCP stdio search, owner isolation, cross-process duplicate suppression and persistent audit");
     for (const base of [web, gateway]) {
       const searchPath = "/api/knowledge/search";
       const body = { query: searchable.chunks[0], limit: 5 };

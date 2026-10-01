@@ -8,7 +8,7 @@
 4. **已实现显式回复的仓储、次数额度、HTTP、夹具执行器与[测试页面](sprint-3-reply-ui.md)，已提供固定供应商显式付费模式。** [回复设计](sprint-3-model-replies.md)说明单次领取、过期恢复及取消/删除保护；[货币预算仓储](sprint-3-reply-budget.md)已实现内部事务预留/结算，[固定模型计数与单次发送适配](sprint-3-reply-provider.md)已有本地夹具验收，已接入[执行器及显式金额确认入口](sprint-3-paid-replies.md)，默认关闭。
 5. **已实现：[工具调用次数预算与持久化审计](sprint-3-tool-call-audit.md)。** 知识检索工具需提供一次性请求 ID，先登记次数，再执行并记录元数据；失败和结果未知保留尝试次数。
 6. **已实现：[固定只读 Agent 计划与用户授权](sprint-3-agent-plans.md)及[计划页面](sprint-3-agent-plan-ui.md)。** 显式提供查询并预览计划，精确确认指纹、次数及费用后，最多顺序调用三次知识检索，支持取消、版本保护、删除清除和重启查重。已提供[模型建议纯规划与两阶段费用授权](sprint-3-model-agent-budget.md)；已落地[规划阶段请求仓储与事务预算](sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与领取](sprint-3-model-execution-store.md)；已实现证据保存、受限回答协议、固定模型适配器、两阶段执行器、授权页面和运维命令，见 [模型助手应用](sprint-3-model-agent-app.md)。
-7. **已实现 [Scheduler 一次性提醒授权、取消及持久化仓储](sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内投递](sprint-3-scheduler-delivery.md)，已提供[任务管理 API 和提醒页面](sprint-3-scheduler-app.md)。MCP 传输适配器仍待实现。** 复用内部工具，不绕过权限。当前 REST 接口不是 MCP 服务；不会让模型自动调用工具。
+7. **已实现 [Scheduler 一次性提醒授权、取消及持久化仓储](sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内投递](sprint-3-scheduler-delivery.md)，已提供[任务管理 API 和提醒页面](sprint-3-scheduler-app.md)。已提供 [MCP 本地 stdio 桥接](sprint-3-mcp-stdio.md)。** MCP 默认关闭，仅供可信宿主显式调用，复用内部工具与用户会话，不绕过权限和持久化审计。
 
 ## 首个工具：knowledge_search
 

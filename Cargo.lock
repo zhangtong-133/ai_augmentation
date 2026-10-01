@@ -1494,7 +1494,14 @@ dependencies = [
 name = "personal-ai-mcp"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "personal-ai-storage",
  "personal-ai-tools",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

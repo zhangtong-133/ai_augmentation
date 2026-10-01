@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+pub mod bridge;
+pub mod protocol;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExposedTool {
@@ -14,7 +16,7 @@ pub struct ServerManifest {
     pub tools: Vec<ExposedTool>,
 }
 
-/// 传输适配器留待后续实现。本 crate 负责内部工具与 MCP 协议类型
+/// 本 crate 提供本地 stdio 桥接与内部工具的 MCP 协议类型
 /// 之间的映射，不包含工具的业务逻辑。
 #[must_use]
 pub fn empty_manifest() -> ServerManifest {

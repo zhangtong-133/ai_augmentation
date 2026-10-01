@@ -58,7 +58,7 @@ cargo run -p api-server
 
 ## 工具接口
 
-Sprint 3 工具入口：登录后 `GET /api/tools` 查看可用工具，`POST /api/tools/knowledge_search` 显式检索（需 `Idempotency-Key: UUID`，沿用索引配置与 CSRF 要求，可能产生模型费用）。这是内部 REST 接口，不是 MCP 服务；边界见 [工具设计](docs/design/sprint-3-tools-memory-scheduler.md)。
+Sprint 3 工具入口：登录后 `GET /api/tools` 查看可用工具，`POST /api/tools/knowledge_search` 显式检索（需 `Idempotency-Key: UUID`，沿用索引配置与 CSRF 要求，可能产生模型费用）。REST 接口另可通过 [MCP 本地 stdio 桥接](docs/design/sprint-3-mcp-stdio.md)供可信宿主使用：默认关闭，显式启用后复用用户会话与工具审计。
 
 固定 Agent 计划使用 `POST /api/conversations/{id}/agent-plans` 创建预览，再通过 `/{request}/approve` 确认指纹、次数和费用；详情与取消协议见 [计划设计](docs/design/sprint-3-agent-plans.md)。需要已有消息版本和已启用的知识检索。执行不会自动重试，每步计入同一工具日预算。
 
