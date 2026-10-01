@@ -1,8 +1,10 @@
 # 交付路线图
 
-已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，下一步实现检索证据保存与受限回答协议，再接入模型执行器。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
+已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，已落地[检索证据保存与受限回答协议](design/sprint-3-model-evidence.md)，下一步接入两阶段供应商适配器与一次性执行器。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 ## 最近交付
+
+- [x] 模型 Agent 检索证据归属复核、稳定引用与严格回答协议；空证据跳过聊天并退还回答预留。
 
 - [x] 模型 Agent 第二阶段独立确认、逐次费用/次数预留、顺序一次性领取及取消/超时退款。
 - [x] 模型规划阶段仓储：精确授权、共享金额账本、模型次数预留、一次性领取、建议保存及取消/删除保护。
@@ -65,7 +67,7 @@
 - [x] 模型 Agent 纯规划、严格建议解码及两阶段金额/次数授权设计
 - [x] 模型 Agent 规划阶段请求仓储与事务金额/次数预留
 - [x] 模型 Agent 检索/回答阶段预算与一次性领取
-- [ ] 模型 Agent 检索证据保存与受限回答协议
+- [x] 模型 Agent 检索证据保存与受限回答协议
 - [ ] 模型受限规划与答案生成（供应商、执行器与页面尚待接入）
 - [ ] Scheduler（授权、取消、租约与幂等）
 - [x] Redis 短期记忆适配器（用户/对话键隔离、TTL、条目/活跃对话配额及真实 Redis 测试）

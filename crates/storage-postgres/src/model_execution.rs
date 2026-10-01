@@ -1,6 +1,5 @@
-//! 第二阶段预算生命周期：不发送供应商请求，不保存检索证据或回答。
+//! 第二阶段预算与证据生命周期；不发送供应商请求。
 use crate::{PostgresStore, map_error, model_planning, replies, reply_money};
-use personal_ai_agent_core::tool_execution::prepare_tool_call;
 use personal_ai_agent_core::{
     budget::{CostReservation, TokenPrices},
     model_plan::{
@@ -8,12 +7,16 @@ use personal_ai_agent_core::{
         QuoteWindow, decode_model_searches, quote_model_execution, quote_model_execution_budgets,
     },
 };
+use personal_ai_agent_core::{
+    model_answer::{decode_model_answer, plan_model_answer},
+    tool_execution::prepare_tool_call,
+};
 use personal_ai_domain::UserId;
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
     model_agents::AgentQuoteApproval,
     model_execution::{
-        ModelExecutionAuthorization, ModelExecutionClaim, ModelExecutionConfiguration,
+        ModelAnswer, ModelExecutionAuthorization, ModelExecutionClaim, ModelExecutionConfiguration,
         ModelExecutionOutcome, ModelExecutionRequest, ModelExecutionStore,
     },
     replies::ReplyConfiguration,
@@ -270,6 +273,8 @@ async fn terminate(
     }
     s.request.status = status.into();
     s.request.searches = None;
+    s.request.evidence.clear();
+    s.request.answer = None;
     save(tx, ids, s).await
 }
 async fn expire(tx: &mut PgConnection, ids: Keys, s: &mut Stored) -> StorageResult<()> {
@@ -438,6 +443,8 @@ impl ModelExecutionStore for PostgresStore {
                 amount: quote.quote().amount(),
                 calls: quote.quote().calls(),
                 searches: Some(searches),
+                evidence: vec![],
+                answer: None,
                 created_at_unix_ms: window.now_unix_ms,
                 expires_at_unix_ms: window.expires_at_unix_ms,
             };
@@ -562,6 +569,13 @@ impl ModelExecutionStore for PostgresStore {
             }
             verify_receipt(&mut tx, ids, &s, index).await?;
             let (_, snapshot, searches) = model_planning::execution_source(&mut tx, ids).await?;
+            if index == n
+                && plan_model_answer(&snapshot, revision, &s.request.evidence)
+                    .map_err(|_| corrupt())?
+                    .is_none()
+            {
+                return Err(conflict());
+            }
             let claim = Uuid::new_v4();
             let call_id = s.steps[index].call_id;
             let deadline = now(&mut tx)
@@ -603,6 +617,7 @@ impl ModelExecutionStore for PostgresStore {
             })
         })
     }
+    #[allow(clippy::too_many_lines)] // 证据保存、终态和每笔费用必须在同一事务内完成。
     fn finish_model_execution_step(
         &self,
         owner: &UserId,
@@ -617,11 +632,6 @@ impl ModelExecutionStore for PostgresStore {
         Box::pin(async move {
             let ids = ids?;
             let claim = claim?;
-            if let ModelExecutionOutcome::Succeeded { output_bytes } = outcome
-                && !(0..=65536).contains(&output_bytes)
-            {
-                return Err(invalid());
-            }
             let mut tx = self.pool.begin().await.map_err(map_error)?;
             let revision = replies::lock(&mut tx, ids.0, ids.1).await?;
             let mut s = read(&mut tx, ids).await?;
@@ -644,11 +654,33 @@ impl ModelExecutionStore for PostgresStore {
                 sqlx::query("UPDATE model_execution_configurations SET disabled_at=COALESCE(disabled_at,clock_timestamp()) WHERE version=$1").bind(&s.configuration.version).execute(&mut *tx).await.map_err(map_error)?;
             }
             if s.steps[index].status == "dispatching" {
+                let mut evidence = None;
+                let mut answer = None;
+                let eligible = !exceeded && revision == s.request.revision;
                 let (status, bytes) = match outcome {
-                    ModelExecutionOutcome::Succeeded { output_bytes }
-                        if !exceeded && revision == s.request.revision =>
-                    {
-                        ("succeeded", output_bytes)
+                    ModelExecutionOutcome::Retrieved(chunks) if eligible && index < n => {
+                        let limit = s.request.searches.as_ref().ok_or_else(corrupt)?[index].limit;
+                        evidence = super::model_evidence::collect(
+                            &mut tx,
+                            ids.0,
+                            &s.request.evidence,
+                            &chunks,
+                            limit,
+                        )
+                        .await?;
+                        if let Some((_, bytes)) = &evidence {
+                            ("succeeded", *bytes)
+                        } else {
+                            ("failed", 0)
+                        }
+                    }
+                    ModelExecutionOutcome::Answered(output) if eligible && index == n => {
+                        answer = decode_model_answer(&output, &s.request.evidence).ok();
+                        if answer.is_some() {
+                            ("succeeded", 0)
+                        } else {
+                            ("failed", 0)
+                        }
                     }
                     ModelExecutionOutcome::Unknown => ("unknown", 0),
                     _ => ("failed", 0),
@@ -668,13 +700,31 @@ impl ModelExecutionStore for PostgresStore {
                 )
                 .await?;
                 s.steps[index].status = status.into();
-                if status != "succeeded" {
-                    terminate(&mut tx, ids, &mut s, status).await?;
-                } else if index == n {
-                    s.request.status = "succeeded".into();
+                if status == "succeeded" {
+                    if let Some((evidence, _)) = evidence {
+                        s.request.evidence = evidence;
+                    }
+                    if index == n {
+                        let answer = answer.ok_or_else(corrupt)?;
+                        s.request.status = if answer.insufficient_evidence {
+                            "insufficient_evidence"
+                        } else {
+                            "succeeded"
+                        }
+                        .into();
+                        s.request.answer = Some(answer);
+                    } else if index + 1 == n && s.request.evidence.is_empty() {
+                        // 所有检索均已成功返回空结果；回答尚未领取，全部退回其预算。
+                        terminate(&mut tx, ids, &mut s, "insufficient_evidence").await?;
+                        s.request.answer = Some(ModelAnswer {
+                            insufficient_evidence: true,
+                            answer: String::new(),
+                            citations: vec![],
+                        });
+                    }
                     save(&mut tx, ids, &s).await?;
                 } else {
-                    save(&mut tx, ids, &s).await?;
+                    terminate(&mut tx, ids, &mut s, status).await?;
                 }
             }
             tx.commit().await.map_err(map_error)?;

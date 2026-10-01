@@ -489,6 +489,7 @@ pub fn quote_model_execution(
         revision: planning.context.revision,
         definition: json!({
             "stage": "execution", "planning_digest": planning.quote.digest,
+            "answer_protocol": crate::model_answer::ANSWER_PROTOCOL,
             "tool": "knowledge_search", "searches": proposal.searches, "budgets": budgets,
         }),
         currency: &budgets.answer.currency,

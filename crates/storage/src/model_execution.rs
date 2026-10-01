@@ -1,4 +1,4 @@
-//! 模型建议的第二阶段内部预算协议；不执行检索或模型发送。
+//! 模型建议的第二阶段内部预算、证据与回答协议；不执行模型发送。
 use crate::{
     BoxFuture, StorageResult,
     agent_plans::KnowledgeQuery,
@@ -28,6 +28,10 @@ pub struct ModelExecutionRequest {
     pub amount: i64,
     pub calls: AgentCallCounts,
     pub searches: Option<Vec<KnowledgeQuery>>,
+    #[serde(default)]
+    pub evidence: Vec<ModelEvidence>,
+    #[serde(default)]
+    pub answer: Option<ModelAnswer>,
     pub created_at_unix_ms: i64,
     pub expires_at_unix_ms: i64,
 }
@@ -45,12 +49,37 @@ pub struct ModelExecutionClaim {
     pub snapshot: MessageSnapshot,
     pub budget: ModelCallBudget,
 }
-#[derive(Clone, Copy)]
+/// 执行器提交召回片段，仓储再次校验所有者及权威文本；不信任向量载荷。
+#[derive(Clone, Debug)]
+pub struct RetrievedChunk {
+    pub document_id: String,
+    pub ordinal: usize,
+    pub text: String,
+}
+/// 按首次出现顺序分配稳定引用 ID，跨查询去重。
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelEvidence {
+    pub id: usize,
+    pub document_id: String,
+    pub ordinal: usize,
+    pub title: String,
+    pub source: String,
+    pub text: String,
+}
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelAnswer {
+    pub insufficient_evidence: bool,
+    pub answer: String,
+    pub citations: Vec<usize>,
+}
+#[derive(Clone)]
 pub enum ModelExecutionOutcome {
-    /// 由未来执行器确认成功；检索输出字节数仅用于审计，不保存正文。
-    Succeeded {
-        output_bytes: i32,
-    },
+    /// 每次最多为授权 limit 条；与步骤结算原子保存。
+    Retrieved(Vec<RetrievedChunk>),
+    /// 原始严格 JSON；只有当前回答步骤可以提交。
+    Answered(Vec<u8>),
     Failed,
     Unknown,
 }
