@@ -5,6 +5,7 @@ pub mod dates;
 pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;
+pub mod mcp_credentials;
 pub mod messages;
 pub mod model_agents;
 pub mod model_execution;
@@ -72,6 +73,41 @@ pub struct MemoryEntry {
 }
 
 pub trait MetadataStore: Send + Sync {
+    fn create_mcp_credential(
+        &self,
+        _owner: &UserId,
+        _input: &mcp_credentials::NewMcpCredential,
+    ) -> BoxFuture<'_, StorageResult<mcp_credentials::McpCredential>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "MCP credentials not supported".into(),
+            ))
+        })
+    }
+    fn list_mcp_credentials(
+        &self,
+        _owner: &UserId,
+    ) -> BoxFuture<'_, StorageResult<Vec<mcp_credentials::McpCredential>>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "MCP credentials not supported".into(),
+            ))
+        })
+    }
+    fn revoke_mcp_credential(
+        &self,
+        _owner: &UserId,
+        _id: &str,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "MCP credentials not supported".into(),
+            ))
+        })
+    }
+    fn mcp_credential_owner(&self, _digest: &str) -> BoxFuture<'_, StorageResult<UserId>> {
+        Box::pin(async { Err(StorageError::NotFound) })
+    }
     fn password_hash(&self, _email: &str) -> BoxFuture<'_, StorageResult<(UserId, String)>> {
         Box::pin(async { Err(StorageError::NotFound) })
     }

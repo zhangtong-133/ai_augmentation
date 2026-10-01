@@ -117,10 +117,11 @@ async function ready(url) {
   }
   throw new Error(`readiness timeout: ${url}`);
 }
-async function request(base, path, expected, { method = "GET", body, cookie, admin, csrf = true, requestId } = {}) {
+async function request(base, path, expected, { method = "GET", body, cookie, admin, csrf = true, requestId, token } = {}) {
   if (interrupted) throw new Error("interrupted");
   const headers = { "content-type": "application/json" };
   if (cookie) headers.cookie = cookie;
+  if (token) headers.authorization = `Bearer ${token}`;
   if (admin) headers.authorization = `Bearer ${env.SMOKE_TOKEN}`;
   if (method !== "GET" && csrf) headers["x-requested-with"] = "personal-ai";
   if (requestId !== undefined) headers["idempotency-key"] = requestId;
@@ -128,7 +129,7 @@ async function request(base, path, expected, { method = "GET", body, cookie, adm
     method, headers, body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(10000), redirect: "error",
   });
-  assert.equal(response.status, expected, `${method} ${path}`);
+  assert.equal(response.status, expected, `${method} ${path}: expected ${expected}, received ${response.status}`);
   const data = response.status === 204 ? null : await response.json();
   return { response, data };
 }
@@ -155,7 +156,7 @@ async function login(base, credentials) {
 }
 
 // Exercise the actual stdio executable against the disposable authenticated API.
-async function mcpSearch(api, cookie, query, requestId) {
+async function mcpSearch(api, token, query, requestId) {
   const messages = [
     { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "smoke", version: "1" } } },
     { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -163,7 +164,7 @@ async function mcpSearch(api, cookie, query, requestId) {
     { jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "knowledge_search", arguments: { query, request_id: requestId, acknowledge_embedding_cost: true } } },
   ];
   const child = spawn(join(root, "target/debug/personal-ai-mcp"), [], {
-    env: { ...process.env, MCP_API_URL: api, MCP_SESSION_TOKEN: cookie.split("=")[1], MCP_ALLOW_EMBEDDING_COST: "1" },
+    env: { ...process.env, MCP_API_URL: api, MCP_ACCESS_TOKEN: token, MCP_ALLOW_EMBEDDING_COST: "1" },
     stdio: ["pipe", "pipe", "pipe"],
   });
   let stdout = "", stderr = "";
@@ -411,18 +412,54 @@ try {
       assert.equal(indexed.data.next_offset, null);
     }
     const { data: searchable } = await request(web, path, 200, { cookie });
+    const credentialPath = "/api/mcp/credentials";
+    const grant = { host_name: "Smoke MCP host", expires_in_days: 1, acknowledge_embedding_cost: true };
+    await request(web, credentialPath, 401, { method: "POST", body: grant });
+    await request(web, credentialPath, 403, { method: "POST", cookie, csrf: false, body: grant });
+    await request(web, credentialPath, 400, { method: "POST", cookie, body: { ...grant, scope: "admin" } });
+    await request(web, credentialPath, 400, { method: "POST", cookie, body: { ...grant, acknowledge_embedding_cost: false } });
+    const issued = await request(web, credentialPath, 201, { method: "POST", cookie, body: grant });
+    const otherIssued = await request(gateway, credentialPath, 201, { method: "POST", cookie: otherCookie, body: grant });
+    const token = issued.data.token, otherToken = otherIssued.data.token;
+    assert.match(token, /^pai_mcp_[0-9a-f]{64}$/);
+    assert.equal(issued.response.headers.get("cache-control"), "no-store");
+    assert.equal(issued.data.credential.scope, "knowledge_search");
+    const listed = await request(web, credentialPath, 200, { cookie });
+    assert.equal(listed.data.items.length, 1);
+    assert.equal(JSON.stringify(listed.data).includes(token), false);
+    assert.equal(JSON.stringify(listed.data).includes("digest"), false);
+    assert.equal((await request(web, credentialPath, 200, { cookie: otherCookie })).data.items[0].id, otherIssued.data.credential.id);
+    for (const path of ["/api/auth/me", "/api/tools", "/api/tool-calls", credentialPath]) {
+      await request(api, path, 401, { token });
+    }
+    await request(api, "/api/users", 401, { method: "POST", token, body: {} });
+    await request(api, credentialPath, 401, { method: "POST", token, body: grant });
+    await request(api, "/api/mcp/tools", 401, { cookie });
+    await request(api, "/api/mcp/tools", 401, { token, cookie });
+    await request(api, "/api/mcp/tools", 401, { token: "pai_mcp_" + "0".repeat(64) });
+    await request(api, "/api/mcp/tools", 200, { token });
+    await request(api, "/api/mcp/tools/knowledge_search", 403, { method: "POST", token, csrf: false, body: { query: "test" } });
+    await request(api, "/api/mcp/tools/knowledge_search", 400, { method: "POST", token, body: { query: "test", user_id: owner.id }, requestId: randomUUID() });
+    const revokePath = credentialPath + "/" + issued.data.credential.id + "/revoke";
+    await request(web, revokePath, 404, { method: "POST", cookie: otherCookie });
+    await request(web, revokePath, 403, { method: "POST", cookie, csrf: false });
     const mcpId = randomUUID();
-    const mcp = await mcpSearch(api, cookie, searchable.chunks[0], mcpId);
+    const mcp = await mcpSearch(api, token, searchable.chunks[0], mcpId);
     assert.equal(mcp.isError, false);
     assert.equal(mcp.structuredContent.hits[0].document_id, document.id);
-    const mcpReplay = await mcpSearch(api, cookie, searchable.chunks[0], mcpId);
+    const mcpReplay = await mcpSearch(api, token, searchable.chunks[0], mcpId);
     assert.equal(mcpReplay.isError, true);
     assert.equal(mcpReplay.content[0].text, "request_already_used_or_conflicting");
-    const mcpOther = await mcpSearch(api, otherCookie, searchable.chunks[0], randomUUID());
+    const mcpOther = await mcpSearch(api, otherToken, searchable.chunks[0], randomUUID());
     assert.deepEqual(mcpOther.structuredContent.hits, []);
     const mcpAudit = await request(web, "/api/tool-calls/" + mcpId, 200, { cookie });
     assert.equal(mcpAudit.data.status, "succeeded");
-    console.log("PASS: MCP stdio search, owner isolation, cross-process duplicate suppression and persistent audit");
+    await request(gateway, revokePath, 200, { method: "POST", cookie });
+    await request(gateway, revokePath, 200, { method: "POST", cookie });
+    await request(api, "/api/mcp/tools", 401, { token });
+    await request(api, "/api/mcp/tools/knowledge_search", 401, { method: "POST", token, body: { query: "test" }, requestId: randomUUID() });
+    await request(api, "/api/mcp/tools", 200, { token: otherToken });
+    console.log("PASS: MCP scoped credentials, CSRF, account isolation, revocation, stdio search and persistent duplicate suppression");
     for (const base of [web, gateway]) {
       const searchPath = "/api/knowledge/search";
       const body = { query: searchable.chunks[0], limit: 5 };

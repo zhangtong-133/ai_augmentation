@@ -1,6 +1,6 @@
 # Sprint 3：本地 MCP 只读知识检索
 
-实现独立可执行程序 `personal-ai-mcp`，通过 stdio 暴露唯一工具 `knowledge_search`。复用现有 API 会话、CSRF、用户隔离、每日 100 次工具额度及 PostgreSQL 一次性调用审计；不增加数据库迁移或公网路由。
+实现独立可执行程序 `personal-ai-mcp`，通过 stdio 暴露唯一工具 `knowledge_search`。使用[宿主专属最小权限凭据](sprint-3-mcp-credentials.md)，复用用户隔离、每日 100 次工具额度及 PostgreSQL 一次性调用审计。
 
 ## 启动与信任边界
 
@@ -15,12 +15,12 @@ cargo build -p personal-ai-mcp --bin personal-ai-mcp
 | 变量 | 含义 |
 | --- | --- |
 | MCP_API_URL | 默认 http://127.0.0.1:8080；仅接受 HTTP IPv4 回环 origin，可指定端口 |
-| MCP_SESSION_TOKEN | 必填；当前用户登录获得的 personal_ai_session_v2 Cookie 值，64 位十六进制 |
+| MCP_ACCESS_TOKEN | 必填；用户通过授权 API 为此宿主签发的 pai_mcp_ 专用凭据 |
 | MCP_ALLOW_EMBEDDING_COST | 默认 0；仅显式设为 1 才开放检索 |
 
-会话令牌由用户通过受信任的登录流程取得，通过宿主的秘密环境配置传入，不写入仓库、命令参数、聊天内容或普通宿主配置文件。它是具有当前账户权限的登录凭据，并非工具专属的最小权限令牌；仅适用于可信本地宿主。登出、撤销或过期由 API 在每次请求时检查。API 需监听回环地址，宿主需与 API 同机。不要将此进程封装成共享或远程服务。
+凭据通过[登录态授权 API](sprint-3-mcp-credentials.md)签发，仅授予 knowledge_search 权限，通过宿主的秘密环境配置传入。不要写入仓库、命令参数、聊天内容或普通宿主配置文件。撤销与到期由 API 在每次请求时检查，密码重设会撤销全部凭据；普通网页登出不影响独立凭据。API 需监听回环地址，宿主需与 API 同机。此进程仅用于可信本地宿主。旧 MCP_SESSION_TOKEN 配置不再受支持。
 
-启用后，`tools/list` 查询 API 的可用工具；索引未配置时返回空列表。会话失效返回经过清理的协议错误。默认关闭时不访问 API，工具列表为空，调用失败。
+启用后，`tools/list` 查询 API 的可用工具；索引未配置时返回空列表。凭据失效返回经过清理的协议错误。默认关闭时不访问 API，工具列表为空，调用失败。
 
 ## 调用和费用
 
@@ -51,4 +51,4 @@ JSON-RPC id 是进程内协议请求标识，必须唯一；request_id 是用户
 
 Rust 测试覆盖默认关闭、初始化、非法参数、身份注入、凭据/地址限制、固定请求头、重复调用映射、输出清理及真实 stdio 帧限制。`make smoke-index` 使用真实 PostgreSQL、Qdrant 和本地向量夹具，启动真实桥接进程验证检索、账户隔离、跨进程 UUID 去重及持久化审计，不访问付费模型。
 
-后续补充宿主专属、可撤销的最小权限凭据及授权管理，再评估远程 MCP 传输。此版本不宣称已完成第三方桌面客户端兼容验收。
+已提供[宿主专属凭据与授权 API](sprint-3-mcp-credentials.md)，后续提供授权管理页面，再评估远程 MCP 传输。此版本不宣称已完成第三方桌面客户端兼容验收。

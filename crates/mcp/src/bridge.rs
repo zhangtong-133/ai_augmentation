@@ -1,6 +1,6 @@
 use reqwest::{
     Client, Url,
-    header::{COOKIE, HeaderMap, HeaderValue},
+    header::{AUTHORIZATION, HeaderMap, HeaderValue},
 };
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -12,7 +12,7 @@ pub struct Bridge {
 }
 impl Bridge {
     /// # Errors
-    /// 仅允许固定 IPv4 回环地址和用户会话；拒绝 URL 凭据、路径和代理。
+    /// 仅允许固定 IPv4 回环地址和专用检索凭据；拒绝 URL 凭据、路径和代理。
     pub fn new(base: &str, token: &str, enabled: bool) -> Result<Self, &'static str> {
         let base = Url::parse(base).map_err(|_| "invalid MCP_API_URL")?;
         if base.scheme() != "http"
@@ -25,14 +25,17 @@ impl Bridge {
         {
             return Err("MCP_API_URL must be an HTTP IPv4 loopback origin");
         }
-        if token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err("invalid MCP_SESSION_TOKEN");
+        if !token
+            .strip_prefix("pai_mcp_")
+            .is_some_and(|value| value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err("invalid MCP_ACCESS_TOKEN");
         }
         let mut headers = HeaderMap::new();
-        let mut cookie = HeaderValue::from_str(&format!("personal_ai_session_v2={token}"))
-            .map_err(|_| "invalid MCP_SESSION_TOKEN")?;
-        cookie.set_sensitive(true);
-        headers.insert(COOKIE, cookie);
+        let mut authorization = HeaderValue::from_str(&format!("Bearer {token}"))
+            .map_err(|_| "invalid MCP_ACCESS_TOKEN")?;
+        authorization.set_sensitive(true);
+        headers.insert(AUTHORIZATION, authorization);
         let client = Client::builder()
             .no_proxy()
             .retry(reqwest::retry::never())
@@ -69,7 +72,7 @@ impl Bridge {
             .map_err(|_| "api_unavailable_or_result_unknown")?;
         if !response.status().is_success() {
             return Err(match response.status().as_u16() {
-                401 => "session_expired",
+                401 => "credential_invalid_or_expired",
                 403 => "permission_denied",
                 404 => "tool_unavailable",
                 409 => "request_already_used_or_conflicting",
@@ -90,7 +93,7 @@ impl Bridge {
         if !self.enabled {
             return Ok(false);
         }
-        let data = self.request("/api/tools", None).await?;
+        let data = self.request("/api/mcp/tools", None).await?;
         let tools = data["tools"].as_array().ok_or("invalid_api_response")?;
         Ok(tools
             .iter()
@@ -107,7 +110,7 @@ impl Bridge {
         }
         let result = self
             .request(
-                "/api/tools/knowledge_search",
+                "/api/mcp/tools/knowledge_search",
                 Some((id, json!({"query":query,"limit":limit}))),
             )
             .await?;

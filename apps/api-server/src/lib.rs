@@ -29,6 +29,7 @@ use uuid::Uuid;
 mod auth;
 mod conversations;
 mod documents;
+mod mcp_credentials;
 mod memories;
 mod schedules;
 pub use schedules::SchedulerStore;
@@ -116,6 +117,7 @@ pub fn router(state: AppState) -> Router {
         .merge(retrieval::routes())
         .merge(answering::routes())
         .merge(index_jobs::routes())
+        .merge(mcp_credentials::routes(tools.clone()))
         .merge(tool_execution::routes(tools.clone()))
         .merge(agent_plans::routes(tools))
         .merge(model_agents::routes())

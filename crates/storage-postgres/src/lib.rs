@@ -4,6 +4,7 @@ mod conversations;
 mod documents;
 mod index_jobs;
 mod long_memory;
+mod mcp_credentials;
 mod messages;
 mod model_evidence;
 mod model_execution;
@@ -81,6 +82,32 @@ fn map_error(error: sqlx::Error) -> StorageError {
 }
 
 impl MetadataStore for PostgresStore {
+    fn create_mcp_credential(
+        &self,
+        owner: &UserId,
+        input: &personal_ai_storage::mcp_credentials::NewMcpCredential,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::mcp_credentials::McpCredential>> {
+        let owner = owner.clone();
+        let input = input.clone();
+        Box::pin(async move { self.create_mcp(&owner, &input).await })
+    }
+    fn list_mcp_credentials(
+        &self,
+        owner: &UserId,
+    ) -> BoxFuture<'_, StorageResult<Vec<personal_ai_storage::mcp_credentials::McpCredential>>>
+    {
+        let owner = owner.clone();
+        Box::pin(async move { self.list_mcp(&owner).await })
+    }
+    fn revoke_mcp_credential(&self, owner: &UserId, id: &str) -> BoxFuture<'_, StorageResult<()>> {
+        let owner = owner.clone();
+        let id = id.to_owned();
+        Box::pin(async move { self.revoke_mcp(&owner, &id).await })
+    }
+    fn mcp_credential_owner(&self, digest: &str) -> BoxFuture<'_, StorageResult<UserId>> {
+        let digest = digest.to_owned();
+        Box::pin(async move { self.mcp_owner(&digest).await })
+    }
     fn password_hash(&self, email: &str) -> BoxFuture<'_, StorageResult<(UserId, String)>> {
         let email = email.to_owned();
         Box::pin(async move {
@@ -109,6 +136,13 @@ impl MetadataStore for PostgresStore {
             if result.rows_affected() == 0 {
                 return Err(StorageError::NotFound);
             }
+            sqlx::query(
+                "UPDATE mcp_credentials SET revoked_at=COALESCE(revoked_at,NOW()) WHERE user_id=$1",
+            )
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .map_err(map_error)?;
             sqlx::query("DELETE FROM sessions WHERE user_id=$1")
                 .bind(id)
                 .execute(&mut *tx)

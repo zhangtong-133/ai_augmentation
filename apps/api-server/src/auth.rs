@@ -36,6 +36,9 @@ pub(super) fn mutation_guard(headers: &HeaderMap) -> Result<(), ApiError> {
 fn digest(token: &str) -> String {
     format!("{:x}", Sha256::digest(token.as_bytes()))
 }
+pub(super) fn session_digest(headers: &HeaderMap) -> Result<String, ApiError> {
+    Ok(digest(cookie_token(headers)?))
+}
 fn cookie_token(headers: &HeaderMap) -> Result<&str, ApiError> {
     headers
         .get(header::COOKIE)

@@ -18,12 +18,14 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     || (request.method === "POST" && /^conversations\/[a-f0-9-]{36}\/model-agents(?:\/[a-f0-9-]{36}\/(?:approve-planning|approve-execution|preview-execution|cancel-planning|cancel-execution))?$/i.test(endpoint));
   const schedules = (request.method === "GET" && /^(?:schedules(?:\/[a-f0-9-]{36})?|reminders)$/i.test(endpoint))
     || (request.method === "POST" && /^schedules(?:\/[a-f0-9-]{36}\/(?:approve|cancel))?$/i.test(endpoint));
+  const mcpCredentials = (["GET", "POST"].includes(request.method) && endpoint === "mcp/credentials")
+    || (request.method === "POST" && /^mcp\/credentials\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));
   const memoryMutation = ["PUT", "DELETE"].includes(request.method) && /^memories\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentDetail = request.method === "GET" && /^documents\/[a-f0-9-]{36}$/i.test(endpoint);
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
   const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。

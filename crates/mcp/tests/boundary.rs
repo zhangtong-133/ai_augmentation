@@ -8,7 +8,7 @@ use std::sync::{
 };
 
 fn bridge(url: &str, enabled: bool) -> Bridge {
-    Bridge::new(url, &"a".repeat(64), enabled).unwrap()
+    Bridge::new(url, &format!("pai_mcp_{}", "a".repeat(64)), enabled).unwrap()
 }
 async fn send(session: &mut Session, id: u32, method: &str, params: Value) -> Value {
     session
@@ -83,6 +83,7 @@ async fn default_off_lifecycle_and_invalid_messages_do_not_dispatch() {
 }
 #[test]
 fn credentials_and_origin_are_restricted() {
+    assert!(Bridge::new("http://127.0.0.1", &"a".repeat(64), true).is_err());
     for url in [
         "https://127.0.0.1",
         "http://example.com",
@@ -91,7 +92,7 @@ fn credentials_and_origin_are_restricted() {
         "http://127.0.0.1/path",
         "http://127.0.0.1?x=1",
     ] {
-        assert!(Bridge::new(url, &"a".repeat(64), true).is_err());
+        assert!(Bridge::new(url, &format!("pai_mcp_{}", "a".repeat(64)), true).is_err());
     }
     assert!(Bridge::new("http://127.0.0.1", "invalid\r\nheader", true).is_err());
 }
@@ -105,11 +106,11 @@ async fn bridge_forwards_only_fixed_credentials_and_maps_duplicate_without_retry
     let count = Arc::new(AtomicUsize::new(0));
     let calls = count.clone();
     let app = Router::new()
-        .route("/api/tools", get(|| async { Json(json!({"tools":[{"name":"knowledge_search","read_only":true}]})) }))
-        .route("/api/tools/knowledge_search", post(move |headers: HeaderMap, Json(body): Json<Value>| {
+        .route("/api/mcp/tools", get(|| async { Json(json!({"tools":[{"name":"knowledge_search","read_only":true}]})) }))
+        .route("/api/mcp/tools/knowledge_search", post(move |headers: HeaderMap, Json(body): Json<Value>| {
             let calls = calls.clone();
             async move {
-                assert_eq!(headers["cookie"], format!("personal_ai_session_v2={}", "a".repeat(64)));
+                assert_eq!(headers["authorization"], format!("Bearer pai_mcp_{}", "a".repeat(64)));
                 assert_eq!(headers["x-requested-with"], "personal-ai");
                 assert_eq!(headers["idempotency-key"], "a3bd4b8d-1b9e-4a1a-9db2-96d34a0a458a");
                 assert_eq!(body, json!({"query":"test","limit":5}));
@@ -147,7 +148,7 @@ async fn bridge_forwards_only_fixed_credentials_and_maps_duplicate_without_retry
 fn stdio_emits_only_json_and_bounds_frames() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_personal-ai-mcp"))
         .env("MCP_API_URL", "http://127.0.0.1:1")
-        .env("MCP_SESSION_TOKEN", "a".repeat(64))
+        .env("MCP_ACCESS_TOKEN", format!("pai_mcp_{}", "a".repeat(64)))
         .env("MCP_ALLOW_EMBEDDING_COST", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -168,7 +169,7 @@ fn stdio_emits_only_json_and_bounds_frames() {
     }
     let mut child = Command::new(env!("CARGO_BIN_EXE_personal-ai-mcp"))
         .env("MCP_API_URL", "http://127.0.0.1:1")
-        .env("MCP_SESSION_TOKEN", "a".repeat(64))
+        .env("MCP_ACCESS_TOKEN", format!("pai_mcp_{}", "a".repeat(64)))
         .env("MCP_ALLOW_EMBEDDING_COST", "0")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -198,7 +199,7 @@ async fn failures_are_sanitized_without_redirects_or_retries() {
         routing::post,
     };
     for (status, expected) in [
-        (StatusCode::UNAUTHORIZED, "session_expired"),
+        (StatusCode::UNAUTHORIZED, "credential_invalid_or_expired"),
         (StatusCode::TOO_MANY_REQUESTS, "tool_limit_reached"),
         (
             StatusCode::SERVICE_UNAVAILABLE,
@@ -213,14 +214,14 @@ async fn failures_are_sanitized_without_redirects_or_retries() {
         let count = Arc::new(AtomicUsize::new(0));
         let calls = count.clone();
         let app = Router::new().route(
-            "/api/tools/knowledge_search",
+            "/api/mcp/tools/knowledge_search",
             post(move || {
                 let calls = calls.clone();
                 async move {
                     calls.fetch_add(1, Ordering::SeqCst);
                     (
                         status,
-                        [(LOCATION, "/api/tools/knowledge_search")],
+                        [(LOCATION, "/api/mcp/tools/knowledge_search")],
                         "private".repeat(25_000),
                     )
                 }

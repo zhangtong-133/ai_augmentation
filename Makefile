@@ -46,7 +46,8 @@ test-replies: ## 使用一次性 TEST_DATABASE_URL 验证回复执行器、金�
 	cargo test -p api-server --lib paid_tests -- --ignored
 	cargo test -p api-server --test reply_operations -- --ignored
 	cargo test -p api-server --test model_operations -- --ignored
-	cargo test -p api-server --test scheduler_operations -- --ignored
+	# 这些测试修改共享表的列权限；串行运行，避免 PostgreSQL ACL 元组并发更新。
+	cargo test -p api-server --test scheduler_operations -- --ignored --test-threads=1
 
 .PHONY: test-redis
 test-redis: ## 使用一次性 TEST_REDIS_URL 验证短期记忆隔离、配额与 TTL

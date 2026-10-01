@@ -14,7 +14,7 @@ async fn run() -> Result<(), &'static str> {
         Err(std::env::VarError::NotPresent) => "http://127.0.0.1:8080".into(),
         Err(_) => return Err("invalid MCP_API_URL"),
     };
-    let token = std::env::var("MCP_SESSION_TOKEN").map_err(|_| "MCP_SESSION_TOKEN is required")?;
+    let token = std::env::var("MCP_ACCESS_TOKEN").map_err(|_| "MCP_ACCESS_TOKEN is required")?;
     let enabled = match std::env::var("MCP_ALLOW_EMBEDDING_COST") {
         Err(std::env::VarError::NotPresent) => false,
         Ok(v) if v == "0" => false,

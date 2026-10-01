@@ -107,16 +107,20 @@ async fn list(
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, ApiError> {
     auth::current_user(&state, &headers).await?;
+    Ok(manifest(&executor))
+}
+
+pub(super) fn manifest(executor: &ToolExecutor) -> impl IntoResponse + use<> {
     let tools: Vec<_> = executor.tools().map(|tool| json!({
         "name": tool.name(), "description": tool.description(),
         "input_schema": serde_json::from_str::<Value>(tool.input_schema_json()).unwrap_or(Value::Null),
         "read_only": true, "may_incur_cost": true,
         "request_id_header": "Idempotency-Key", "daily_call_limit": DAILY_TOOL_CALL_LIMIT,
     })).collect();
-    Ok((
+    (
         [(header::CACHE_CONTROL, "no-store")],
         Json(json!({"tools":tools})),
-    ))
+    )
 }
 
 async fn execute(
@@ -128,6 +132,17 @@ async fn execute(
 ) -> Result<impl IntoResponse, ApiError> {
     let user = auth::current_user(&state, &headers).await?;
     auth::mutation_guard(&headers)?;
+    execute_for(state, executor, user.id, name, headers, payload).await
+}
+
+pub(super) async fn execute_for(
+    state: AppState,
+    executor: Arc<ToolExecutor>,
+    owner: personal_ai_domain::UserId,
+    name: String,
+    headers: HeaderMap,
+    payload: Result<Json<Value>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
     let Json(arguments) = payload.map_err(|error| ApiError(error.status(), "invalid_json"))?;
     let request = ToolRequest {
         arguments_json: arguments.to_string(),
@@ -149,7 +164,7 @@ async fn execute(
     ))?;
     // 身份和工具上下文由服务端构造，客户端不能指定所有者或借用其他会话。
     let context = ToolContext {
-        user_id: user.id,
+        user_id: owner,
         conversation_id: ConversationId::new(Uuid::new_v4().to_string()),
     };
     let result = AuditedToolExecutor::new(store, executor)

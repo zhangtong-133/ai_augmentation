@@ -697,3 +697,6 @@ async fn documents_persist_and_are_owner_scoped() {
 
 #[path = "postgres/schedules.rs"]
 mod schedules;
+
+#[path = "postgres/mcp_credentials.rs"]
+mod mcp_credentials;
