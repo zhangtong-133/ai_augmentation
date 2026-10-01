@@ -1437,6 +1437,7 @@ name = "personal-ai-agent-core"
 version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
+ "personal-ai-feeds",
  "personal-ai-llm",
  "personal-ai-storage",
  "personal-ai-tools",
@@ -1450,6 +1451,18 @@ dependencies = [
 [[package]]
 name = "personal-ai-domain"
 version = "0.1.0"
+
+[[package]]
+name = "personal-ai-feed-http"
+version = "0.1.0"
+dependencies = [
+ "personal-ai-feeds",
+ "personal-ai-public-network",
+ "reqwest",
+ "tokio",
+ "tokio-rustls",
+ "url",
+]
 
 [[package]]
 name = "personal-ai-feeds"
@@ -1524,6 +1537,10 @@ version = "0.1.0"
 dependencies = [
  "tokio",
 ]
+
+[[package]]
+name = "personal-ai-public-network"
+version = "0.1.0"
 
 [[package]]
 name = "personal-ai-storage"
@@ -1606,6 +1623,7 @@ name = "personal-ai-web-import"
 version = "0.1.0"
 dependencies = [
  "personal-ai-knowledge",
+ "personal-ai-public-network",
  "personal-ai-storage",
  "reqwest",
  "scraper",

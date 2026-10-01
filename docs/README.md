@@ -69,3 +69,5 @@
 - [Sprint 4：受限 RSS 2.0 解析与去重](design/sprint-4-rss-parser.md)：离线 XML/HTML 边界、GUID/链接身份、批次去重及账户/订阅隔离。
 
 - [Sprint 4：RSS 订阅仓储与一次性采集事务](design/sprint-4-rss-store.md)：订阅版本、精确同意、并发/额度控制、原子条目写回及私有审计。
+
+- [Sprint 4：RSS 公网传输与一次性执行器](design/sprint-4-rss-executor.md)：DNS 公网检查、TLS/连接固定、禁止重试、进程并发和未知结果边界；包含 RSS CI 失败排查。

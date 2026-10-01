@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub mod parser;
+pub mod transport;
 
 use personal_ai_domain::UserId;
 use serde::{Deserialize, Serialize};

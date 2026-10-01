@@ -6,7 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-tokio = { workspace = true, features = ["time"] }
+personal-ai-feeds.workspace = true
+tokio = { workspace = true, features = ["time", "sync"] }
 tracing.workspace = true
 sha2.workspace = true
 serde.workspace = true

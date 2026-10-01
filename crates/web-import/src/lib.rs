@@ -2,14 +2,11 @@
 #![forbid(unsafe_code)]
 
 use personal_ai_knowledge::web::{WebImportError as Error, WebImporter, WebPage};
+use personal_ai_public_network::public_ip;
 use personal_ai_storage::BoxFuture;
 use reqwest::{Client, Response, header, redirect::Policy};
 use scraper::{ElementRef, Html, Node, Selector};
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::Duration,
-};
+use std::{net::SocketAddr, sync::Arc, time::Duration};
 use tokio::sync::Semaphore;
 use url::{Host, Url};
 
@@ -86,33 +83,6 @@ fn validate_url(input: &str) -> Result<Url, Error> {
         return Err(Error::InvalidUrl);
     }
     Ok(url)
-}
-
-fn public_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(ip) => {
-            let [a, b, c, _] = ip.octets();
-            !(a == 0
-                || a == 10
-                || a == 127
-                || a >= 224
-                || (a == 100 && (64..=127).contains(&b))
-                || (a == 169 && b == 254)
-                || (a == 172 && (16..=31).contains(&b))
-                || (a == 192
-                    && (b == 168 || (b == 0 && (c == 0 || c == 2)) || (b == 88 && c == 99)))
-                || (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
-                || (a == 203 && b == 0 && c == 113))
-        }
-        IpAddr::V6(ip) => {
-            let s = ip.segments();
-            // 仅允许普通全球单播地址，排除过渡、特殊用途及文档示例地址段。
-            (s[0] & 0xe000) == 0x2000
-                && s[0] != 0x2002
-                && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
-                && !(s[0] == 0x3fff && s[1] < 0x1000)
-        }
-    }
 }
 
 fn validate_addresses(addresses: &[SocketAddr]) -> Result<(), Error> {

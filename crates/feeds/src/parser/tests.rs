@@ -12,7 +12,7 @@ fn parsed(source: &str) -> Feed {
     parse_rss(source.as_bytes()).unwrap_or_else(|e| panic!("parse failed: {e:?}"))
 }
 fn rejects(source: &str, error: ParseError) {
-    assert!(parse_rss(source.as_bytes()).err() == Some(error));
+    assert_eq!(parse_rss(source.as_bytes()).err(), Some(error));
 }
 
 #[test]
@@ -93,7 +93,10 @@ fn rejects_malformed_xml_and_ambiguous_fields_without_partial_results() {
 
 #[test]
 fn enforces_byte_depth_node_item_and_field_limits() {
-    assert!(parsed(&feed(&item("x", &"文".repeat(512)))).entries.len() == 1);
+    assert_eq!(
+        parsed(&feed(&item("x", &"文".repeat(512)))).entries.len(),
+        1
+    );
     rejects(&feed(&item("x", &"文".repeat(513))), ParseError::TooLarge);
     rejects(
         &feed(&format!(
@@ -149,11 +152,11 @@ fn guid_is_opaque_and_typed_and_link_fallback_is_canonical() {
         link.entries[0].link.as_deref(),
         Some("https://example.com/article")
     );
-    assert!(
+    assert_eq!(
         parsed(&feed(&item("file:///opaque-guid", "Title")))
             .entries
-            .len()
-            == 1
+            .len(),
+        1
     );
     for url in [
         "http://example.com/",

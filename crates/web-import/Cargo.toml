@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+personal-ai-public-network.workspace = true
 personal-ai-knowledge.workspace = true
 personal-ai-storage.workspace = true
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream"] }

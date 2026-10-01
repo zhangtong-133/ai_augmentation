@@ -16,6 +16,8 @@ members = [
   "crates/web-import",
   "crates/learning",
   "crates/feeds",
+  "crates/feed-http",
+  "crates/public-network",
   "crates/storage",
   "crates/llm",
   "crates/tools",
@@ -58,3 +60,6 @@ personal-ai-storage = { path = "crates/storage" }
 personal-ai-llm = { path = "crates/llm" }
 personal-ai-tools = { path = "crates/tools" }
 personal-ai-mcp = { path = "crates/mcp" }
+
+personal-ai-public-network = { path = "crates/public-network" }
+personal-ai-feed-http = { path = "crates/feed-http" }

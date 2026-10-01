@@ -226,7 +226,7 @@ async fn claims_are_single_use_and_results_upsert_atomically_with_audit() {
         f.store.claim_collection(&f.owner, request, &draft.digest),
         f.store.claim_collection(&f.owner, request, &draft.digest)
     );
-    assert!(a.is_ok() != b.is_ok());
+    assert_ne!(a.is_ok(), b.is_ok());
     let claim = a.ok().or_else(|| b.ok()).unwrap();
     let another = f.preview(&sub).await;
     is_conflict(
@@ -566,7 +566,7 @@ async fn active_subscription_quota_is_serialized_and_listing_is_bounded() {
         f.store.create_subscription(&f.owner, &a, &value),
         f.store.create_subscription(&f.owner, &b, &value)
     );
-    assert!(a.is_ok() != b.is_ok());
+    assert_ne!(a.is_ok(), b.is_ok());
     let mut disabled = input();
     disabled.enabled = false;
     let inactive = f
@@ -762,3 +762,6 @@ async fn preview_quota_cannot_be_reset_by_cancellation_or_idempotent_retry() {
     );
     f.cleanup().await;
 }
+
+#[path = "feeds/executor.rs"]
+mod executor;

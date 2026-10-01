@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod budget;
+pub mod feeds;
 pub mod knowledge_plan;
 pub mod model_answer;
 pub mod model_executor;

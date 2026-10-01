@@ -1,0 +1,20 @@
+[package]
+name = "personal-ai-feed-http"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+personal-ai-feeds.workspace = true
+personal-ai-public-network.workspace = true
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream"] }
+tokio = { workspace = true, features = ["time", "sync", "net"] }
+url = "2.5"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "test-util"] }
+tokio-rustls = { version = "0.26.5", default-features = false, features = ["ring", "tls12"] }
+
+[lints]
+workspace = true
