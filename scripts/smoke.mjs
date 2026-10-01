@@ -270,6 +270,11 @@ try {
     const modelConfigs = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "configurations", stage], true));
     assert.ok(Array.isArray(modelConfigs.items));
   }
+  const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
+  assert.equal(mcpAudit.consistent, true);
+  assert.equal(mcpAudit.counts.total, 0);
+  assert.equal(mcpAudit.remaining_issuance, 20);
+  console.log("PASS: packaged MCP credential metadata audit");
   const scheduleAudit = JSON.parse(await compose(["exec", "-T", "api-server", "scheduler-operations", "audit", "--user", owner.id], true));
   assert.equal(scheduleAudit.consistent, true);
   assert.equal(scheduleAudit.counts.tasks, 0);

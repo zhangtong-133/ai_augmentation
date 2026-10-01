@@ -2,7 +2,7 @@ use crate::{PostgresStore, map_error};
 use personal_ai_domain::UserId;
 use personal_ai_storage::{
     StorageError, StorageResult,
-    mcp_credentials::{McpCredential, NewMcpCredential},
+    mcp_credentials::{MCP_CREDENTIAL_LIMIT, McpCredential, NewMcpCredential},
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -43,7 +43,7 @@ impl PostgresStore {
             .bind(owner).bind(&input.session_digest).fetch_one(&mut *tx).await.map_err(map_error)?;
         let count: i64 = sqlx::query_scalar("SELECT count(*) FROM mcp_credentials WHERE user_id=$1 AND ((revoked_at IS NULL AND expires_at>NOW()) OR created_at>NOW()-INTERVAL '24 hours')")
             .bind(owner).fetch_one(&mut *tx).await.map_err(map_error)?;
-        if count >= 20 {
+        if count >= MCP_CREDENTIAL_LIMIT {
             return Err(StorageError::Conflict(
                 "MCP credential quota reached".into(),
             ));

@@ -6,6 +6,7 @@ pub mod documents;
 pub mod index_jobs;
 pub mod long_memory;
 pub mod mcp_credentials;
+pub mod mcp_operations;
 pub mod messages;
 pub mod model_agents;
 pub mod model_execution;

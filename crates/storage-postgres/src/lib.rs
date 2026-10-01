@@ -5,6 +5,7 @@ mod documents;
 mod index_jobs;
 mod long_memory;
 mod mcp_credentials;
+mod mcp_operations;
 mod messages;
 mod model_evidence;
 mod model_execution;

@@ -1,4 +1,6 @@
 //! 宿主专属只读检索凭据；明文仅在创建响应中出现。
+pub const MCP_CREDENTIAL_LIMIT: i64 = 20;
+
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct McpCredential {
     pub id: String,

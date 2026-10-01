@@ -61,3 +61,5 @@
 - [Sprint 3：MCP 宿主专属凭据](design/sprint-3-mcp-credentials.md)：最小权限、有效期、签发/撤销 API 与密码重设联动。
 
 - [Sprint 3：MCP 凭据管理页面](design/sprint-3-mcp-credential-ui.md)：费用授权、一次性明文展示、故障核对与撤销。
+
+- [Sprint 3：MCP 凭据运维核对](design/sprint-3-mcp-operations.md)：列级只读元数据查询、全量额度核对与分页。
