@@ -63,3 +63,5 @@
 - [Sprint 3：MCP 凭据管理页面](design/sprint-3-mcp-credential-ui.md)：费用授权、一次性明文展示、故障核对与撤销。
 
 - [Sprint 3：MCP 凭据运维核对](design/sprint-3-mcp-operations.md)：列级只读元数据查询、全量额度核对与分页。
+
+- [Sprint 4：RSS 订阅与只读采集](design/sprint-4-rss-collection.md)：已实现纯规划与同意校验，明确后续 SSRF、XML、去重及一次性执行边界。

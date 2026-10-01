@@ -63,4 +63,4 @@ ALTER ROLE mcp_auditor SET default_transaction_read_only = on;
 
 集成测试覆盖列级只读角色运行真实命令、不读取宿主名或摘要、不更改数据、110 条分页、用户隔离、正常满额与异常超额、异常时间和并发撤销。make smoke 执行 PostgreSQL/CLI 集成并验证生产镜像内命令可运行。无付费模型调用或浏览器交互。
 
-MCP 本地授权闭环已完成，下一步进入 Sprint 4 的 RSS 订阅与只读采集边界设计；远程 MCP/OAuth 仍未启用。
+MCP 本地授权闭环已完成，Sprint 4 已提供 [RSS 订阅与只读采集边界设计](sprint-4-rss-collection.md)及纯规划模块；远程 MCP/OAuth 仍未启用。

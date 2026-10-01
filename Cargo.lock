@@ -1452,6 +1452,18 @@ name = "personal-ai-domain"
 version = "0.1.0"
 
 [[package]]
+name = "personal-ai-feeds"
+version = "0.1.0"
+dependencies = [
+ "personal-ai-domain",
+ "serde",
+ "serde_json",
+ "sha2",
+ "url",
+ "uuid",
+]
+
+[[package]]
 name = "personal-ai-knowledge"
 version = "0.1.0"
 dependencies = [

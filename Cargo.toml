@@ -15,6 +15,7 @@ members = [
   "crates/pdf-poppler",
   "crates/web-import",
   "crates/learning",
+  "crates/feeds",
   "crates/storage",
   "crates/llm",
   "crates/tools",
@@ -52,6 +53,7 @@ personal-ai-domain = { path = "crates/domain" }
 personal-ai-agent-core = { path = "crates/agent-core" }
 personal-ai-knowledge = { path = "crates/knowledge" }
 personal-ai-learning = { path = "crates/learning" }
+personal-ai-feeds = { path = "crates/feeds" }
 personal-ai-storage = { path = "crates/storage" }
 personal-ai-llm = { path = "crates/llm" }
 personal-ai-tools = { path = "crates/tools" }
