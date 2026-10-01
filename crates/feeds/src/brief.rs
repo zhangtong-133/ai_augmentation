@@ -1,7 +1,7 @@
 //! 确定性 RSS 日报纯规划；输入必须由服务端从当前用户的仓储加载。
 use crate::{identity, normalize_source};
 use personal_ai_domain::UserId;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -25,7 +25,8 @@ pub enum BriefError {
 }
 
 /// 私有内容不实现 Debug；不从 HTTP 反序列化。enabled/deleted 来自同一仓储快照。
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BriefCandidate {
     pub user_id: String,
     pub subscription_id: String,
@@ -41,20 +42,23 @@ pub struct BriefCandidate {
     pub last_seen_unix_ms: u64,
 }
 
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KeywordMatch {
     pub keyword: String,
     pub in_title: bool,
     pub points: u16,
 }
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BriefItem {
     pub entry: BriefCandidate,
     pub score: u16,
     pub freshness_points: u16,
     pub matches: Vec<KeywordMatch>,
 }
-#[derive(Clone, PartialEq, Eq, Serialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BriefPlan {
     pub version: String,
     pub user_id: String,
@@ -85,7 +89,10 @@ fn hash(value: &impl Serialize) -> Result<String, BriefError> {
 fn canonical_id(value: &str) -> Result<String, BriefError> {
     identity(value).map_err(|_| BriefError::InvalidIdentity)
 }
-fn preferences(input: &[String]) -> Result<Vec<String>, BriefError> {
+/// 规范化服务端保存的显式关键词偏好。
+/// # Errors
+/// 拒绝空词、重复、控制字符和超限偏好。
+pub fn normalize_keywords(input: &[String]) -> Result<Vec<String>, BriefError> {
     if input.len() > 5 {
         return Err(BriefError::InvalidPreferences);
     }
@@ -200,7 +207,7 @@ pub fn plan_brief(
     if candidates.len() > MAX_CANDIDATES {
         return Err(BriefError::TooLarge);
     }
-    let keywords = preferences(keywords)?;
+    let keywords = normalize_keywords(keywords)?;
     let mut bytes = 0_usize;
     let mut unique = BTreeMap::new();
     for candidate in candidates {

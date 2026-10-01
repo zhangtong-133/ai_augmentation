@@ -79,3 +79,5 @@
 - [Sprint 4：RSS 只读运维核对与状态诊断](design/sprint-4-rss-operations.md)：元数据列权限、只读一致快照、额度/超时提示与审计核对。
 
 - [Sprint 4：RSS 规则评分与 Daily Brief 纯规划](design/sprint-4-rss-brief-planning.md)：显式 UTC 窗口、关键词解释、稳定排名、保守去重与不可变摘要。
+
+- [Sprint 4：Daily Brief 偏好与不可变计划仓储](design/sprint-4-rss-brief-store.md)：偏好版本、幂等快照、事务额度、来源删除清理及历史分页。

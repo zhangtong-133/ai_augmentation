@@ -768,3 +768,6 @@ mod executor;
 
 #[path = "feeds/operations.rs"]
 mod operations;
+
+#[path = "feeds/briefs.rs"]
+mod briefs;
