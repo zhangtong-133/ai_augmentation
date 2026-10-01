@@ -30,30 +30,10 @@ macro_rules! string_id {
 string_id!(UserId);
 string_id!(DocumentId);
 string_id!(ConversationId);
-string_id!(TaskId);
-string_id!(SkillId);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct User {
     pub id: UserId,
     pub email: String,
     pub display_name: String,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TaskStatus {
-    Pending,
-    InProgress,
-    Completed,
-    Cancelled,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum AgentState {
-    Idle,
-    Planning,
-    ExecutingTool,
-    WaitingForModel,
-    PersistingMemory,
-    Failed,
 }

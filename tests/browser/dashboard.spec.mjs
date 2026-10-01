@@ -937,6 +937,8 @@ test("file import refreshes overview; logout and account switch clear private UI
   await expect(page.getByText("暂无文档。", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "ui-note.md", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  // 点击只保证事件已触发；退出请求成功、账户界面清空后才能刷新验证会话撤销。
+  await expect(page.getByRole("heading", { name: "登录你的工作台" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "登录你的工作台" })).toBeVisible();
   expect(errors).toEqual([]);

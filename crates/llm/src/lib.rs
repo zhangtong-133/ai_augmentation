@@ -29,14 +29,6 @@ pub struct ChatRequest {
     pub max_output_tokens: Option<u32>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ChatResponse {
-    pub content: String,
-    pub model: String,
-    pub input_tokens: Option<u64>,
-    pub output_tokens: Option<u64>,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Embedding {
     pub values: Vec<f32>,
@@ -65,15 +57,6 @@ impl Display for LlmError {
 }
 
 impl Error for LlmError {}
-
-pub trait LlmProvider: Send + Sync {
-    fn chat(&self, request: &ChatRequest) -> BoxFuture<'_, LlmResult<ChatResponse>>;
-    fn embedding(&self, input: &[String]) -> BoxFuture<'_, LlmResult<Vec<Embedding>>>;
-
-    fn supports_streaming(&self) -> bool {
-        false
-    }
-}
 
 /// 独立的向量化端口，索引流程无需依赖聊天能力。
 pub trait EmbeddingProvider: Send + Sync {
