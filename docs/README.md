@@ -64,4 +64,6 @@
 
 - [Sprint 3：MCP 凭据运维核对](design/sprint-3-mcp-operations.md)：列级只读元数据查询、全量额度核对与分页。
 
-- [Sprint 4：RSS 订阅与只读采集](design/sprint-4-rss-collection.md)：已实现纯规划与同意校验，明确后续 SSRF、XML、去重及一次性执行边界。
+- [Sprint 4：RSS 订阅与只读采集](design/sprint-4-rss-collection.md)：已实现纯规划与同意校验，明确后续 SSRF 及一次性执行边界。
+
+- [Sprint 4：受限 RSS 2.0 解析与去重](design/sprint-4-rss-parser.md)：离线 XML/HTML 边界、GUID/链接身份、批次去重及账户/订阅隔离。

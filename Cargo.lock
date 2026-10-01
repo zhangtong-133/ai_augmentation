@@ -1456,6 +1456,8 @@ name = "personal-ai-feeds"
 version = "0.1.0"
 dependencies = [
  "personal-ai-domain",
+ "quick-xml",
+ "scraper",
  "serde",
  "serde_json",
  "sha2",

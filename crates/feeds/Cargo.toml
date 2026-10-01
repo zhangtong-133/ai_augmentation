@@ -12,6 +12,8 @@ serde_json.workspace = true
 sha2.workspace = true
 uuid.workspace = true
 url = "2.5"
+quick-xml = "0.38.4"
+scraper = { version = "0.27", default-features = false }
 
 [lints]
 workspace = true
