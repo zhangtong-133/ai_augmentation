@@ -222,3 +222,5 @@ impl MetadataStore for PostgresStore {
 
 mod schedule_delivery;
 mod schedules;
+
+mod schedule_operations;

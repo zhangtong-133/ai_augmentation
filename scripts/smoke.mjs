@@ -237,6 +237,10 @@ try {
     const modelConfigs = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "configurations", stage], true));
     assert.ok(Array.isArray(modelConfigs.items));
   }
+  const scheduleAudit = JSON.parse(await compose(["exec", "-T", "api-server", "scheduler-operations", "audit", "--user", owner.id], true));
+  assert.equal(scheduleAudit.consistent, true);
+  assert.equal(scheduleAudit.counts.tasks, 0);
+  assert.equal(scheduleAudit.worker_liveness, "unknown");
   const modelAudit = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "ledger",
     "--user", owner.id, "--day", new Date().toISOString().slice(0, 10), "--currency", "USD"], true));
   assert.equal(modelAudit.consistent, true);
