@@ -104,3 +104,7 @@ browser-test-index: ## 使用本地模型夹具验证索引任务及双入口无
 .PHONY: test-feeds
 test-feeds: ## 使用一次性 TEST_DATABASE_URL 验证 RSS 会话、授权及 HTTP 隔离
 	cargo test -p api-server --lib feed_tests -- --ignored
+
+.PHONY: test-feed-operations
+test-feed-operations: ## 使用一次性 TEST_DATABASE_URL 验证 RSS 只读命令及权限
+	cargo test -p api-server --test feed_operations -- --ignored

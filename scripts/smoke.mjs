@@ -225,6 +225,9 @@ try {
   await command("cargo", ["test", "-p", "api-server", "--lib", "agent_plans", "--", "--ignored"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("make", ["test-feed-operations"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   await command("make", ["test-feeds"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
@@ -273,6 +276,11 @@ try {
     const modelConfigs = JSON.parse(await compose(["exec", "-T", "api-server", "model-agent-operations", "configurations", stage], true));
     assert.ok(Array.isArray(modelConfigs.items));
   }
+  const feedAudit = JSON.parse(await compose(["exec", "-T", "api-server", "feed-operations", "audit", "--user", owner.id], true));
+  assert.equal(feedAudit.consistent, true);
+  assert.equal(feedAudit.counts.collections, 0);
+  assert.equal(feedAudit.remaining_collections_today, 20);
+  console.log("PASS: packaged RSS metadata audit");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
   assert.equal(mcpAudit.consistent, true);
   assert.equal(mcpAudit.counts.total, 0);

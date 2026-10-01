@@ -765,3 +765,6 @@ async fn preview_quota_cannot_be_reset_by_cancellation_or_idempotent_retry() {
 
 #[path = "feeds/executor.rs"]
 mod executor;
+
+#[path = "feeds/operations.rs"]
+mod operations;

@@ -2,6 +2,7 @@
 mod agent_plans;
 mod conversations;
 mod documents;
+mod feed_operations;
 mod feeds;
 mod index_jobs;
 mod long_memory;

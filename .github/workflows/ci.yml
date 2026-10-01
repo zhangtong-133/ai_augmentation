@@ -83,6 +83,10 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test
 
+      - run: make test-feed-operations
+        env:
+          TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test
+
       - run: make test-feeds
         env:
           TEST_DATABASE_URL: postgres://personal_ai:ci-only-password@localhost:5432/personal_ai_test

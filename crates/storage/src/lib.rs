@@ -3,6 +3,7 @@ pub mod agent_plans;
 pub mod conversations;
 pub mod dates;
 pub mod documents;
+pub mod feed_operations;
 pub mod feeds;
 pub mod index_jobs;
 pub mod long_memory;
