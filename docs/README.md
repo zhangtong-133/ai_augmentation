@@ -101,3 +101,5 @@
 - [提醒已读与归档](design/reminder-inbox.md)：收件箱、版本控制、恢复与投递记录保留。
 
 - [残留向量显式维护](design/vector-maintenance.md)：默认预览、按用户/模型清理、跨存储存在性核对与安全重跑。
+
+- [GitTool 本地只读提交历史](design/git-log-tool.md)：显式仓库映射、进程限制、用户隔离和调用审计。

@@ -35,6 +35,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await
         .map_err(std::io::Error::other)?;
     let feeds = api_server::FeedRuntime::from_env(store.clone()).map_err(std::io::Error::other)?;
+    let git_tool = match std::env::var("GIT_REPOSITORIES_JSON") {
+        Ok(config) => personal_ai_git_local::GitLogTool::from_json(&config)?.map(Arc::new),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(_) => return Err("GIT_REPOSITORIES_JSON must be UTF-8".into()),
+    };
     let listener = tokio::net::TcpListener::bind(config.address).await?;
     let reply_task = {
         let replies = replies.clone();
@@ -54,6 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             schedules: Some(store.clone()),
             model_agents: Some(model_agents),
             agent_plans: Some(store.clone()),
+            git_tool,
             tool_calls: Some(store.clone()),
             replies: Some(replies),
             messages: store.clone(),

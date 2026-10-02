@@ -102,3 +102,5 @@ npm --prefix apps/web run build
 空转的 `worker` 占位程序及其 Compose 服务已移除；实际后台执行器位于 API，定时提醒由 scheduler 处理。旧部署更新后，原有 worker 容器会成为孤立容器；确认容器所属 Compose 项目及服务标签后，单独停止并移除该占位容器。首页已移除禁用问答框与过时的静态模块状态，功能状态以登录后的实际面板为准。
 
 残留向量可使用[显式维护命令](docs/design/vector-maintenance.md)按用户和模型分页核对、清理；默认预览，执行前须确认数据库归属并停止写入。
+
+可显式配置 [GitTool 本地只读提交历史](docs/design/git-log-tool.md)，让指定用户按仓库别名查询最近提交，复用工具调用额度与审计；默认关闭。

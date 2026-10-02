@@ -43,6 +43,7 @@ dependencies = [
  "personal-ai-domain",
  "personal-ai-feed-http",
  "personal-ai-feeds",
+ "personal-ai-git-local",
  "personal-ai-knowledge",
  "personal-ai-llm",
  "personal-ai-llm-openai",
@@ -1476,6 +1477,18 @@ dependencies = [
  "serde_json",
  "sha2",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "personal-ai-git-local"
+version = "0.1.0"
+dependencies = [
+ "personal-ai-domain",
+ "personal-ai-tools",
+ "serde",
+ "serde_json",
+ "tokio",
  "uuid",
 ]
 

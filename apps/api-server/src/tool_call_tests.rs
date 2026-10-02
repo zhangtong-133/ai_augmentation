@@ -534,3 +534,136 @@ async fn file_reader_rejects_untrusted_arguments_and_private_documents_and_honor
         );
     }
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // 固定工具完整 HTTP 权限、审计及幂等验证。
+async fn git_history_requires_session_csrf_and_quota_and_audits_once_without_content() {
+    let (mut state, _, _, owner, cookie, _) = retrieval_fixture().await;
+    state.indexing = None;
+    let ledger = Arc::new(MemoryToolCalls::default());
+    state.tool_calls = Some(ledger.clone());
+    let path = std::env::temp_dir().join(format!("git-http-{}", Uuid::new_v4()));
+    std::fs::create_dir(&path).unwrap();
+    for args in [
+        vec!["init", "--quiet"],
+        vec![
+            "-c",
+            "user.name=Fixture",
+            "-c",
+            "user.email=fixture@example.test",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "private-git-subject",
+        ],
+    ] {
+        let output = std::process::Command::new("/usr/bin/git")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", "/nonexistent")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .arg("-C")
+            .arg(&path)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+    }
+    state.git_tool = personal_ai_git_local::GitLogTool::from_json(
+        &json!([{"owner_id":owner.as_str(),"repository_id":"project","path":path}]).to_string(),
+    )
+    .unwrap()
+    .map(Arc::new);
+    let app = router(state);
+    let body = json!({"repository_id":"project","limit":1}).to_string();
+    let id = Uuid::new_v4().to_string();
+    for (session, csrf, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            named_call(app.clone(), "git_log", session, Some(&id), &body, csrf)
+                .await
+                .status(),
+            expected
+        );
+    }
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "git_log",
+            Some(&cookie),
+            Some(&id),
+            r#"{"repository_id":"project","path":"/etc"}"#,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(ledger.calls.lock().unwrap().len(), 0);
+    let response = named_call(
+        app.clone(),
+        "git_log",
+        Some(&cookie),
+        Some(&id),
+        &body,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    assert_eq!(
+        value(response).await["output"]["commits"][0]["subject"],
+        "private-git-subject"
+    );
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "git_log",
+            Some(&cookie),
+            Some(&id),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let audit = ledger.audit_tool_calls(&owner, None).await.unwrap();
+    assert_eq!(audit.used, 1);
+    assert!(
+        !serde_json::to_string(&audit)
+            .unwrap()
+            .contains("private-git-subject")
+    );
+    let denied = named_call(
+        app.clone(),
+        "git_log",
+        Some(&cookie),
+        Some(&Uuid::new_v4().to_string()),
+        r#"{"repository_id":"unknown"}"#,
+        true,
+    )
+    .await;
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    ledger.mode.store(3, Ordering::SeqCst);
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "git_log",
+            Some(&cookie),
+            Some(&Uuid::new_v4().to_string()),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    std::fs::remove_dir_all(path).unwrap();
+}

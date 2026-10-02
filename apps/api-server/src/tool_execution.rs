@@ -89,6 +89,9 @@ pub(super) fn executor(state: &AppState) -> Arc<ToolExecutor> {
             }) as Arc<dyn Tool>]
         })
         .unwrap_or_default();
+    if let Some(git) = &state.git_tool {
+        tools.push(git.clone());
+    }
     tools.push(Arc::new(crate::file_reader::FileReader(
         state.documents.clone(),
     )));

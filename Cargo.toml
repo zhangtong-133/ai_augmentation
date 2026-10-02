@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "crates/git-local",
   "crates/storage-redis",
   "crates/storage-postgres",
   "crates/storage-s3",
