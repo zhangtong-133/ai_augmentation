@@ -222,3 +222,5 @@ pub mod schedules;
 pub mod schedule_operations;
 
 pub mod learning_operations;
+
+pub mod vector_maintenance;

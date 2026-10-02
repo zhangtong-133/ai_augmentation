@@ -274,3 +274,64 @@ impl VectorStore for QdrantStore {
         })
     }
 }
+
+impl personal_ai_storage::vector_maintenance::VectorMaintenanceStore for QdrantStore {
+    fn list_references(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::vector_maintenance::VectorReferencePage>>
+    {
+        use personal_ai_storage::vector_maintenance::{VectorReference, VectorReferencePage};
+        let owner = Self::owner(owner);
+        let after = after
+            .map(|s| Uuid::parse_str(s).map_err(|_| invalid()))
+            .transpose();
+        Box::pin(async move {
+            let owner = owner?;
+            let after = after?;
+            let result = self.request(Method::POST, "/points/scroll", Some(json!({"filter":self.filter(&owner),"limit":100,"offset":after.map(|id| id.to_string()),"with_vector":false,"with_payload":["owner_id","model","record.id","record.document_id"]}))).await?;
+            let points = result["points"].as_array().ok_or_else(invalid)?;
+            if points.len() > 100 {
+                return Err(invalid());
+            }
+            let mut ids = std::collections::HashSet::new();
+            let mut items = Vec::new();
+            for point in points {
+                let payload = &point["payload"];
+                let id = payload["record"]["id"]
+                    .as_str()
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(invalid)?;
+                let document = payload["record"]["document_id"]
+                    .as_str()
+                    .ok_or_else(invalid)?;
+                let document = Uuid::parse_str(document).map_err(|_| invalid())?;
+                let point_id = point["id"].as_str().ok_or_else(invalid)?;
+                if payload["owner_id"] != owner
+                    || payload["model"] != self.model
+                    || point_id != self.point_id(&owner, id)
+                    || !ids.insert(point_id.to_owned())
+                {
+                    return Err(invalid());
+                }
+                items.push(VectorReference {
+                    id: id.into(),
+                    document_id: document.to_string(),
+                });
+            }
+            let next_cursor = match result.get("next_page_offset") {
+                Some(Value::Null) => None,
+                Some(Value::String(s)) => {
+                    let next = Uuid::parse_str(s).map_err(|_| invalid())?;
+                    if points.is_empty() || after.is_some_and(|old| next <= old) {
+                        return Err(invalid());
+                    }
+                    Some(next.to_string())
+                }
+                _ => return Err(invalid()),
+            };
+            Ok(VectorReferencePage { items, next_cursor })
+        })
+    }
+}

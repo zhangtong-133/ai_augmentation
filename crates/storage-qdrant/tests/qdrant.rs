@@ -111,3 +111,31 @@ async fn persistent_vectors_are_idempotent_and_owner_and_model_scoped() {
             .is_err()
     );
 }
+
+#[tokio::test]
+#[ignore = "requires disposable Qdrant; run make smoke-index"]
+async fn maintenance_rejects_forged_point_identity_before_exposing_cleanup_candidates() {
+    use personal_ai_storage::vector_maintenance::VectorMaintenanceStore;
+    let url = std::env::var("TEST_QDRANT_URL").unwrap();
+    let collection = format!("test_{}", Uuid::new_v4().simple());
+    let store = QdrantStore::new(&url, &collection, None, "m", 3).unwrap();
+    store.ensure_collection().await.unwrap();
+    let owner = UserId::new(Uuid::new_v4().to_string());
+    store
+        .insert_embeddings(&owner, &[record("m")])
+        .await
+        .unwrap();
+    let response = reqwest::Client::new()
+        .put(format!("{url}/collections/{collection}/points?wait=true"))
+        .json(&serde_json::json!({"points":[{"id":Uuid::new_v4().to_string(),"vector":[1.0,0.0,0.0],"payload":{"owner_id":owner.as_str(),"model":"m","record":{"id":"forged","document_id":Uuid::new_v4().to_string()}}}]}))
+        .send().await.unwrap();
+    assert!(response.status().is_success());
+    assert!(matches!(
+        store.list_references(&owner, None).await,
+        Err(StorageError::InvalidData(_))
+    ));
+    assert!(matches!(
+        store.list_references(&owner, Some("invalid-cursor")).await,
+        Err(StorageError::InvalidData(_))
+    ));
+}

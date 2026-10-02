@@ -260,6 +260,10 @@ try {
     await command("cargo", ["test", "-p", "personal-ai-storage-qdrant", "--test", "qdrant", "--", "--ignored"], {
       TEST_QDRANT_URL: qdrant, NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1",
     });
+    await command("cargo", ["test", "-p", "api-server", "--test", "vector_maintenance", "--", "--ignored"], {
+      TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+      TEST_QDRANT_URL: qdrant, NO_PROXY: "127.0.0.1,localhost,::1", no_proxy: "127.0.0.1,localhost,::1",
+    });
   }
   await compose(["up", "-d", "--build"]);
   const api = await endpoint("api-server", 8080);

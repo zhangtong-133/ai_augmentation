@@ -99,3 +99,5 @@
 - [每日定时日报](design/daily-brief-schedule.md)：按用户显式启用，UTC 调度、单日去重及生成/配置原子提交。
 
 - [提醒已读与归档](design/reminder-inbox.md)：收件箱、版本控制、恢复与投递记录保留。
+
+- [残留向量显式维护](design/vector-maintenance.md)：默认预览、按用户/模型清理、跨存储存在性核对与安全重跑。

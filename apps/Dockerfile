@@ -10,7 +10,7 @@ COPY crates ./crates
 ARG APP
 RUN cargo build --locked --release --package "$APP" \
     && mkdir /workspace/admin-bin \
-    && if [ "$APP" = "api-server" ]; then cp /workspace/target/release/reply-operations /workspace/target/release/model-agent-operations /workspace/target/release/scheduler-operations /workspace/target/release/mcp-operations /workspace/target/release/feed-operations /workspace/target/release/learning-operations /workspace/admin-bin/; fi
+    && if [ "$APP" = "api-server" ]; then cp /workspace/target/release/reply-operations /workspace/target/release/model-agent-operations /workspace/target/release/scheduler-operations /workspace/target/release/mcp-operations /workspace/target/release/feed-operations /workspace/target/release/learning-operations /workspace/target/release/vector-maintenance /workspace/admin-bin/; fi
 
 FROM debian:bookworm-slim AS runtime
 ARG APP

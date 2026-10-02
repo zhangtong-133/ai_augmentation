@@ -148,3 +148,5 @@ mod tests {
         assert_eq!(contents, ["个人", "知识", "库"]);
     }
 }
+
+pub mod vector_maintenance;
