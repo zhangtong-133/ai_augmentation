@@ -15,7 +15,9 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
-- [x] [WebSearch 显式搜索](design/web-search-tool.md)：默认关闭、固定 SearXNG 服务、逐次查询分享同意、单次请求、受限纯文本结果及共享工具审计；尚未提供搜索页面或 Agent 自动调用。
+- [x] [WebSearch 搜索页面](design/web-search-tool.md)：服务发现、逐次分享同意、来源展示、异常/部分结果提示、停止等待及账户隔离。
+
+- [x] [WebSearch 显式搜索](design/web-search-tool.md)：默认关闭、固定 SearXNG 服务、逐次查询分享同意、单次请求、受限纯文本结果及共享工具审计；已提供搜索页面，尚未接入 Agent 自动调用。
 
 - [x] [GitTool 本地提交历史](design/git-log-tool.md)：默认关闭、用户/仓库别名授权、固定只读 Git 命令、执行边界与共享工具审计。
 

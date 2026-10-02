@@ -183,3 +183,7 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .learningPanel input { box-sizing: border-box; }
 .learningProgress .overviewMetrics { grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); }
 .learningProgress .overviewMetrics > div { min-width: 0; }
+
+.webSearchPanel input[type="checkbox"] { width: auto; margin-right: 8px; }
+.webSearchPanel a { color: var(--acid); }
+.webSearchPanel a:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }

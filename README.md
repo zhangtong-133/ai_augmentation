@@ -105,4 +105,4 @@ npm --prefix apps/web run build
 
 可显式配置 [GitTool 本地只读提交历史](docs/design/git-log-tool.md)，让指定用户按仓库别名查询最近提交，复用工具调用额度与审计；默认关闭。
 
-可显式配置 [WebSearch 搜索工具](docs/design/web-search-tool.md)，通过固定 SearXNG 服务查询公开资料；默认关闭，每次调用必须同意对外发送查询，复用工具调用额度与审计。
+可显式配置 [WebSearch 搜索工具](docs/design/web-search-tool.md)，通过固定 SearXNG 服务查询公开资料；默认关闭，每次调用必须同意对外发送查询，复用工具调用额度与审计。登录后的「外部搜索」页面支持逐次确认、来源展示与停止等待。

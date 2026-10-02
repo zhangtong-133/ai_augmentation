@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { KnowledgePanel } from "./knowledge-panel";
 import { OverviewPanel } from "./overview-panel";
 import { ServiceStatus } from "./service-status";
+import { WebSearchPanel } from "./web-search-panel";
 import { RetrievalPanel } from "./retrieval-panel";
 import { McpCredentialPanel } from "./mcp-credential-panel";
 import { LearningPanel } from "./learning-panel";
@@ -100,6 +101,7 @@ export function AccountPanel() {
       {error && <p role="alert">{error}</p>}
       {user && <OverviewPanel key={`overview-${user.id}`} revision={revision} />}
       {user && <KnowledgePanel key={user.id} onImported={() => setRevision(value => value + 1)} />}
+      {user && <WebSearchPanel key={`web-search-${user.id}`} />}
       {user && <RetrievalPanel key={`retrieval-${user.id}`} />}
       {user && <McpCredentialPanel key={`mcp-${user.id}`} />}
       {user && <FeedPanel key={`feeds-${user.id}`} />}
