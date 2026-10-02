@@ -224,3 +224,5 @@ pub mod schedule_operations;
 pub mod learning_operations;
 
 pub mod vector_maintenance;
+
+pub mod feed_schedules;

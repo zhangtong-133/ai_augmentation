@@ -107,3 +107,5 @@
 - [WebSearch 显式搜索](design/web-search-tool.md)：固定 SearXNG 端点、逐次查询分享同意、搜索页面、受限结果与一次性审计。
 
 - [自动 RSS 授权与时段规划](design/rss-schedule-planning.md)：有期限精确同意、频率/窗口边界与时段去重标识；尚未接入执行。
+
+- [周期 RSS 采集授权仓储](design/rss-schedule-store.md)：不可变预览、同意/取消、订阅变更作废、到期与私有审计；尚未接入执行。

@@ -774,3 +774,6 @@ mod briefs;
 
 #[path = "feeds/brief_schedules.rs"]
 mod brief_schedules;
+
+#[path = "feeds/schedules.rs"]
+mod schedules;

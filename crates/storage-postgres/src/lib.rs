@@ -268,3 +268,5 @@ mod schedule_operations;
 mod learning_operations;
 
 mod vector_maintenance;
+
+mod feed_schedules;

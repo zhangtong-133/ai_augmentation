@@ -17,13 +17,13 @@ use uuid::Uuid;
 const SUB_FIELDS: &str = "user_id,id,name,source_url,revision,enabled,deleted";
 const COLLECTION_FIELDS: &str = "user_id,request_id,subscription_id,plan,digest,status,created_ms,claimed_ms,deadline_ms,finished_ms,reason,inserted,updated,unchanged";
 
-fn invalid() -> StorageError {
+pub(super) fn invalid() -> StorageError {
     StorageError::InvalidData("invalid feed input".into())
 }
-fn conflict() -> StorageError {
+pub(super) fn conflict() -> StorageError {
     StorageError::Conflict("feed state, quota or consent changed".into())
 }
-fn id(value: &str) -> StorageResult<Uuid> {
+pub(super) fn id(value: &str) -> StorageResult<Uuid> {
     let id = Uuid::parse_str(value).map_err(|_| invalid())?;
     if id.is_nil() {
         return Err(invalid());
@@ -84,15 +84,22 @@ fn collection(row: &PgRow) -> StorageResult<Collection> {
         counts: counts(row)?,
     })
 }
-async fn now(tx: &mut PgConnection) -> StorageResult<i64> {
+pub(super) async fn now(tx: &mut PgConnection) -> StorageResult<i64> {
     crate::schedules::now(tx).await
 }
-async fn locked(store: &PostgresStore, owner: Uuid) -> StorageResult<Transaction<'_, Postgres>> {
+pub(super) async fn locked(
+    store: &PostgresStore,
+    owner: Uuid,
+) -> StorageResult<Transaction<'_, Postgres>> {
     let mut tx = store.pool.begin().await.map_err(map_error)?;
     crate::schedules::lock_owner(&mut tx, owner).await?;
     Ok(tx)
 }
-async fn read_sub(tx: &mut PgConnection, owner: Uuid, sub: Uuid) -> StorageResult<Subscription> {
+pub(super) async fn read_sub(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    sub: Uuid,
+) -> StorageResult<Subscription> {
     let row = sqlx::query(&format!(
         "SELECT {SUB_FIELDS} FROM feed_subscriptions WHERE user_id=$1 AND id=$2"
     ))
