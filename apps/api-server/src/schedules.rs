@@ -7,7 +7,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use personal_ai_storage::{
     StorageError,
@@ -26,11 +26,26 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/api/schedules/{id}/approve", post(approve))
         .route("/api/schedules/{id}/cancel", post(cancel))
         .route("/api/reminders", get(reminders))
+        .route("/api/reminders/{id}", put(update_reminder))
 }
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Page {
     after: Option<String>,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReminderQuery {
+    after: Option<String>,
+    #[serde(default)]
+    archived: bool,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReminderInput {
+    revision: String,
+    read: bool,
+    archived: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -95,7 +110,9 @@ fn view(value: &impl Serialize) -> Result<Value, ApiError> {
         match v {
             Value::Object(fields) => {
                 for (key, value) in fields {
-                    if (key.ends_with("_unix_ms") || key == "amount_micro") && value.is_number() {
+                    if (key.ends_with("_unix_ms") || key == "amount_micro" || key == "revision")
+                        && value.is_number()
+                    {
                         *value = Value::String(value.to_string());
                     } else {
                         exact(value);
@@ -132,13 +149,34 @@ async fn list(
 async fn reminders(
     State(state): State<AppState>,
     headers: HeaderMap,
-    page: Result<Query<Page>, QueryRejection>,
+    page: Result<Query<ReminderQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse, ApiError> {
     let user = auth::current_user(&state, &headers).await?;
     let Query(page) = page.map_err(|_| invalid())?;
     let after = page.after.as_deref().map(id).transpose()?;
     let data = store(&state)?
-        .list_schedule_reminders(&user.id, after.as_deref())
+        .list_reminder_inbox(&user.id, after.as_deref(), Some(page.archived))
+        .await
+        .map_err(error)?;
+    Ok(([(header::CACHE_CONTROL, "no-store")], Json(view(&data)?)))
+}
+async fn update_reminder(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    body: Result<Json<ReminderInput>, JsonRejection>,
+) -> Result<impl IntoResponse, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    let data = store(&state)?
+        .update_reminder(
+            &user.id,
+            &id(&key)?,
+            number(&input.revision)?,
+            input.read,
+            input.archived,
+        )
         .await
         .map_err(error)?;
     Ok(([(header::CACHE_CONTROL, "no-store")], Json(view(&data)?)))

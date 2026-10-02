@@ -199,6 +199,87 @@ async fn schedule_http_isolates_delivery_and_does_not_expose_worker_credentials(
         .await
         .unwrap();
     assert_eq!(response.headers()["cache-control"], "no-store");
+    check_reminder_inbox(&f, &other, request).await;
     other.cleanup().await;
     f.cleanup().await;
+}
+
+async fn check_reminder_inbox(f: &Fixture, other: &Fixture, request: &str) {
+    let path = format!("/api/reminders/{request}");
+    let body = json!({"revision":"0","read":true,"archived":true});
+    assert_eq!(
+        f.call("PUT", &path, body.clone(), None, true).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        f.call("PUT", &path, body.clone(), Some(&f.cookie), false)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(other, "PUT", &path, body.clone()).await.0,
+        StatusCode::NOT_FOUND
+    );
+    for invalid in [
+        json!({"revision":0}),
+        json!({"revision":"00"}),
+        json!({"revision":"-1"}),
+        json!({"owner":"forged"}),
+        json!({"claim_id":"forged"}),
+    ] {
+        let mut bad = body.clone();
+        bad.as_object_mut()
+            .unwrap()
+            .extend(invalid.as_object().unwrap().clone());
+        assert!(call(f, "PUT", &path, bad).await.0.is_client_error());
+    }
+    let (status, saved) = call(f, "PUT", &path, body.clone()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["revision"], "1");
+    assert!(saved["read_at_unix_ms"].is_string());
+    assert!(saved["archived_at_unix_ms"].is_string());
+    assert_eq!(call(f, "PUT", &path, body).await.1, saved);
+    assert_eq!(
+        call(f, "GET", "/api/reminders", json!({})).await.1["items"],
+        json!([])
+    );
+    assert_eq!(
+        call(f, "GET", "/api/reminders?archived=true", json!({}))
+            .await
+            .1["items"],
+        json!([saved])
+    );
+    assert_eq!(
+        call(f, "GET", "/api/reminders?archived=invalid", json!({}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        call(
+            f,
+            "PUT",
+            &path,
+            json!({"revision":"0","read":false,"archived":false})
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            f,
+            "PUT",
+            &path,
+            json!({"revision":"1","read":false,"archived":false})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let restored = call(f, "GET", "/api/reminders", json!({})).await.1;
+    assert_eq!(restored["items"][0]["revision"], "2");
+    assert!(restored["items"][0]["read_at_unix_ms"].is_null());
+    assert!(restored["items"][0]["archived_at_unix_ms"].is_null());
 }

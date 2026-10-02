@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+
+import { ReminderInbox } from "./reminder-inbox";
 
 type Schedule = { request_id: string; title: string; body: string; run_at_unix_ms: string; digest: string; status: string; max_runs: number; amount_micro: string; approval_expires_at_unix_ms: string };
-type Reminder = { request_id: string; title: string; body: string; delivered_at_unix_ms: string };
+
 type Page<T> = { items: T[]; next_cursor: string | null };
 type Mutation = { path: string; body: string; kind: "create" | "approve" | "cancel" };
 const status: Record<string, string> = { draft: "待确认", expired: "预览已过期", scheduled: "等待投递", running: "正在投递", delivered: "已投递", cancelled: "已取消", failed: "投递停止" };
@@ -25,9 +27,7 @@ function localTime(value: string) {
 
 export function SchedulePanel() {
   const [tasks, setTasks] = useState<Page<Schedule>>({ items: [], next_cursor: null });
-  const [reminders, setReminders] = useState<Page<Reminder>>({ items: [], next_cursor: null });
   const [taskPages, setTaskPages] = useState<string[]>([]);
-  const [reminderPages, setReminderPages] = useState<string[]>([]);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -43,30 +43,28 @@ export function SchedulePanel() {
   const [notice, setNotice] = useState("");
   const active = useRef<AbortController | null>(null);
   const taskCursor = taskPages.at(-1);
-  const reminderCursor = reminderPages.at(-1);
+  const [expired, setExpired] = useState(false);
+  const sessionExpired = useRef(false);
+  const expire = useCallback(() => { sessionExpired.current = true; setExpired(true); setTasks({ items: [], next_cursor: null }); setSelected(null); setPending(null); setTitle(""); setBody(""); setWhen(""); setNotice(""); setAcknowledged(false); setCancelId(null); active.current?.abort(); active.current = null; setBusy(false); setLoading(false); setLoadError("登录已失效，请重新登录。"); }, []);
   useEffect(() => () => { active.current?.abort(); active.current = null; }, []);
   useEffect(() => {
     const controller = new AbortController();
     async function load() {
       setLoading(true);
       try {
-        const responses = await Promise.all(["schedules", "reminders"].map((route, i) => {
-          const cursor = i === 0 ? taskCursor : reminderCursor;
-          return fetch(`/api/${route}${cursor ? `?after=${encodeURIComponent(cursor)}` : ""}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) });
-        }));
-        if (responses.some(r => !r.ok)) {
-          const code = responses.find(r => !r.ok)!.status;
-          throw new Error(code >= 500 ? "提醒服务暂不可用，请刷新重试。" : errorMessage(code));
-        }
-        const [schedules, delivered] = await Promise.all(responses.map(r => r.json()));
-        if (!controller.signal.aborted) { setTasks(schedules); setReminders(delivered); setLoadError(""); }
+        const response = await fetch(`/api/schedules${taskCursor ? `?after=${encodeURIComponent(taskCursor)}` : ""}`, { cache: "no-store", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) });
+        if (controller.signal.aborted || sessionExpired.current) return;
+        if (response.status === 401) { expire(); return; }
+        if (!response.ok) throw new Error(response.status >= 500 ? "提醒服务暂不可用，请刷新重试。" : errorMessage(response.status));
+        const schedules = await response.json();
+        if (!controller.signal.aborted && !sessionExpired.current) { setTasks(schedules); setLoadError(""); }
       } catch (e) {
-        if (!controller.signal.aborted) setLoadError(e instanceof Error && e.name === "Error" ? e.message : "无法读取提醒，请刷新重试。");
+        if (!controller.signal.aborted && !sessionExpired.current) setLoadError(e instanceof Error && e.name === "Error" ? e.message : "无法读取提醒，请刷新重试。");
       } finally { if (!controller.signal.aborted) setLoading(false); }
     }
-    void load();
+    if (!sessionExpired.current) void load();
     return () => controller.abort();
-  }, [revision, taskCursor, reminderCursor]);
+  }, [revision, taskCursor, expire]);
 
   async function mutate(operation: Mutation) {
     if (active.current) return;
@@ -75,6 +73,7 @@ export function SchedulePanel() {
     try {
       const response = await fetch(operation.path, { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" }, body: operation.body, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]) });
       if (active.current !== controller) return;
+      if (response.status === 401) { expire(); return; }
       if (!response.ok) {
         if (response.status >= 400 && response.status < 500) { setPending(null); setSelected(null); setAcknowledged(false); setRevision(n => n + 1); }
         throw new Error(errorMessage(response.status));
@@ -84,7 +83,7 @@ export function SchedulePanel() {
       setPending(null); setSelected(result); setAcknowledged(false); setCancelId(null);
       setNotice(operation.kind === "create" ? (result.status === "draft" ? "预览已保存，尚未授权投递。" : `已有任务状态：${status[result.status] ?? result.status}。`) : operation.kind === "approve" ? `任务${status[result.status] ?? result.status}。` : result.status === "delivered" ? "提醒已投递，无法撤回。" : "任务已取消。");
       if (operation.kind === "create") { setTitle(""); setBody(""); setWhen(""); }
-      setTaskPages([]); setReminderPages([]); setRevision(n => n + 1);
+      setTaskPages([]); setRevision(n => n + 1);
     } catch (e) {
       if (active.current === controller) setError(e instanceof Error && e.name === "Error" ? e.message : "操作结果尚未确认，请重试原操作。不要重复创建提醒。");
     } finally { if (active.current === controller) { active.current = null; setBusy(false); } }
@@ -103,7 +102,7 @@ export function SchedulePanel() {
     if (!selected || !acknowledged || pending) return;
     void mutate({ kind: "approve", path: `/api/schedules/${selected.request_id}/approve`, body: JSON.stringify({ digest: selected.digest, accepted_run_at_unix_ms: selected.run_at_unix_ms, accepted_max_runs: selected.max_runs, accepted_amount_micro: selected.amount_micro, acknowledge_schedule: true }) });
   }
-  const locked = busy || pending !== null;
+  const locked = expired || busy || pending !== null;
   return <section className="schedulePanel" aria-label="定时提醒">
     <h2>定时提醒</h2>
     <p>一次性站内提醒，免费，不调用模型或发送外部通知。确认后等待投递；服务离线时可能延迟。</p>
@@ -124,7 +123,7 @@ export function SchedulePanel() {
       <button disabled={locked} onClick={() => { setSelected(null); setAcknowledged(false); }}>关闭预览</button>
     </div>}
     {loadError && <p role="alert">{loadError}</p>}
-    <button disabled={busy || loading} onClick={() => setRevision(n => n + 1)}>刷新提醒</button>
+    <button disabled={expired || busy || loading} onClick={() => setRevision(n => n + 1)}>刷新提醒</button>
     {loading && <p role="status">正在读取提醒…</p>}
     <h3>提醒任务</h3>
     {!loading && !loadError && tasks.items.length === 0 && <p>暂无提醒任务。</p>}
@@ -134,9 +133,6 @@ export function SchedulePanel() {
       {cancelId === task.request_id && <div><p>确认取消此提醒？已投递的提醒无法撤回。</p><button disabled={locked} onClick={() => void mutate({ kind: "cancel", path: `/api/schedules/${task.request_id}/cancel`, body: "{}" })}>确认取消提醒</button><button disabled={locked} onClick={() => setCancelId(null)}>保留提醒</button></div>}
     </li>)}</ul>
     <div className="pagination"><button disabled={locked || loading || taskPages.length === 0} onClick={() => setTaskPages(p => p.slice(0, -1))}>上一页任务</button><button disabled={locked || loading || !tasks.next_cursor} onClick={() => setTaskPages(p => [...p, tasks.next_cursor!])}>下一页任务</button></div>
-    <h3>已收到的提醒</h3>
-    {!loading && !loadError && reminders.items.length === 0 && <p>暂无已投递提醒。</p>}
-    <ul>{reminders.items.map(reminder => <li key={reminder.request_id}><h4>{reminder.title}</h4><p className="memoryText">{reminder.body}</p><p>投递于 {time(reminder.delivered_at_unix_ms)}</p></li>)}</ul>
-    <div className="pagination"><button disabled={locked || loading || reminderPages.length === 0} onClick={() => setReminderPages(p => p.slice(0, -1))}>上一页已收提醒</button><button disabled={locked || loading || !reminders.next_cursor} onClick={() => setReminderPages(p => [...p, reminders.next_cursor!])}>下一页已收提醒</button></div>
+    {!expired && <ReminderInbox revision={revision} onExpired={expire} />}
   </section>;
 }

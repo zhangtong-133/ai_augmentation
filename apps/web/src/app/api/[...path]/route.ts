@@ -17,6 +17,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const modelAgents = (request.method === "GET" && /^conversations\/[a-f0-9-]{36}\/model-agents(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
     || (request.method === "POST" && /^conversations\/[a-f0-9-]{36}\/model-agents(?:\/[a-f0-9-]{36}\/(?:approve-planning|approve-execution|preview-execution|cancel-planning|cancel-execution))?$/i.test(endpoint));
   const schedules = (request.method === "GET" && /^(?:schedules(?:\/[a-f0-9-]{36})?|reminders)$/i.test(endpoint))
+    || (request.method === "PUT" && /^reminders\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^schedules(?:\/[a-f0-9-]{36}\/(?:approve|cancel))?$/i.test(endpoint));
   const feeds = (request.method === "GET" && /^(?:feeds\/config|feed-subscriptions(?:\/[a-f0-9-]{36}(?:\/entries)?)?|feed-collections(?:\/[a-f0-9-]{36}(?:\/audit)?)?)$/i.test(endpoint))
     || (request.method === "POST" && /^(?:feed-subscriptions(?:\/[a-f0-9-]{36}\/collections)?|feed-collections\/[a-f0-9-]{36}\/(?:confirm|cancel|recover))$/i.test(endpoint))

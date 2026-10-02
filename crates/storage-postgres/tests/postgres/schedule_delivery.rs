@@ -265,3 +265,122 @@ async fn scheduler_delivery_commit_failure_rolls_back_both_reminder_and_terminal
     assert_eq!(count(&f).await, 1);
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+#[allow(clippy::too_many_lines)] // 完整投递、并发更新与恢复生命周期。
+async fn reminder_inbox_is_private_versioned_and_preserves_delivery_after_archiving() {
+    let _guard = DELIVERY_TEST.lock().await;
+    let f = Fixture::new().await;
+    let saved = due(&f, &f.owner).await;
+    let lease = claim(&f).await;
+    let original = f.store.deliver_schedule(&lease).await.unwrap();
+    assert_eq!(original.revision, 0);
+    assert!(original.read_at_unix_ms.is_none());
+    assert!(original.archived_at_unix_ms.is_none());
+    let request = &saved.request_id;
+    assert!(matches!(
+        f.store
+            .update_reminder(&f.other, request, 0, true, false)
+            .await,
+        Err(StorageError::NotFound)
+    ));
+    assert!(
+        f.store
+            .update_reminder(&f.owner, request, -1, true, false)
+            .await
+            .is_err()
+    );
+    let (a, b) = tokio::join!(
+        f.store.update_reminder(&f.owner, request, 0, true, false),
+        f.store.update_reminder(&f.owner, request, 0, false, true)
+    );
+    assert_eq!(usize::from(a.is_ok()) + usize::from(b.is_ok()), 1);
+    let changed = a.or(b).unwrap();
+    assert_eq!(changed.revision, 1);
+    let archived = f
+        .store
+        .update_reminder(&f.owner, request, 1, true, true)
+        .await
+        .unwrap();
+    assert_eq!(archived.revision, 2);
+    assert_eq!(archived.delivered_at_unix_ms, original.delivered_at_unix_ms);
+    assert_eq!(archived.body, original.body);
+    assert_eq!(
+        f.store
+            .update_reminder(&f.owner, request, 1, true, true)
+            .await
+            .unwrap(),
+        archived
+    );
+    assert_eq!(
+        f.store
+            .list_reminder_inbox(&f.owner, None, Some(false))
+            .await
+            .unwrap()
+            .items
+            .len(),
+        0
+    );
+    assert_eq!(
+        f.store
+            .list_reminder_inbox(&f.owner, None, Some(true))
+            .await
+            .unwrap()
+            .items,
+        vec![archived.clone()]
+    );
+    assert_eq!(
+        f.store
+            .list_reminder_inbox(&f.other, None, Some(true))
+            .await
+            .unwrap()
+            .items
+            .len(),
+        0
+    );
+    // 原租约重放只能读取当前提醒，不重新投递或清除收件箱状态。
+    assert_eq!(f.store.deliver_schedule(&lease).await.unwrap(), archived);
+    assert_eq!(count(&f).await, 1);
+    let restored = f
+        .store
+        .update_reminder(&f.owner, request, 2, true, false)
+        .await
+        .unwrap();
+    assert_eq!(restored.read_at_unix_ms, archived.read_at_unix_ms);
+    assert!(restored.archived_at_unix_ms.is_none());
+    assert!(matches!(
+        f.store
+            .update_reminder(&f.owner, request, 1, true, true)
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    let unread = f
+        .store
+        .update_reminder(&f.owner, request, 3, false, false)
+        .await
+        .unwrap();
+    assert!(unread.read_at_unix_ms.is_none());
+    assert_eq!(unread.revision, 4);
+    let reopened = PostgresStore::connect_existing(&std::env::var("TEST_DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        reopened
+            .list_reminder_inbox(&f.owner, None, Some(false))
+            .await
+            .unwrap()
+            .items,
+        vec![unread]
+    );
+    assert_eq!(
+        f.store
+            .get_schedule(&f.owner, request)
+            .await
+            .unwrap()
+            .status,
+        "delivered"
+    );
+    assert!(f.store.claim_due_schedule().await.unwrap().is_none());
+    f.cleanup().await;
+}

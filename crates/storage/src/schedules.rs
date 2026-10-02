@@ -105,6 +105,9 @@ pub struct ScheduleReminder {
     pub title: String,
     pub body: String,
     pub delivered_at_unix_ms: i64,
+    pub revision: i64,
+    pub read_at_unix_ms: Option<i64>,
+    pub archived_at_unix_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -114,6 +117,22 @@ pub struct ReminderPage {
 }
 
 pub trait ScheduleDeliveryStore: Send + Sync {
+    /// 用户收件箱；None 查询全部，Some 查询归档或未归档提醒。
+    fn list_reminder_inbox(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+        archived: Option<bool>,
+    ) -> BoxFuture<'_, StorageResult<ReminderPage>>;
+    /// 版本比较及相同状态重放，不改变投递记录或任务终态。
+    fn update_reminder(
+        &self,
+        owner: &UserId,
+        request: &str,
+        revision: i64,
+        read: bool,
+        archived: bool,
+    ) -> BoxFuture<'_, StorageResult<ScheduleReminder>>;
     /// 内部跨用户领取；事务复核授权后返回，过期租约可被新凭据替换。
     fn claim_due_schedule(&self) -> BoxFuture<'_, StorageResult<Option<ScheduleLease>>>;
     /// 只使用保存的正文；旧租约、取消或授权改变时不投递。

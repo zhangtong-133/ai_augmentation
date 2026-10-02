@@ -4,7 +4,7 @@
 
 ## HTTP 协议
 
-以下端点全部要求用户会话；管理 Bearer Token 不代替会话身份。POST 还要求 `X-Requested-With: personal-ai`，拒绝额外 JSON 字段，结果使用 `Cache-Control: no-store`。
+以下端点全部要求用户会话；管理 Bearer Token 不代替会话身份。POST/PUT 还要求 `X-Requested-With: personal-ai`，拒绝额外 JSON 字段，结果使用 `Cache-Control: no-store`。
 
 | 方法 | 路径 | 行为 |
 | --- | --- | --- |
@@ -13,13 +13,14 @@
 | GET | `/api/schedules/{request_id}` | 当前用户的单条任务 |
 | POST | `/api/schedules/{request_id}/approve` | 精确批准，不直接执行 |
 | POST | `/api/schedules/{request_id}/cancel` | 幂等取消，若已投递则返回 delivered |
-| GET | `/api/reminders?after=UUID` | 当前用户已持久化的提醒，每页 20 条 |
+| GET | `/api/reminders?after=UUID&archived=false` | 当前用户未归档提醒，每页 20 条；archived=true 查看归档 |
+| PUT | `/api/reminders/{request_id}` | 按版本更新已读及归档状态 |
 
 创建体为 `{"request_id":"UUID","title":"提醒标题","body":"提醒内容","run_at_unix_ms":"UTC毫秒"}`。沿用仓储限制：标题 1–80 字符，正文 1–2000 字符，时间在数据库当前时间 1 分钟至 365 天后。每用户滚动 24 小时最多创建 100 条，总保留最多 1000 条，取消不释放创建额度。
 
 批准体为 `{"digest":"预览指纹","accepted_run_at_unix_ms":"预览时间","accepted_max_runs":1,"accepted_amount_micro":"0","acknowledge_schedule":true}`。时间和金额仅接受规范非负十进制字符串，拒绝 JSON 数字、前导零、符号、空白和溢出；批准内容由仓储与持久化预览严格比对。取消体必须为 `{}`。
 
-响应中的所有 `*_unix_ms` 及 `amount_micro` 均输出十进制字符串，缺失时间为 null；`max_runs` 保持整数。接口不返回或接受用户 ID、后台租约凭据或模型配置。不存在领取/投递 HTTP 端点。非法参数返回 400 或 JSON 提取器的 422，未登录 401、CSRF 失败 403、记录不属于当前用户 404、状态/额度/授权冲突 409、仓储不可用 503，错误不暴露正文、数据库凭据或内部异常。
+响应中的所有 `*_unix_ms`、`revision` 及 `amount_micro` 均输出十进制字符串，缺失时间为 null；`max_runs` 保持整数。接口不返回或接受用户 ID、后台租约凭据或模型配置。不存在领取/投递 HTTP 端点。非法参数返回 400 或 JSON 提取器的 422，未登录 401、CSRF 失败 403、记录不属于当前用户 404、状态/额度/授权冲突 409、仓储不可用 503，错误不暴露正文、数据库凭据或内部异常。
 
 Next.js 代理仅放行上述路径和方法，透传会话及原 CSRF 头；不自动补 CSRF 头，不向浏览器提供管理员认证信息。
 
@@ -35,7 +36,7 @@ Next.js 代理仅放行上述路径和方法，透传会话及原 CSRF 头；不
 
 ## 变更与验证边界
 
-没有 SQL 迁移或新环境变量。API 入口组装 PostgreSQL 任务/提醒仓储，后台默认开关不变。当前仍不提供重复提醒、外部通知、模型任务、已读标记、单条提醒删除或归档。
+本阶段未新增 SQL 迁移或环境变量；后续[提醒已读与归档](reminder-inbox.md)追加迁移 0029，并提供版本化状态更新。API 入口组装 PostgreSQL 任务/提醒仓储，后台默认开关不变。当前仍不提供重复提醒、外部通知、模型任务或单条提醒删除。
 
 新增真实 PostgreSQL/Tower HTTP 测试覆盖会话、CSRF、参数类型/多余字段、精确授权、幂等与取消、归属隔离、真实领取投递后的提醒查询、已投递取消语义和 no-store。双入口 Playwright 使用真实接口模拟创建及批准响应丢失，验证冻结请求重试、重新打开页面后的持久化、取消、文本转义及退出清理；提醒分页/读取故障使用受控响应夹具，实际投递链路由数据库与 HTTP 测试覆盖。
 

@@ -97,3 +97,5 @@
 - [FileReader 只读文档工具](design/file-reader-tool.md)：已导入文档的无模型分页读取、用户隔离、次数审计及 MCP 范围隔离。
 
 - [每日定时日报](design/daily-brief-schedule.md)：按用户显式启用，UTC 调度、单日去重及生成/配置原子提交。
+
+- [提醒已读与归档](design/reminder-inbox.md)：收件箱、版本控制、恢复与投递记录保留。

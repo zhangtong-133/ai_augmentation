@@ -48,6 +48,9 @@ fn reminder(row: &PgRow) -> ScheduleReminder {
         title: row.get("title"),
         body: row.get("body"),
         delivered_at_unix_ms: row.get("delivered_ms"),
+        revision: row.get("revision"),
+        read_at_unix_ms: row.get("read_ms"),
+        archived_at_unix_ms: row.get("archived_ms"),
     }
 }
 async fn fail(tx: &mut sqlx::PgConnection, owner: Uuid, request: Uuid) -> StorageResult<()> {
@@ -121,7 +124,7 @@ impl ScheduleDeliveryStore for PostgresStore {
                 return Err(conflict());
             }
             if saved.status == "delivered" {
-                let row=sqlx::query("SELECT request_id,title,body,delivered_ms FROM schedule_reminders WHERE user_id=$1 AND request_id=$2")
+                let row=sqlx::query("SELECT request_id,title,body,delivered_ms,revision,read_ms,archived_ms FROM schedule_reminders WHERE user_id=$1 AND request_id=$2")
                     .bind(owner).bind(request).fetch_one(&mut *tx).await.map_err(map_error)?;
                 tx.commit().await.map_err(map_error)?;
                 return Ok(reminder(&row));
@@ -141,7 +144,7 @@ impl ScheduleDeliveryStore for PostgresStore {
                 return Err(conflict());
             }
             // 唯一键与终态同一事务提交；响应丢失后同一租约重放只读已有提醒。
-            let row=sqlx::query("INSERT INTO schedule_reminders(user_id,request_id,title,body,delivered_ms) VALUES($1,$2,$3,$4,$5) RETURNING request_id,title,body,delivered_ms")
+            let row=sqlx::query("INSERT INTO schedule_reminders(user_id,request_id,title,body,delivered_ms) VALUES($1,$2,$3,$4,$5) RETURNING request_id,title,body,delivered_ms,revision,read_ms,archived_ms")
                 .bind(owner).bind(request).bind(saved.title).bind(saved.body).bind(time).fetch_one(&mut *tx).await.map_err(map_error)?;
             sqlx::query("UPDATE schedules SET status='delivered',delivered_ms=$3 WHERE user_id=$1 AND request_id=$2")
                 .bind(owner).bind(request).bind(time).execute(&mut *tx).await.map_err(map_error)?;
@@ -154,15 +157,65 @@ impl ScheduleDeliveryStore for PostgresStore {
         owner: &UserId,
         after: Option<&str>,
     ) -> BoxFuture<'_, StorageResult<ReminderPage>> {
+        self.list_reminder_inbox(owner, after, None)
+    }
+    fn list_reminder_inbox(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+        archived: Option<bool>,
+    ) -> BoxFuture<'_, StorageResult<ReminderPage>> {
         let owner = uuid(owner.as_str());
         let after = after.map(uuid).transpose();
         Box::pin(async move {
-            let rows=sqlx::query("SELECT request_id,title,body,delivered_ms FROM schedule_reminders WHERE user_id=$1 AND ($2::uuid IS NULL OR request_id>$2) ORDER BY request_id LIMIT 21")
-                .bind(owner?).bind(after?).fetch_all(&self.pool).await.map_err(map_error)?;
+            let rows=sqlx::query("SELECT request_id,title,body,delivered_ms,revision,read_ms,archived_ms FROM schedule_reminders WHERE user_id=$1 AND ($2::uuid IS NULL OR request_id>$2) AND ($3::boolean IS NULL OR (archived_ms IS NOT NULL)=$3) ORDER BY request_id LIMIT 21")
+                .bind(owner?).bind(after?).bind(archived).fetch_all(&self.pool).await.map_err(map_error)?;
             let items: Vec<_> = rows.iter().take(20).map(reminder).collect();
             let next_cursor = (rows.len() > 20)
                 .then(|| items.last().expect("full reminder page").request_id.clone());
             Ok(ReminderPage { items, next_cursor })
+        })
+    }
+    fn update_reminder(
+        &self,
+        owner: &UserId,
+        request: &str,
+        revision: i64,
+        read: bool,
+        archived: bool,
+    ) -> BoxFuture<'_, StorageResult<ScheduleReminder>> {
+        let owner = uuid(owner.as_str());
+        let request = uuid(request);
+        Box::pin(async move {
+            if revision < 0 {
+                return Err(StorageError::InvalidData(
+                    "invalid reminder revision".into(),
+                ));
+            }
+            let (owner, request) = (owner?, request?);
+            let mut tx = self.pool.begin().await.map_err(map_error)?;
+            lock_owner(&mut tx, owner).await?;
+            let row = sqlx::query("SELECT request_id,title,body,delivered_ms,revision,read_ms,archived_ms FROM schedule_reminders WHERE user_id=$1 AND request_id=$2")
+                .bind(owner).bind(request).fetch_one(&mut *tx).await.map_err(map_error)?;
+            let saved = reminder(&row);
+            if saved.read_at_unix_ms.is_some() == read
+                && saved.archived_at_unix_ms.is_some() == archived
+                && (revision == saved.revision || revision.checked_add(1) == Some(saved.revision))
+            {
+                tx.commit().await.map_err(map_error)?;
+                return Ok(saved);
+            }
+            if revision != saved.revision {
+                return Err(StorageError::Conflict("reminder changed".into()));
+            }
+            let next = revision
+                .checked_add(1)
+                .ok_or_else(|| StorageError::InvalidData("invalid reminder revision".into()))?;
+            let time = now(&mut tx).await?.max(saved.delivered_at_unix_ms);
+            let row = sqlx::query("UPDATE schedule_reminders SET revision=$3,read_ms=CASE WHEN $4 THEN COALESCE(read_ms,$6) ELSE NULL END,archived_ms=CASE WHEN $5 THEN COALESCE(archived_ms,$6) ELSE NULL END WHERE user_id=$1 AND request_id=$2 RETURNING request_id,title,body,delivered_ms,revision,read_ms,archived_ms")
+                .bind(owner).bind(request).bind(next).bind(read).bind(archived).bind(time).fetch_one(&mut *tx).await.map_err(map_error)?;
+            tx.commit().await.map_err(map_error)?;
+            Ok(reminder(&row))
         })
     }
 }
