@@ -3,6 +3,7 @@
 
 pub mod brief;
 pub mod parser;
+pub mod schedule;
 pub mod transport;
 
 use personal_ai_domain::UserId;

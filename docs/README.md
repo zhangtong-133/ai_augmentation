@@ -105,3 +105,5 @@
 - [GitTool 本地只读提交历史](design/git-log-tool.md)：显式仓库映射、进程限制、用户隔离和调用审计。
 
 - [WebSearch 显式搜索](design/web-search-tool.md)：固定 SearXNG 端点、逐次查询分享同意、搜索页面、受限结果与一次性审计。
+
+- [自动 RSS 授权与时段规划](design/rss-schedule-planning.md)：有期限精确同意、频率/窗口边界与时段去重标识；尚未接入执行。
