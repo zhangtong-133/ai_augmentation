@@ -89,6 +89,9 @@ pub(super) fn executor(state: &AppState) -> Arc<ToolExecutor> {
             }) as Arc<dyn Tool>]
         })
         .unwrap_or_default();
+    if let Some(search) = &state.web_search {
+        tools.push(search.clone());
+    }
     if let Some(git) = &state.git_tool {
         tools.push(git.clone());
     }

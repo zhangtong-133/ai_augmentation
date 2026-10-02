@@ -132,6 +132,7 @@ impl Fixture {
             schedules: Some(store.clone()),
             model_agents: None,
             agent_plans: Some(store.clone()),
+            web_search: None,
             git_tool: None,
             tool_calls: Some(store.clone()),
             replies: Some(replies),

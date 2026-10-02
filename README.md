@@ -104,3 +104,5 @@ npm --prefix apps/web run build
 残留向量可使用[显式维护命令](docs/design/vector-maintenance.md)按用户和模型分页核对、清理；默认预览，执行前须确认数据库归属并停止写入。
 
 可显式配置 [GitTool 本地只读提交历史](docs/design/git-log-tool.md)，让指定用户按仓库别名查询最近提交，复用工具调用额度与审计；默认关闭。
+
+可显式配置 [WebSearch 搜索工具](docs/design/web-search-tool.md)，通过固定 SearXNG 服务查询公开资料；默认关闭，每次调用必须同意对外发送查询，复用工具调用额度与审计。

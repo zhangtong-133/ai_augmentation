@@ -1,0 +1,20 @@
+[package]
+name = "personal-ai-web-search"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+personal-ai-tools.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "stream"] }
+scraper = { version = "0.27", default-features = false }
+
+[dev-dependencies]
+personal-ai-domain.workspace = true
+tokio = { workspace = true, features = ["io-util", "time"] }
+
+[lints]
+workspace = true

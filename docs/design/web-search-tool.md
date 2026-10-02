@@ -1,0 +1,39 @@
+# WebSearch：显式外部搜索
+
+新增 `web-search` 适配器及 `POST /api/tools/web_search`。搜索使用管理员配置的 SearXNG 服务，默认关闭，与现有工具共享用户每日次数额度及持久化调用审计。没有新增数据库迁移或页面；MCP 凭据、固定和模型 Agent 仍仅允许原来的知识检索工具。
+
+## 部署
+
+API 启动时读取 `WEB_SEARCH_URL`，空值或未设置时不注册工具。示例：`https://search.example.com/search`。必须是 HTTP(S) 地址，路径严格为 `/search`；拒绝 URL 用户名、密码、查询参数和片段。无效配置导致启动失败，错误不打印地址。Compose 透传该变量，修改后需重启 API。
+
+部署者需提供可信且 API 可直连的服务，并启用 JSON 输出；本仓库不部署 SearXNG。当前不支持端点认证或路径前缀。允许配置内网服务地址；普通用户不能改变服务地址。不要通过不可信网络明文发送敏感查询。客户端不使用继承的代理配置，不附带用户会话、账户 ID 或对话内容。
+
+按照 [SearXNG Search API](https://docs.searxng.org/dev/search_api.html)，以 POST 表单发送 `q`、`format=json`、`categories=general` 和 `pageno=1`。服务必须在 `search.formats` 中启用 JSON，否则通常返回 403；许多公共实例未启用该格式。具体搜索引擎由服务配置和查询语法决定，查询会交给该服务及其搜索引擎处理。POST 仅避免查询出现在本次 URL 中，不保证外部服务不记录查询。
+
+## 请求与审计
+
+登录后通过 `GET /api/tools` 发现工具，调用需会话、CSRF 头和 UUID `Idempotency-Key`，请求示例：
+
+```json
+{"query":"Rust 异步编程","limit":5,"acknowledge_external_request":true}
+```
+
+`query` 必须为非空白字符串，最多 500 个 Unicode 字符，不允许控制字符。`limit` 默认 5，范围 1–5。拒绝额外字段；缺少明确同意或设为 false 返回 400，不发送搜索、不扣调用次数。调用方必须向用户解释查询分享及可能的服务费用，再提交同意；manifest 保守标记 `may_incur_cost=true`，本工具不提供外部服务的金额预算或计费结算。
+
+未登录返回 401，CSRF 校验失败返回 403，未启用工具返回 404，已用请求 ID 返回 409，次数额度不足返回 429。有效调用先领取共享工具次数额度，再执行一次 HTTP 请求；失败也保留尝试审计。不自动重试或重放搜索正文；需要再次搜索时必须显式发起新请求。审计只保存元数据，不保存查询和结果。成功响应使用 `Cache-Control: no-store`。
+
+## 响应与执行边界
+
+响应沿用工具协议，`output` 含 `provider: "searxng"`、`untrusted: true`、`partial`、`results_truncated` 和 `results`。每项含 `url`、`title`、`snippet` 和 `text_truncated`。服务报告任何 `unresponsive_engines` 时 `partial=true`，不回传引擎错误细节；空结果可以是正常结果，不代表服务故障。
+
+仅接受 JSON 成功响应，连接超时 3 秒、整个请求超时 10 秒；禁用重定向及自动重试。响应最多 256 KiB，无 Content-Length 或分块传输同样受限，超过 100 项结果整体失败。服务状态错误、HTML、非法响应或超限统一为通用工具执行失败，不泄露服务地址或响应正文。
+
+结果链接只接受不带凭据的 HTTP(S) URL，输入长度最多 2048 字节，并按规范化 URL 去重；标题和摘要从 HTML 提取为纯文本，分别最多 200、1000 个 Unicode 字符。过滤后最多返回请求数量，截断通过标志说明。客户端不打开结果链接，也不验证其 DNS 或公网地址，因此返回链接不是可安全抓取的保证。结果始终是不可信资料，消费端不得将其当作 HTML 或执行指令。
+
+## 验证
+
+4 项适配器测试使用本地 HTTP 夹具，覆盖 POST 表单、Unicode 查询、同意与端点限制、结果过滤/去重/纯文本/截断、部分失败、空结果、错误响应、禁止重定向和定长/分块超大响应。API 测试覆盖会话、CSRF、同意、关闭状态、no-store、共享额度、相同 ID 不重复调用，以及查询和结果不进入审计。
+
+本轮未向真实外部搜索服务发送查询，因此不宣称已验证实际搜索质量或第三方部署兼容性。
+
+2026-10-02 验收：Rust 1.99 `make check`、前端 lint/typecheck/build、`make compose-config` 和完整 `make smoke` 通过。Smoke 包含 135 项 PostgreSQL 集成测试、生产镜像构建、双入口 HTTP 与重启/缓存故障恢复，临时容器和数据已清理。没有页面变更，未重跑 Playwright、对象存储或向量索引专项；新增搜索行为由上述本地 HTTP 夹具验证，Smoke 保持搜索默认关闭。

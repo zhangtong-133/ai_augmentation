@@ -87,6 +87,7 @@ pub struct AppState {
     pub schedules: Option<Arc<dyn SchedulerStore>>,
     pub model_agents: Option<Arc<ModelAgentRuntime>>,
     pub agent_plans: Option<Arc<dyn personal_ai_storage::agent_plans::AgentPlanStore>>,
+    pub web_search: Option<Arc<personal_ai_web_search::WebSearch>>,
     pub git_tool: Option<Arc<personal_ai_git_local::GitLogTool>>,
     pub tool_calls: Option<Arc<dyn personal_ai_storage::tool_calls::ToolCallStore>>,
     pub replies: Option<Arc<ReplyRuntime>>,

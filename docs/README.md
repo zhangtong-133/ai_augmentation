@@ -103,3 +103,5 @@
 - [残留向量显式维护](design/vector-maintenance.md)：默认预览、按用户/模型清理、跨存储存在性核对与安全重跑。
 
 - [GitTool 本地只读提交历史](design/git-log-tool.md)：显式仓库映射、进程限制、用户隔离和调用审计。
+
+- [WebSearch 显式搜索](design/web-search-tool.md)：固定 SearXNG 端点、查询分享同意、受限结果与一次性审计。

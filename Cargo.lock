@@ -55,6 +55,7 @@ dependencies = [
  "personal-ai-storage-s3",
  "personal-ai-tools",
  "personal-ai-web-import",
+ "personal-ai-web-search",
  "serde",
  "serde_json",
  "sha2",
@@ -1645,6 +1646,19 @@ dependencies = [
  "scraper",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "personal-ai-web-search"
+version = "0.1.0"
+dependencies = [
+ "personal-ai-domain",
+ "personal-ai-tools",
+ "reqwest",
+ "scraper",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

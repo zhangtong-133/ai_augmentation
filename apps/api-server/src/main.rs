@@ -35,6 +35,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .await
         .map_err(std::io::Error::other)?;
     let feeds = api_server::FeedRuntime::from_env(store.clone()).map_err(std::io::Error::other)?;
+    let web_search = match std::env::var("WEB_SEARCH_URL") {
+        Ok(url) if url.is_empty() => None,
+        Ok(url) => Some(Arc::new(personal_ai_web_search::WebSearch::new(&url)?)),
+        Err(std::env::VarError::NotPresent) => None,
+        Err(_) => return Err("WEB_SEARCH_URL must be UTF-8".into()),
+    };
     let git_tool = match std::env::var("GIT_REPOSITORIES_JSON") {
         Ok(config) => personal_ai_git_local::GitLogTool::from_json(&config)?.map(Arc::new),
         Err(std::env::VarError::NotPresent) => None,
@@ -59,6 +65,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             schedules: Some(store.clone()),
             model_agents: Some(model_agents),
             agent_plans: Some(store.clone()),
+            web_search,
             git_tool,
             tool_calls: Some(store.clone()),
             replies: Some(replies),

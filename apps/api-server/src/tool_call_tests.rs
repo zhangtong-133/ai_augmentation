@@ -667,3 +667,130 @@ async fn git_history_requires_session_csrf_and_quota_and_audits_once_without_con
     );
     std::fs::remove_dir_all(path).unwrap();
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // 对外请求的会话、同意、单次审计和额度闭环。
+async fn web_search_requires_explicit_sharing_and_never_repeats_provider_calls() {
+    let (mut state, _, _, owner, cookie, _) = retrieval_fixture().await;
+    state.indexing = None;
+    let ledger = Arc::new(MemoryToolCalls::default());
+    state.tool_calls = Some(ledger.clone());
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let provider = axum::Router::new().route("/search",axum::routing::post(move |body:String| {
+        let seen = seen.clone();
+        async move {
+            seen.fetch_add(1,Ordering::SeqCst);
+            assert!(body.contains("q=private+web+query"));
+            assert!(!body.contains("owner"));
+            axum::Json(json!({"results":[{"url":"https://example.org/","title":"private-web-result","content":"search evidence"}]}))
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let endpoint = format!("http://{}/search", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, provider).await.unwrap();
+    });
+    state.web_search = Some(Arc::new(
+        personal_ai_web_search::WebSearch::new(&endpoint).unwrap(),
+    ));
+    let app = router(state.clone());
+    let body = json!({"query":"private web query","acknowledge_external_request":true}).to_string();
+    let id = Uuid::new_v4().to_string();
+    for (session, csrf, expected) in [
+        (None, true, StatusCode::UNAUTHORIZED),
+        (Some(cookie.as_str()), false, StatusCode::FORBIDDEN),
+    ] {
+        assert_eq!(
+            named_call(app.clone(), "web_search", session, Some(&id), &body, csrf)
+                .await
+                .status(),
+            expected
+        );
+    }
+    for invalid in [
+        json!({"query":"private web query"}),
+        json!({"query":"private web query","acknowledge_external_request":false}),
+        json!({"query":"private web query","acknowledge_external_request":true,"endpoint":"http://private/"}),
+    ] {
+        assert_eq!(
+            named_call(
+                app.clone(),
+                "web_search",
+                Some(&cookie),
+                Some(&id),
+                &invalid.to_string(),
+                true
+            )
+            .await
+            .status(),
+            StatusCode::BAD_REQUEST
+        );
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(ledger.calls.lock().unwrap().len(), 0);
+    let response = named_call(
+        app.clone(),
+        "web_search",
+        Some(&cookie),
+        Some(&id),
+        &body,
+        true,
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+    let output = value(response).await;
+    assert_eq!(output["output"]["untrusted"], true);
+    assert_eq!(
+        output["output"]["results"][0]["title"],
+        "private-web-result"
+    );
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "web_search",
+            Some(&cookie),
+            Some(&id),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::CONFLICT
+    );
+    let audit =
+        serde_json::to_string(&ledger.audit_tool_calls(&owner, None).await.unwrap()).unwrap();
+    assert!(!audit.contains("private web query"));
+    assert!(!audit.contains("private-web-result"));
+    ledger.mode.store(3, Ordering::SeqCst);
+    assert_eq!(
+        named_call(
+            app.clone(),
+            "web_search",
+            Some(&cookie),
+            Some(&Uuid::new_v4().to_string()),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::TOO_MANY_REQUESTS
+    );
+    state.web_search = None;
+    assert_eq!(
+        named_call(
+            router(state),
+            "web_search",
+            Some(&cookie),
+            Some(&Uuid::new_v4().to_string()),
+            &body,
+            true
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    server.abort();
+}
