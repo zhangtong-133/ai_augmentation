@@ -229,3 +229,97 @@ test("structured evidence accepts four full Chinese fields through each gateway"
   await expect(evidence.locator(".feedText")).toHaveCount(4);
   await expect(evidence.locator(".feedText").first()).toHaveText("证据".repeat(1000));
 });
+
+async function prepareEvidenceReview(page) {
+  const panel = await start(page); await skill(panel, "用户核验技能");
+  const detail = await generate(panel, "用户核验技能");
+  await detail.getByRole("button", { name: "记录完成", exact: true }).click();
+  await detail.getByRole("button", { name: "确认训练结果", exact: true }).click();
+  await detail.getByText("补充结构化证据", { exact: true }).click();
+  for (const label of ["概念解释", "练习产物与独立完成范围", "验证步骤与结果", "局限与待验证问题"]) await detail.getByLabel(label, { exact: true }).fill(`${label}的材料`);
+  await detail.getByRole("button", { name: "保存结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认保存证据", exact: true }).click();
+  await detail.getByText("逐项核验证据", { exact: true }).click();
+  return { panel, detail };
+}
+async function fillReview(detail, supported = true) {
+  for (const label of ["概念解释", "独立练习", "结果验证", "局限与反例"]) {
+    if (supported || label !== "结果验证") await detail.getByRole("combobox", { name: `${label}判断`, exact: true }).selectOption("supported");
+    await detail.getByLabel(`${label}核验理由`, { exact: true }).fill(`${label}私有理由 <img src=x>`);
+  }
+  await detail.getByRole("button", { name: "保存核验记录", exact: true }).click();
+  await detail.getByRole("button", { name: "确认保存核验", exact: true }).click();
+}
+test("user review and explicit confirmation replay once and evidence deletion revokes only its assessment", async ({ page }, testInfo) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  const requests = { save: [], confirm: [] };
+  await page.route("**/api/learning/plans/*/tasks/*/evidence/review**", async route => {
+    const kind = route.request().url().endsWith("/confirm") ? "confirm" : "save";
+    requests[kind].push(route.request().postDataJSON());
+    const response = await route.fetch(); expect(response.status()).toBe(200);
+    if (requests[kind].length === 1) return route.abort("failed");
+    return route.fulfill({ response });
+  });
+  await fillReview(detail);
+  await panel.getByRole("button", { name: "重试原学习操作", exact: true }).click();
+  const review = detail.getByRole("region", { name: "已保存的用户核验", exact: true });
+  await expect(review).toContainText("概念解释私有理由 <img src=x>");
+  await expect(review.locator("img,script")).toHaveCount(0);
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("尚未自评");
+  await expect(review.getByRole("button", { name: "准备确认自评", exact: true })).toBeDisabled();
+  await review.getByLabel("核验后的自评分数", { exact: true }).fill("68");
+  await review.getByRole("button", { name: "准备确认自评", exact: true }).click();
+  await review.getByRole("button", { name: "返回调整分数", exact: true }).click();
+  await review.getByRole("button", { name: "准备确认自评", exact: true }).click();
+  await review.getByRole("button", { name: "确认记录自评", exact: true }).click();
+  await panel.getByRole("button", { name: "重试原学习操作", exact: true }).click();
+  await expect(review).toContainText("已确认自评 68 分");
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前自评 68 分");
+  expect(requests.save).toHaveLength(2); expect(requests.save[0]).toEqual(requests.save[1]);
+  expect(requests.confirm).toHaveLength(2); expect(requests.confirm[0]).toEqual(requests.confirm[1]);
+  const screenshot = testInfo.outputPath("user-evidence-review.png");
+  await review.screenshot({ path: screenshot }); await testInfo.attach("user-evidence-review", { path: screenshot, contentType: "image/png" });
+  expect(await panel.evaluate(n => n.scrollWidth <= n.clientWidth)).toBe(true);
+  await page.reload(); await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
+  await expect(review).toContainText("已确认自评 68 分");
+  await detail.getByRole("button", { name: "删除结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认删除证据", exact: true }).click();
+  await expect(detail).toContainText("相关核验及其确认自评也已清除");
+  await expect(detail).not.toContainText("私有理由");
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("尚未自评");
+  await page.reload(); await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
+  await expect(detail).not.toContainText("已确认自评 68 分");
+});
+test("unverified dimensions never offer a score confirmation", async ({ page }) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  await fillReview(detail, false);
+  await expect(detail).toContainText("仍有缺少证据或待核验项");
+  await expect(detail.getByRole("button", { name: "准备确认自评", exact: true })).toHaveCount(0);
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("尚未自评");
+});
+test("historical review cannot confirm against a changed skill", async ({ page }) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  await fillReview(detail);
+  await expect(detail.getByRole("button", { name: "准备确认自评", exact: true })).toBeVisible();
+  await panel.getByRole("button", { name: "修改 用户核验技能", exact: true }).click();
+  await panel.getByLabel("技能名称", { exact: true }).fill("新版本核验技能");
+  await panel.getByRole("button", { name: "保存技能", exact: true }).click();
+  await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
+  await expect(detail).toContainText("技能版本或计划来源不可用，不能确认这条核验");
+  await expect(detail.getByRole("button", { name: "准备确认自评", exact: true })).toHaveCount(0);
+});
+
+test("revoked plan sources disable new work while keeping explicit deletion available", async ({ page }) => {
+  const panel = await start(page); await skill(panel, "历史来源技能");
+  const detail = await generate(panel, "历史来源技能");
+  await page.route("**/api/learning/plans/*", async route => {
+    const response = await route.fetch();
+    const saved = await response.json(); saved.source_assessments_available = false;
+    await route.fulfill({ response, json: saved });
+  });
+  await detail.getByRole("button", { name: "更新学习计划状态", exact: true }).click();
+  await expect(detail).toContainText("来源自评已撤销");
+  await expect(detail.getByRole("button", { name: "记录完成", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "取消这项训练", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "删除学习计划", exact: true })).toBeEnabled();
+});

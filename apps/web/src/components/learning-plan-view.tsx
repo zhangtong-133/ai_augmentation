@@ -19,12 +19,13 @@ function ResultForm({ task, path, locked, submit }: { task: Task; path: string; 
     </div>}
   </div>;
 }
-export function LearningPlanView({ saved, skills, locked, inspect, submit }: { skills: Skill[]; saved: SavedPlan; locked: boolean; inspect: (p: string) => void; submit: (o: Operation) => void }) {
+export function LearningPlanView({ saved, skills, snapshotRevision, locked, inspect, submit }: { snapshotRevision?: string; skills: Skill[]; saved: SavedPlan; locked: boolean; inspect: (p: string) => void; submit: (o: Operation) => void }) {
   const [deleting, setDeleting] = useState(false);
   const path = `/api/learning/plans/${saved.request_id}`;
   return <div className="feedReview" aria-label="学习计划详情"><h3>{statuses[saved.status]} · {date(saved.created_at_unix_ms)}</h3>
     <button disabled={locked} onClick={() => inspect(path)}>更新学习计划状态</button>
     {saved.plan ? <><p>计划快照版本 {saved.snapshot_revision}。预算 {saved.plan.budget_minutes} 分钟，剩余 {saved.plan.remaining_minutes} 分钟；另有 {saved.plan.unscheduled_ready_count} 项可训练技能未排入。</p>
+      {saved.source_assessments_available === false && <p role="status">来源自评已撤销。本计划保留当时的分数和训练记录，不再接受新增训练、证据或确认；如需清除历史内容，请删除本计划。</p>}
       <p>这是生成时的技能与自评快照。技能修改后，可重新生成计划；删除任一来源技能将清除本计划正文及结果。</p>
       <ul className="feedList" aria-label="技能评估">{saved.plan.evaluations.map(e => <li key={e.skill_id}>{e.name}：{states[e.state] ?? e.state}{e.self_reported_score !== null && `，自评 ${e.self_reported_score} 分`}{e.blocking_skill_ids.length > 0 && <p>受阻于：{e.blocking_skill_ids.map(id => saved.plan!.evaluations.find(s => s.skill_id === id)?.name ?? "不可用的前置技能").join("、")}</p>}</li>)}</ul>
       {!saved.plan.tasks.length && <p>当前没有可安排的训练。请查看前置技能、自评或调整时间预算。</p>}
@@ -33,8 +34,8 @@ export function LearningPlanView({ saved, skills, locked, inspect, submit }: { s
         const review = saved.evidence_reviews?.find(r => r.task_id === task.task_id && r.skill_id === task.skill_id && r.skill_revision === task.skill_revision && r.result_request_id === (result?.request_id ?? null));
         const noteId = `training-note-${task.task_id}`;
         return <li key={task.task_id}><h4>{task.title}</h4><p>{task.instructions}</p><p>{task.kind === "self_assessment" ? "自评准备" : "练习"} · 建议 {task.target_minutes} 分钟 · 自评参考目标 {task.target_score} 分</p>
-          {result ? <div id={noteId} tabIndex={-1}><p>{result.outcome === "completed" ? "已记录完成" : "已取消训练"} · {result.actual_minutes} 分钟 · {date(result.recorded_at_unix_ms)}</p><p className="feedText">{result.note || "未填写记录"}</p></div> : <ResultForm task={task} path={path} locked={locked} submit={submit} />}
-          {result?.outcome === "completed" && <LearningEvidenceForm evidence={result.evidence} path={`${path}/tasks/${task.task_id}/evidence`} lookup={path} locked={locked} current={skills.some(s => s.skill_id === task.skill_id && s.revision === task.skill_revision && s.enabled && !s.deleted)} submit={submit} />}
+          {result ? <div id={noteId} tabIndex={-1}><p>{result.outcome === "completed" ? "已记录完成" : "已取消训练"} · {result.actual_minutes} 分钟 · {date(result.recorded_at_unix_ms)}</p><p className="feedText">{result.note || "未填写记录"}</p></div> : <ResultForm task={task} path={path} locked={locked || saved.source_assessments_available === false} submit={submit} />}
+          {result?.outcome === "completed" && <LearningEvidenceForm evidence={result.evidence} snapshotRevision={snapshotRevision} path={`${path}/tasks/${task.task_id}/evidence`} lookup={path} locked={locked} current={saved.source_assessments_available !== false && skills.some(s => s.skill_id === task.skill_id && s.revision === task.skill_revision && s.enabled && !s.deleted)} submit={submit} />}
           {review && <LearningEvidenceReview review={review} noteId={noteId} />}
         </li>;
       })}</ol>

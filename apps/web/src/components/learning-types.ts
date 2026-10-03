@@ -9,8 +9,11 @@ export type EvidenceReview = {
   state: "not_recorded" | "cancelled" | "missing_note" | "unverified";
 };
 export type EvidenceBody = { explanation: string; work: string; verification: string; limitations: string };
-export type TrainingEvidence = { request_id: string; created_at_unix_ms: string; deleted: boolean; body: EvidenceBody | null };
+export type ReviewBody = Record<"explanation" | "work" | "verification" | "limitations", { verdict: "missing" | "unverified" | "supported"; reason: string }>;
+export type TrainingReview = { request_id: string; evidence_request_id: string; rubric_version: string; body: ReviewBody | null; status: "pending" | "confirmed" | "invalidated"; confirmed_score: number | null };
+export type TrainingEvidence = { review?: TrainingReview | null; request_id: string; created_at_unix_ms: string; deleted: boolean; body: EvidenceBody | null };
 export type SavedPlan = Summary & {
+  source_assessments_available?: boolean;
   evidence_reviews?: EvidenceReview[]; snapshot_revision: string; results: { evidence?: TrainingEvidence | null; task_id: string; request_id: string; outcome: "completed" | "cancelled"; note: string; actual_minutes: number; recorded_at_unix_ms: string }[]; plan: null | { budget_minutes: number; remaining_minutes: number; unscheduled_ready_count: number; evaluations: { skill_id: string; name: string; state: string; self_reported_score: number | null; blocking_skill_ids: string[] }[]; tasks: Task[] } };
 export type Operation = { path: string; lookup: string; method: string; body: object; showPlan?: boolean };
 export const statuses = { ready: "已生成", invalidated: "来源已删除，计划已失效", deleted: "已删除" };
