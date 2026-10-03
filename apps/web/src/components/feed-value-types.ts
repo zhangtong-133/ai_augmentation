@@ -40,3 +40,19 @@ export function audit(value: unknown): Audit[] {
   return v.items;
 }
 export function date(value: string) { return new Date(Number(value)).toLocaleString(undefined, { timeZoneName: "short" }); }
+
+export type ValueReadingItem = { id: number; title: string; summary: string; link: string | null; rule_score: number; model_score: number | null; reason: string };
+export type ValueReading = { id: string; digest: string; status: "succeeded"; day_start_unix_ms: string; as_of_unix_ms: string; keywords: string[]; items: ValueReadingItem[] };
+export function reading(value: unknown, expected: ValueDetail): ValueReading {
+  const v = value as ValueReading;
+  if (!v || v.id !== expected.id || v.digest !== expected.digest || v.status !== "succeeded" || !timestamp(v.day_start_unix_ms) || !timestamp(v.as_of_unix_ms)
+    || !Array.isArray(v.keywords) || v.keywords.length < 1 || v.keywords.length > 5 || v.keywords.some(k => typeof k !== "string" || !k || [...k].length > 64)
+    || !Array.isArray(v.items) || !expected.candidates || v.items.length !== expected.candidates.length || v.items.length < 1 || v.items.length > 20) fail();
+  if (new Set(v.items.map(i => i?.id)).size !== v.items.length || v.items.some(i => !i || !Number.isInteger(i.id) || i.id < 1 || i.id > v.items.length
+    || typeof i.title !== "string" || [...i.title].length > 512 || i.title !== expected.candidates?.[i.id - 1]?.title
+    || typeof i.summary !== "string" || [...i.summary].length > 8192 || !(i.link === null || (typeof i.link === "string" && i.link.length <= 8192))
+    || !Number.isInteger(i.rule_score) || i.rule_score < 0 || i.rule_score > 100
+    || !(i.model_score === null || (Number.isInteger(i.model_score) && i.model_score >= 0 && i.model_score <= 100))
+    || typeof i.reason !== "string" || !i.reason.trim() || [...i.reason].length > 240)) fail();
+  return v;
+}

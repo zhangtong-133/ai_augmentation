@@ -192,3 +192,6 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .feedValuePanel fieldset { min-width: 0; border: 1px solid var(--line); padding: 16px; }
 .feedValuePanel label { display: block; margin: 12px 0; }
 .feedValuePanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; padding: 12px; background: var(--surface); }
+
+.feedValueSummary { white-space: pre-wrap; overflow-wrap: anywhere; }
+.feedValuePanel a { color: var(--acid); }

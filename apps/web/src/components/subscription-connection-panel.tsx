@@ -1,5 +1,6 @@
 "use client";
 
+import { changingFeedValueInputs } from "./feed-value-events";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Connection = { id: string; label: string; revision: string; status: "active" | "expired" | "revoked"; models: string[]; valid_until_unix_ms: string };
@@ -102,10 +103,10 @@ export function SubscriptionConnectionPanel() {
     const controller = new AbortController(); active.current = controller;
     setBusy(true); setConsent(false); setError(""); setNotice(""); setReview({ item, uncertain: true });
     try {
-      const response = await fetch(`${endpoint}/${item.id}/revoke`, {
+      const response = await changingFeedValueInputs(() => fetch(`${endpoint}/${item.id}/revoke`, {
         method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" }, body: JSON.stringify({ revision: item.revision }),
         signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10000)]),
-      });
+      }), () => active.current === controller && !controller.signal.aborted);
       if (active.current !== controller) return;
       if (response.status === 401) forget();
       if (!response.ok) throw new Error(message(response.status));

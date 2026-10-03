@@ -1,5 +1,6 @@
 "use client";
 
+import { changingFeedValueInputs } from "./feed-value-events";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Subscription = { name: string; snapshot: { subscription_id: string; revision: string; source_url: string; enabled: boolean } };
@@ -88,7 +89,8 @@ export function FeedPanel() {
   async function mutate(operation: Operation) {
     await run(async c => {
       setPending(operation); setAck(false); setNotice("");
-      const result = await request<Collection | Subscription>(operation.path, c, operation);
+      const readResult = () => request<Collection | Subscription>(operation.path, c, operation);
+      const result = await (["subscription", "delete", "confirm", "recover"].includes(operation.kind) ? changingFeedValueInputs(readResult, () => alive.current && active.current === c && !c.signal.aborted) : readResult());
       if (!alive.current || c.signal.aborted) return;
       setPending(null); setDeleting(null);
       if (operation.kind === "delete") window.dispatchEvent(new Event("feed-sources-changed"));

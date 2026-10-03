@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
+import { changingFeedValueInputs } from "./feed-value-events";
 import { BriefSchedule } from "./brief-schedule";
 
 type Preferences = { revision: string; keywords: string[] };
@@ -84,7 +85,8 @@ export function BriefPanel() {
   async function mutate(operation: Operation) {
     await run(async c => {
       setPending(operation); setNotice(""); setDeleting(false);
-      const result = await request<Preferences | Brief>(operation.path, c, operation);
+      const readResult = () => request<Preferences | Brief>(operation.path, c, operation);
+      const result = await (operation.kind === "preferences" ? changingFeedValueInputs(readResult, () => valid(c)) : readResult());
       if (!valid(c)) return;
       setPending(null);
       if (operation.kind === "preferences") { const p = result as Preferences; setPreferences(p); setKeywords(p.keywords.join("\n")); }

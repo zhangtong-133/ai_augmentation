@@ -177,3 +177,115 @@ test("legacy API records stay read-only and missing previews can be explicitly d
   await expect(panel.getByRole("button", { name: "批准此次评分", exact: true })).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "取消此次评分", exact: true })).toHaveCount(0);
 });
+
+function completedFixture() {
+  const item = fixture();
+  item.status = "succeeded";
+  item.approved_at_unix_ms = String(Date.now());
+  item.candidates = [1, 2, 3].map(id => ({ id, title: `Rust ${id} <script>纯文本</script>`, subscription_id: connectionId, entry_key: `fixture-${id}` }));
+  item.scores = [{ id: 2, score: 90, reason: "相关" }, { id: 1, score: 0, reason: "较少相关" }, { id: 3, score: null, reason: "证据不足" }];
+  return item;
+}
+function readingFixture(item) {
+  return { id: item.id, digest: item.digest, status: "succeeded", day_start_unix_ms: String(Date.now()), as_of_unix_ms: String(Date.now()), keywords: ["rust"], items: item.scores.map(s => ({ id: s.id, title: item.candidates[s.id - 1].title, summary: `冻结摘要 ${s.id} <img src=x onerror=alert(1)>`, link: s.id === 2 ? "https://example.com/article" : s.id === 1 ? "javascript:alert(1)" : "https://user:secret@example.com/private", rule_score: 52, model_score: s.score, reason: s.reason })) };
+}
+async function selectCompleted(panel, item) {
+  await panel.getByRole("button", { name: "刷新评分记录", exact: true }).click();
+  await panel.getByRole("button", { name: `查看评分 ${item.id}`, exact: true }).click();
+}
+
+test("reading switches model and rule order without new requests and opens only safe original links", async ({ page }, testInfo) => {
+  const item = completedFixture(); let reads = 0;
+  await page.route(endpoint, route => {
+    expect(route.request().method()).toBe("GET");
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/reading")) { reads++; return route.fulfill({ json: readingFixture(item) }); }
+    return route.fulfill({ json: path.endsWith(item.id) ? item : { items: [item], next_cursor: null } });
+  });
+  const panel = await setup(page); await selectCompleted(panel, item); expect(reads).toBe(0);
+  await panel.getByRole("button", { name: "读取评分阅读", exact: true }).click();
+  const reading = panel.getByRole("region", { name: "评分阅读视图", exact: true });
+  const entries = reading.getByRole("list", { name: "评分阅读条目" }).getByRole("listitem");
+  await expect(entries).toHaveCount(3);
+  await expect(entries.first()).toContainText("Rust 2");
+  await expect(entries.nth(1)).toContainText("0 / 100");
+  await expect(entries.last()).toContainText("无法评分");
+  await expect(reading.locator("script,img")).toHaveCount(0);
+  const links = reading.getByRole("link", { name: "打开原文", exact: true });
+  await expect(links).toHaveCount(1); await expect(links).toHaveAttribute("href", "https://example.com/article");
+  await expect(links).toHaveAttribute("rel", "noopener noreferrer"); await expect(links).toHaveAttribute("referrerpolicy", "no-referrer");
+  await reading.getByRole("combobox", { name: "阅读排序", exact: true }).selectOption("rule");
+  await expect(entries.first()).toContainText("Rust 1"); expect(reads).toBe(1);
+  await reading.getByRole("combobox", { name: "阅读排序", exact: true }).selectOption("model");
+  await expect(entries.first()).toContainText("Rust 2"); expect(reads).toBe(1);
+  expect(await reading.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  const screenshot = testInfo.outputPath("rss-value-reading.png");
+  await reading.screenshot({ path: screenshot }); await testInfo.attach("rss-value-reading", { path: screenshot, contentType: "image/png" });
+});
+
+test("reading rejects mismatched snapshots and clears content when a result becomes invalid or session expires", async ({ page }) => {
+  const item = completedFixture(); let mode = "valid";
+  await page.route(endpoint, route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/reading")) {
+      if (mode === "invalid") return route.fulfill({ status: 409, json: {} });
+      if (mode === "expired") return route.fulfill({ status: 401, json: {} });
+      return route.fulfill({ json: { ...readingFixture(item), ...(mode === "wrong" ? { digest: "b".repeat(64) } : {}) } });
+    }
+    return route.fulfill({ json: path.endsWith(item.id) ? item : { items: [item], next_cursor: null } });
+  });
+  const panel = await setup(page);
+  for (const failure of ["wrong", "invalid", "expired"]) {
+    mode = "valid"; await selectCompleted(panel, item);
+    await panel.getByRole("button", { name: "读取评分阅读", exact: true }).click();
+    await expect(panel).toContainText("冻结摘要");
+    mode = failure;
+    await panel.getByRole("button", { name: "读取评分阅读", exact: true }).click();
+    await expect(panel.getByRole("alert")).toBeVisible();
+    await expect(panel).not.toContainText("冻结摘要");
+    await expect(panel.getByRole("region", { name: "评分详情", exact: true })).toHaveCount(0);
+  }
+  await expect(panel).not.toContainText(item.id);
+  await expect(panel.getByRole("button", { name: "刷新评分记录", exact: true })).toBeDisabled();
+});
+
+test("preference changes cancel a pending reading and discard its late response", async ({ page }) => {
+  const item = completedFixture(); let release, started, completed;
+  const pending = new Promise(resolve => { release = resolve; });
+  const requested = new Promise(resolve => { started = resolve; });
+  const finished = new Promise(resolve => { completed = resolve; });
+  await page.route(endpoint, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/reading")) {
+      started(); await pending; await route.fulfill({ json: readingFixture(item) }).catch(() => {}); completed();
+    } else await route.fulfill({ json: path.endsWith(item.id) ? item : { items: [item], next_cursor: null } });
+  });
+  const panel = await setup(page); await selectCompleted(panel, item);
+  await panel.getByRole("button", { name: "读取评分阅读", exact: true }).click(); await requested;
+  await page.getByLabel("日报关键词（每行一个，最多 5 个）", { exact: true }).fill("rust");
+  await page.getByRole("button", { name: "保存日报偏好", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("来源、偏好或连接正在变更");
+  release(); await finished;
+  await expect(panel).not.toContainText("冻结摘要");
+  await expect(panel.getByRole("region", { name: "评分详情", exact: true })).toHaveCount(0);
+});
+
+test("late reading responses cannot enter a different signed-in account", async ({ page }) => {
+  const item = completedFixture(); let release, started, completed;
+  const pending = new Promise(resolve => { release = resolve; });
+  const requested = new Promise(resolve => { started = resolve; });
+  const finished = new Promise(resolve => { completed = resolve; });
+  await page.route(endpoint, async route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/reading")) {
+      started(); await pending; await route.fulfill({ json: readingFixture(item) }).catch(() => {}); completed();
+    } else await route.fulfill({ json: path.endsWith(item.id) ? item : { items: [item], next_cursor: null } });
+  });
+  const panel = await setup(page); await selectCompleted(panel, item);
+  await panel.getByRole("button", { name: "读取评分阅读", exact: true }).click(); await requested;
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await page.unroute(endpoint); await login(page, await createAccount());
+  release(); await finished;
+  await expect(panel.getByRole("region", { name: "评分阅读视图", exact: true })).toHaveCount(0);
+  await expect(panel).not.toContainText("冻结摘要");
+});

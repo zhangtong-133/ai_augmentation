@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FeedValueReading } from "./feed-value-reading";
+import { feedValueInputsChanging } from "./feed-value-events";
 import { connection, type Connection } from "./subscription-connection-panel";
-import { audit, date, detail, page, statuses, summary, type Audit, type ValueDetail, type ValueSummary } from "./feed-value-types";
+import { audit, date, detail, page, reading, statuses, summary, type Audit, type ValueDetail, type ValueSummary, type ValueReading } from "./feed-value-types";
 
 const endpoint = "/api/feed-values";
 type Preview = { id: string; connection_id: string; connection_revision: string; model: string };
@@ -20,6 +22,7 @@ export function FeedValuePanel() {
   const [next, setNext] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [review, setReview] = useState<ValueDetail | null>(null);
+  const [readingView, setReadingView] = useState<ValueReading | null>(null);
   const [events, setEvents] = useState<Audit[]>([]);
   const [share, setShare] = useState(false);
   const [usage, setUsage] = useState(false);
@@ -34,13 +37,21 @@ export function FeedValuePanel() {
   useEffect(() => {
     let mounted = true;
     queueMicrotask(() => { if (mounted) setNow(Date.now()); });
+    const changed = () => {
+      if (expired) return;
+      active.current?.abort(); active.current = null; setBusy(false);
+      setReview(null); setReadingView(null); setEvents([]); setShare(false); setUsage(false);
+      setItems([]); setNext(null); setLoaded(false); setConnections([]); setConnectionNext(null); setSelected(""); setModel("");
+      setError("来源、偏好或连接正在变更，请重新核对评分。");
+    };
+    window.addEventListener(feedValueInputsChanging, changed);
     const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => { mounted = false; active.current?.abort(); active.current = null; clearInterval(timer); };
-  }, []);
+    return () => { mounted = false; active.current?.abort(); active.current = null; clearInterval(timer); window.removeEventListener(feedValueInputsChanging, changed); };
+  }, [expired]);
   const locked = busy || expired || !!uncertain;
   const chosen = connections.find(c => c.id === selected);
-  function clearReview() { setReview(null); setEvents([]); setShare(false); setUsage(false); }
-  async function perform(work: (request: (path: string, body?: unknown) => Promise<unknown>) => Promise<void>) {
+  function clearReview() { setReadingView(null); setReview(null); setEvents([]); setShare(false); setUsage(false); }
+  async function perform(work: (request: (path: string, body?: unknown) => Promise<unknown>) => Promise<void>, onFailure?: () => void) {
     if (active.current || expired) return;
     const controller = new AbortController(); active.current = controller; setBusy(true); setError("");
     async function request(path: string, body?: unknown) {
@@ -54,6 +65,7 @@ export function FeedValuePanel() {
     try { await work(request); }
     catch (e) {
       if (active.current !== controller) return;
+      onFailure?.();
       if (e instanceof HttpError && e.status === 401) {
         setExpired(true); setConnections([]); setConnectionNext(null); setSelected(""); setModel(""); setItems([]); setNext(null); clearReview(); setPending(null); setUncertain(null);
       }
@@ -87,6 +99,14 @@ export function FeedValuePanel() {
       setItems(previous => previous.map(i => i.id === id ? saved : i));
     });
   }
+  function readItems() {
+    if (active.current || locked || !review || review.status !== "succeeded") return;
+    const original = review;
+    setReadingView(null);
+    void perform(async request => {
+      setReadingView(reading(await request(`${endpoint}/${original.id}/reading`), original));
+    }, clearReview);
+  }
   function preview(original?: Preview) {
     if (active.current || busy || expired || (!original && (uncertain || !chosen || chosen.status !== "active" || Number(chosen.valid_until_unix_ms) <= now || !chosen.models.includes(model)))) return;
     const input = original ?? { id: crypto.randomUUID(), connection_id: chosen!.id, connection_revision: chosen!.revision, model };
@@ -111,7 +131,7 @@ export function FeedValuePanel() {
   return <section className="feedPanel feedValuePanel" aria-label="RSS 价值评分">
     <p className="kicker">RSS / VALUE</p><h3>RSS 价值评分</h3>
     <p>分享当前候选和日报关键词，获取模型的参考评分。先在本机绑定订阅连接，再预览并确认分享内容和订阅用量。</p>
-    <p>网页批准后不会自动运行。请在本机显式执行，再回来查询结果；评分不会替换当前日报的关键词规则排序。</p>
+    <p>网页批准后不会自动运行。请在本机显式执行，再回来查询并阅读结果；可切换模型或规则顺序，当前日报仍保留关键词规则排序。</p>
     {error && <p role="alert">{error}</p>}{busy && <p role="status">正在处理评分请求…</p>}
     <fieldset disabled={locked}>
       <legend>创建评分预览</legend>
@@ -138,8 +158,10 @@ export function FeedValuePanel() {
       {review.status === "draft" && review.pricing.kind === "subscription" && <><p>执行会消耗订阅额度，或账户设置允许的 credits。这里不表示免费、额度充足或调用已经验证。</p><label className="agentConsent"><input type="checkbox" checked={share} disabled={locked || !canApprove} onChange={e => setShare(e.target.checked)} />我同意分享以上冻结内容。</label><label className="agentConsent"><input type="checkbox" checked={usage} disabled={locked || !canApprove} onChange={e => setUsage(e.target.checked)} />我同意使用所选账户的订阅额度或允许的 credits。</label><button disabled={locked || !canApprove || !share || !usage} onClick={() => mutate("approve")}>批准此次评分</button>{!canApprove && <p>当前预览不能批准，请核对状态或重新预览。</p>}</>}
       {review.status === "authorized" && <p>已保存授权。请用本机已绑定的连接执行 <code>chatgpt-connect</code> 的 <code>value-run</code> 命令，使用上面的请求标识；完成后点击“核对评分状态”。</p>}
       {review.status === "unknown" && <p>结果未知，可能已消耗用量。请核对本机记录；不要自动重派或重复创建。</p>}
-      {review.scores && <><h4>模型参考评分</h4><p>评分仅为建议，不代表事实真伪；无法评分保留为空。</p><ul className="feedList">{review.scores.map(s => <li key={s.id}><h5>{review.candidates?.find(c => c.id === s.id)?.title}</h5><p>{s.score === null ? "无法评分" : `${s.score} / 100`}</p><p>{s.reason}</p></li>)}</ul></>}
+      {review.scores && !readingView && <><h4>模型参考评分</h4><p>评分仅为建议，不代表事实真伪；无法评分保留为空。</p><ul className="feedList">{review.scores.map(s => <li key={s.id}><h5>{review.candidates?.find(c => c.id === s.id)?.title}</h5><p>{s.score === null ? "无法评分" : `${s.score} / 100`}</p><p>{s.reason}</p></li>)}</ul></>}
       {review.pricing.kind === "subscription" && ["draft", "authorized", "running"].includes(review.status) && <><p>取消会清除分享内容；已发出的模型请求可能仍消耗用量，晚到结果会丢弃。</p><button disabled={locked} onClick={() => mutate("cancel")}>取消此次评分</button></>}
+      {review.status === "succeeded" && <button disabled={locked} onClick={readItems}>读取评分阅读</button>}
+      {readingView && <FeedValueReading key={`${readingView.id}:${readingView.digest}`} value={readingView} disabled={locked} />}
       <button disabled={locked} onClick={() => inspect(review.id)}>核对评分状态</button>
       <button disabled={locked} onClick={() => { setEvents([]); void perform(async request => { setEvents(audit(await request(`${endpoint}/${review.id}/audit`))); }); }}>读取评分审计</button>
       <ul aria-label="评分审计">{events.map((e, i) => <li key={i}>{e.event} · {date(e.at_unix_ms)}</li>)}</ul>

@@ -6,11 +6,11 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 自动 RSS 采集已交付：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，已提供[配置与同意页面](design/rss-schedule-ui.md)。
 
-后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮依次推进可重复验收入口、评分阅读接口、阅读交互。
+后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。下一里程碑是训练证据与能力评估协议。
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，待接入 API 金额预留。当前日报仍使用关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
@@ -18,7 +18,9 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
-- [x] [评分私有阅读接口](design/rss-value-reading.md)：已完成快照的摘要/原文/双分数映射、模型稳定排序与失效后拒绝正文；页面交互待接入。
+- [x] [评分阅读视图](design/rss-value-reading.md)：冻结摘要、安全原文链接、模型/规则顺序切换，关联修改与会话失效时清除旧内容。
+
+- [x] [评分私有阅读接口](design/rss-value-reading.md)：已完成快照的摘要/原文/双分数映射、模型稳定排序与失效后拒绝正文；已接入阅读视图和原规则顺序切换。
 
 - [x] v1 多步交付计划及 `BROWSER_SPEC` 定向浏览器验收入口：完整隔离数据库/HTTP smoke 后执行指定文件的双入口测试，不指定时保留完整回归。
 
