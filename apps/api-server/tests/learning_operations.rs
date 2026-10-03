@@ -11,6 +11,10 @@ use sqlx::{ConnectOptions, postgres::PgConnectOptions};
 use std::{process::Command, str::FromStr};
 use uuid::Uuid;
 
+// GRANT/DROP OWNED update shared PostgreSQL ACL catalog tuples, even for distinct roles.
+// Serialize only role-lifecycle fixtures; business concurrency tests stay parallel.
+static ROLE_DDL_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 struct Fixture {
     url: String,
     store: PostgresStore,
@@ -152,6 +156,7 @@ fn invalid_cli_arguments_never_connect_or_expose_configuration() {
 #[ignore = "需要有建角色权限的一次性 TEST_DATABASE_URL"]
 #[allow(clippy::too_many_lines)]
 async fn metadata_reader_paginates_without_private_columns_writes_or_migrations() {
+    let _role_ddl = ROLE_DDL_LOCK.lock().await;
     let f = Fixture::new().await;
     let skill = f.skill().await;
     let (plan, task) = f.plan(&skill).await;

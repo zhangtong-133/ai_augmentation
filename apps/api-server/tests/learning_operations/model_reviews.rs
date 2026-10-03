@@ -12,6 +12,7 @@ async fn snapshot(f: &Fixture) -> serde_json::Value {
 #[ignore = "需要有建角色权限的一次性 TEST_DATABASE_URL"]
 #[allow(clippy::too_many_lines)]
 async fn model_metadata_reader_paginates_and_never_reads_private_columns_or_writes() {
+    let _role_ddl = ROLE_DDL_LOCK.lock().await;
     let f = Fixture::new().await;
     seed(&f, 105, false).await;
     let before = snapshot(&f).await;

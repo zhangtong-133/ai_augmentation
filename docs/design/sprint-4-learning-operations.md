@@ -66,3 +66,9 @@ GRANT SELECT (user_id,task_id,outcome,recorded_ms) ON learning_results TO learni
 本步不改 HTTP 或页面；浏览器、对象存储和索引专项不属于此次本地重跑范围。
 
 本轮验证通过：Rust 1.98 全仓 `make check`、前端 lint/typecheck/build、129 项 PostgreSQL 仓储回归、7 项学习运维数据库测试（含 1 项补充测试单独运行），以及完整 `make smoke` 的 Rust 1.96 生产镜像、镜像内诊断和双入口 HTTP 验收。隔离测试资源已清理。
+
+## 权限夹具的 CI 并发修复
+
+1acfa90 的 CI 在两个权限夹具并行 `GRANT` 时出现 PostgreSQL `XX000: tuple concurrently updated`（原计划权限测试的角色授权语句）。不同角色的授权仍会更新相同 schema/table ACL 目录元组。本轮以共享异步互斥锁仅串行化两个权限夹具的完整角色生命周期，包括 CREATE/GRANT、只读验证和 DROP OWNED；其他业务并发、快照和隔离测试继续并行。该锁只在此测试进程内生效，不是生产锁，也不替代多个外部测试进程共享数据库时的隔离。
+
+修复后，使用本轮一次性数据库以 `--test-threads=16` 连续运行 10 轮完整学习运维套件，每轮 10 项均通过；Clippy 复验通过。不需要更换对象存储或修改生产数据库权限。
