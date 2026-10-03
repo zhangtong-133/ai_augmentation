@@ -396,6 +396,11 @@ test("model authorization binds connection and two consents, preserves lost requ
   await approve.click();
   const retryApproval = auth.getByRole("button", { name: "重试原模型授权操作", exact: true }); await expect(retryApproval).toBeEnabled(); await retryApproval.click();
   await expect(auth).toContainText("已保存授权，尚未执行"); expect(approvals[0]).toEqual(approvals[1]);
+  // The legacy JSON fixture is deliberately not an event stream: fail closed and hide both previews.
+  await auth.getByRole("button", { name: "观察执行状态", exact: true }).click();
+  await expect(auth).toContainText("观察已中断");
+  await expect(detail.getByRole("region", { name: "模型分享预览", exact: true }).locator("pre")).toHaveCount(0);
+  await auth.getByRole("button", { name: "核对模型授权状态", exact: true }).click();
   await auth.getByRole("button", { name: "取消本次模型授权", exact: true }).click(); await expect(auth).toContainText("已取消"); await expect(auth.locator("pre")).toHaveCount(0);
   const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
   await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
@@ -466,3 +471,6 @@ test("running and unknown learning reviews never offer automatic resend", async 
   await expect(history).toContainText("正在执行一次核验"); await expect(history.getByRole("button", { name: "取消本次模型授权", exact: true })).toBeEnabled();
   item = { ...item, status: "unknown" }; await history.getByRole("button", { name: "核对模型授权状态", exact: true }).click(); await expect(history).toContainText("结果未知，不会自动重发"); await expect(history.getByRole("checkbox")).toHaveCount(0); await expect(history.getByRole("button", { name: "取消本次模型授权", exact: true })).toHaveCount(0);
 });
+
+// Private status observation uses the same dual-gateway acceptance entry point.
+import "./learning-events.mjs";
