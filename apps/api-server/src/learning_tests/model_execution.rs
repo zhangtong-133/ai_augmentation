@@ -505,3 +505,6 @@ async fn learning_model_audit_warns_about_elapsed_dispatch_without_mutating_it()
     );
     f.cleanup().await;
 }
+
+#[path = "model_execution/progress.rs"]
+mod progress;
