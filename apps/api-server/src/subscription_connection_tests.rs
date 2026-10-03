@@ -35,6 +35,7 @@ impl Fixture {
             other.id.to_string(),
         );
         state.subscription_connections = Some(store.clone());
+        state.feed_values = Some(store.clone());
         Self {
             state,
             store,
@@ -348,3 +349,6 @@ async fn subscription_http_disabled_runtime_still_requires_session_and_csrf() {
         assert_eq!(response.headers()["cache-control"], "no-store");
     }
 }
+
+#[path = "feed_value_http_tests.rs"]
+mod feed_value_http_tests;

@@ -1,6 +1,6 @@
 # RSS 订阅评分本地命令
 
-`chatgpt-connect` 现已把[订阅评分执行器](rss-value-execution.md)接到本地 ChatGPT 运行时，提供预览、精确批准、单独执行、查询及取消命令。没有新增迁移、HTTP、后台扫描或 Web 评分页面。日报继续使用原规则分数。
+`chatgpt-connect` 现已把[订阅评分执行器](rss-value-execution.md)接到本地 ChatGPT 运行时，提供预览、精确批准、单独执行、查询及取消命令。本地命令不新增迁移或后台扫描；现已提供[用户评分 HTTP](rss-value-http.md)，Web 评分页面仍待实现。日报继续使用原规则分数。
 
 ## 本地操作流程
 
@@ -52,6 +52,6 @@ target/debug/chatgpt-connect "$HOME/.config/personal-ai-chatgpt" value-cancel US
 
 `make check` 覆盖严格命令参数、私有文件锁、权限与模型拒绝、请求字段、流式完成、额度失败不重试。`make smoke` 新增真实 PostgreSQL 的 CLI 管理流程与锁定账户运行时夹具验收：预览/批准不推理、错误摘要拒绝、一次执行、重复调用不重发、查询隔离和取消后不能批准。传输和数据库分别使用确定性夹具；没有使用真实 Pro 凭据或真实模型，本轮不宣称具体账户已验证可用。
 
-下一步提供用户会话下的评分授权/结果 HTTP 与页面；多用户服务器不能直接复用本机管理员权限或共享任意人的凭据文件。
+已提供用户会话下的[评分授权/结果 HTTP](rss-value-http.md)，下一步接入页面；多用户服务器不能直接复用本机管理员权限或共享任意人的凭据文件。
 
 本轮验收：Rust 1.99 `make check`、前端 lint/typecheck/build、完整 `make smoke` 通过；包含 162 项 PostgreSQL 测试及新增的本地评分管理流程测试，生产 API 使用 Rust 1.96 构建通过。无页面改动，未重跑 Playwright；未运行对象存储/向量专项或真实 Pro 推理。测试容器、网络和临时数据已清理。

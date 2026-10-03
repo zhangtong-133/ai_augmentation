@@ -331,6 +331,33 @@ try {
     await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
       `INSERT INTO subscription_connections(user_id,id,host_id,client_id,subject_hash,label,models,revision,status,expires_ms)
        VALUES('${owner.id}','${connection}','${randomUUID()}','oaiapp_${randomUUID()}','${"a".repeat(64)}','smoke','["fixture"]',1,'active',floor(extract(epoch FROM clock_timestamp())*1000)::bigint+3000000)`]);
+    const valueSource = randomUUID();
+    await request(base, "/api/feed-subscriptions", 201, { method: "POST", cookie, body: { id: valueSource, name: "Scoring smoke", source_url: "https://example.com/scoring", enabled: true } });
+    await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
+      `INSERT INTO feed_brief_preferences(user_id,revision,keywords) VALUES('${owner.id}',1,'["rust"]') ON CONFLICT(user_id) DO NOTHING;
+       INSERT INTO feed_entries(user_id,subscription_id,entry_key,title,summary,content_digest,first_seen_ms,updated_ms,last_seen_ms)
+       SELECT '${owner.id}','${valueSource}','guid:${"b".repeat(64)}','Rust news','Learning Rust','${"b".repeat(64)}',t,t,t FROM (SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint AS t) now`]);
+    const valueInput = { id: randomUUID(), connection_id: connection, connection_revision: "1", model: "fixture" };
+    await request(base, "/api/feed-values", 401);
+    await request(base, "/api/feed-values", 403, { method: "POST", cookie, csrf: false, body: valueInput });
+    await request(base, "/api/feed-values", 404, { method: "POST", cookie: otherCookie, body: valueInput });
+    await request(base, "/api/feed-values", 422, { method: "POST", cookie, body: { ...valueInput, amount: "0" } });
+    const value = (await request(base, "/api/feed-values", 200, { method: "POST", cookie, body: valueInput })).data;
+    assert.equal(value.status, "draft"); assert.equal(value.execution_mode, "local_only");
+    assert.equal(typeof value.expires_at_unix_ms, "string"); assert(value.shared_content.input.includes("Rust"));
+    const valuePath = `/api/feed-values/${value.id}`;
+    await request(base, valuePath, 404, { cookie: otherCookie });
+    const valueConsent = { digest: value.digest, acknowledge_sharing: true, acknowledge_subscription_usage: true };
+    assert.equal((await request(base, `${valuePath}/approve`, 200, { method: "POST", cookie, body: valueConsent })).data.status, "authorized");
+    await request(base, `${valuePath}/run`, 404, { method: "POST", cookie, body: {} });
+    const values = (await request(base, "/api/feed-values", 200, { cookie })).data;
+    assert(values.items.some(item => item.id === value.id));
+    assert(values.items.every(item => !("shared_content" in item)));
+    const cancelledValue = (await request(base, `${valuePath}/cancel`, 200, { method: "POST", cookie, body: {} })).data;
+    assert.equal(cancelledValue.status, "cancelled"); assert.equal(cancelledValue.shared_content, null);
+    assert.equal((await request(base, `${valuePath}/audit`, 200, { cookie })).data.items.at(-1).event, "cancelled");
+    await request(base, `${valuePath}/approve`, 409, { method: "POST", cookie, body: valueConsent });
+    await request(base, `/api/feed-subscriptions/${valueSource}`, 200, { method: "DELETE", cookie, body: { revision: "1" } });
     const path = `/api/subscription-connections/${connection}`;
     await request(base, "/api/subscription-connections", 401);
     const page = await request(base, "/api/subscription-connections", 200, { cookie });
@@ -348,7 +375,7 @@ try {
     const replay = await request(base, `${path}/revoke`, 200, { method: "POST", cookie, body: { revision: "1" } });
     assert.deepEqual(replay.data, revoked.data);
   }
-  console.log("PASS: owner-scoped subscription management through both gateways");
+  console.log("PASS: owner-scoped subscription and scoring consent management through both gateways");
   for (const base of [web, gateway]) {
     await request(base, "/api/feeds/config", 401);
     const config = await request(base, "/api/feeds/config", 200, { cookie });

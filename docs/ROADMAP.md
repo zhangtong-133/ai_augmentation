@@ -8,13 +8,15 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，待接入用户评分 HTTP/页面和 API 金额预留。当前日报仍使用关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，待接入评分页面和 API 金额预留。当前日报仍使用关键词规则评分。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [RSS 用户评分 HTTP](design/rss-value-http.md)：私有预览、精确分享/订阅用量同意、取消、结果及审计；双代理接入，模型仍由本地命令显式执行。
 
 - [x] [RSS 本地订阅评分](design/rss-value-local.md)：锁定本地身份、兼容订阅的流式传输、预览/精确批准/单独执行/查询/取消；真实 Pro 账户待验证，Web 评分入口待接入。
 

@@ -129,6 +129,7 @@ impl Fixture {
         let state = AppState {
             learning: None,
             subscription_connections: None,
+            feed_values: None,
             feeds: None,
             schedules: Some(store.clone()),
             model_agents: None,

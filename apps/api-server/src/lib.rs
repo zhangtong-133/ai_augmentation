@@ -30,6 +30,7 @@ use uuid::Uuid;
 mod auth;
 mod conversations;
 mod documents;
+mod feed_values;
 mod feeds;
 mod learning;
 mod mcp_credentials;
@@ -83,6 +84,7 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub feed_values: Option<Arc<dyn personal_ai_storage::feed_value::FeedValueStore>>,
     pub subscription_connections:
         Option<Arc<dyn personal_ai_storage::subscription_connections::SubscriptionConnectionStore>>,
     pub learning: Option<Arc<dyn personal_ai_storage::learning::LearningStore>>,
@@ -124,6 +126,7 @@ pub fn router(state: AppState) -> Router {
         .merge(feeds::routes())
         .merge(learning::routes())
         .merge(subscription_connections::routes())
+        .merge(feed_values::routes())
         .merge(messages::routes())
         .merge(replies::routes())
         .merge(conversations::routes())
