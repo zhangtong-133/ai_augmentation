@@ -211,16 +211,17 @@ impl ChatGptClient {
             return Err(Error("expected event stream"));
         }
         let mut stream = stream::TextStream::default();
+        let mut completed = None;
         while let Some(chunk) = response
             .chunk()
             .await
             .map_err(|_| Error("inference stream interrupted; not retried"))?
         {
             if let Some(text) = stream.push(&chunk)? {
-                return Ok(text);
+                completed = Some(text);
             }
         }
-        Err(Error("inference ended without completion; not retried"))
+        completed.ok_or(Error("inference ended without completion; not retried"))
     }
 }
 

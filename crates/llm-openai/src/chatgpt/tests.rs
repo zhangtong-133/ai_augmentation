@@ -251,3 +251,110 @@ async fn scoring_maps_instructions_without_api_parameters_and_never_retries() {
     assert_eq!(calls.load(Ordering::SeqCst), 2);
     server.abort();
 }
+
+#[test]
+fn stream_errors_are_terminal_and_conflicting_completion_is_not_returned() {
+    let delta = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"private\"}\n\n";
+    let done =
+        "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
+    for tail in [done, delta, "data: {\"type\":\"error\"}\n\n"] {
+        let mut stream = TextStream::default();
+        assert!(
+            stream
+                .push(format!("{delta}{done}{tail}").as_bytes())
+                .is_err()
+        );
+        assert!(stream.push(done.as_bytes()).is_err());
+    }
+    for invalid in ["data: broken\n\n", "data: {\"type\":\"error\"}\n\n"] {
+        let mut stream = TextStream::default();
+        stream.push(delta.as_bytes()).unwrap();
+        assert!(stream.push(invalid.as_bytes()).is_err());
+        assert!(stream.push(done.as_bytes()).is_err());
+    }
+}
+
+#[tokio::test]
+async fn transport_waits_for_eof_and_rejects_late_failure_truncation_and_timeout() {
+    use std::time::Duration;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let done = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n";
+    for mode in ["success", "late_error", "truncated", "timeout", "cancel"] {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sent, received) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            loop {
+                let mut bytes = [0; 4096];
+                let count = socket.read(&mut bytes).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&bytes[..count]);
+                if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..end]).to_lowercase();
+                    let length: usize = headers
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length: "))
+                        .unwrap()
+                        .parse()
+                        .unwrap();
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
+            }
+            let tail = if mode == "late_error" {
+                "data: {\"type\":\"error\"}\n\n"
+            } else {
+                ""
+            };
+            let length = done.len()
+                + tail.len()
+                + usize::from(matches!(mode, "truncated" | "timeout" | "cancel"));
+            socket.write_all(format!("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n{done}").as_bytes()).await.unwrap();
+            let _ = sent.send(());
+            if matches!(mode, "timeout" | "cancel") {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            } else if !tail.is_empty() {
+                tokio::time::sleep(Duration::from_millis(30)).await;
+                socket.write_all(tail.as_bytes()).await.unwrap();
+            }
+        });
+        let mut client = super::ChatGptClient::new().unwrap();
+        client.resource = format!("http://{address}");
+        client.client = reqwest::Client::builder()
+            .no_proxy()
+            .retry(reqwest::retry::never())
+            .timeout(Duration::from_secs(1))
+            .build()
+            .unwrap();
+        let request = tokio::spawn(async move {
+            client
+                .ask(
+                    &registration("resource.invoke chatgpt.tokens.use.direct"),
+                    "available-model",
+                    "hello",
+                    true,
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(3), received)
+            .await
+            .unwrap()
+            .unwrap();
+        if mode == "cancel" {
+            assert!(!request.is_finished());
+            request.abort();
+            assert!(request.await.unwrap_err().is_cancelled());
+        } else {
+            let result = request.await.unwrap();
+            if mode == "success" {
+                assert_eq!(result.unwrap(), "hello");
+            } else {
+                assert!(result.is_err(), "{mode}");
+            }
+        }
+        server.abort();
+    }
+}
