@@ -28,7 +28,7 @@
 
 接口响应设置 `Cache-Control: no-store`，错误不回传存储内部信息。API 启动时使用现有 PostgreSQL 仓储，无新增环境变量、数据库迁移或模型执行开关。连接登记仍使用管理员本地 `bind` 命令；本次没有创建、重新绑定或 OAuth 浏览器回调接口。
 
-Next.js 代理仅允许上表方法和路径，继续原样传递 Cookie/CSRF 头；Nginx 沿用现有 `/api/` 转发。没有新增网页组件，下一步可据此实现连接管理页面与明确撤销操作。
+Next.js 代理仅允许上表方法和路径，继续原样传递 Cookie/CSRF 头；Nginx 沿用现有 `/api/` 转发。已接入[连接管理页面](subscription-connections-ui.md)，支持列表、详情、明确撤销和异常结果核对。
 
 ## 验证
 

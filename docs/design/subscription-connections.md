@@ -2,7 +2,7 @@
 
 本阶段把本地 ChatGPT 注册关联到一个明确的应用用户，保存有期限的连接元数据。RSS 评分预览与批准会在同一用户锁内检查连接归属、版本、供应商、模型和期限。撤销、更新或发现连接到期时，相关未完成评分预览在同一事务内失效并清除分享快照。
 
-这仍不是评分执行器。连接记录不是可执行凭据，也不代表真实推理已验证。登记入口是有数据库权限的本地主机管理员命令；已提供[用户会话下的管理 HTTP](subscription-connections-http.md)，页面仍待接入。
+这仍不是评分执行器。连接记录不是可执行凭据，也不代表真实推理已验证。登记入口是有数据库权限的本地主机管理员命令；已提供[用户会话下的管理 HTTP](subscription-connections-http.md)，已接入[连接管理页面](subscription-connections-ui.md)。
 
 ## 命令
 
@@ -44,7 +44,7 @@ target/debug/chatgpt-connect "$HOME/.config/personal-ai-chatgpt" \
 
 ## 后续执行边界
 
-本地主机文件仍是凭据的唯一来源。执行器必须重新核对主机/client/subject、最新令牌权限、连接版本和用户同意，并在发送前处理撤销竞争；不能仅凭 `active` 元数据发起调用。OpenAI 侧权限和模型可用性可能在登记后变化，模型列表也不是推理验收。已提供用户会话下的管理 HTTP，后续需补齐执行领取及 Web 页面。
+本地主机文件仍是凭据的唯一来源。执行器必须重新核对主机/client/subject、最新令牌权限、连接版本和用户同意，并在发送前处理撤销竞争；不能仅凭 `active` 元数据发起调用。OpenAI 侧权限和模型可用性可能在登记后变化，模型列表也不是推理验收。已提供用户会话下的管理 HTTP，已接入连接管理页面，后续需补齐评分执行领取。
 
 账户隔离及授权分离遵循 [官方 OpenAI documentation：账户与会话](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)。
 

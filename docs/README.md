@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [订阅连接管理页面](design/subscription-connections-ui.md)：列表、详情、明确撤销、版本冲突与结果核对。
+
 - [订阅连接管理 HTTP](design/subscription-connections-http.md)：用户会话保护下的私有列表、详情和版本化撤销。
 
 - [订阅连接归属与撤销](design/subscription-connections.md)：显式绑定应用用户、查询和撤销，并作废相关 RSS 评分授权。

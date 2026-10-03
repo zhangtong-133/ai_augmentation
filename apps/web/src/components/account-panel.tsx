@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import { SubscriptionConnectionPanel } from "./subscription-connection-panel";
 import { KnowledgePanel } from "./knowledge-panel";
 import { OverviewPanel } from "./overview-panel";
 import { ServiceStatus } from "./service-status";
@@ -104,6 +105,7 @@ export function AccountPanel() {
       {user && <KnowledgePanel key={user.id} onImported={() => setRevision(value => value + 1)} />}
       {user && <WebSearchPanel key={`web-search-${user.id}`} />}
       {user && <RetrievalPanel key={`retrieval-${user.id}`} />}
+      {user && <SubscriptionConnectionPanel key={`subscription-connections-${user.id}`} />}
       {user && <McpCredentialPanel key={`mcp-${user.id}`} />}
       {user && <FeedPanel key={`feeds-${user.id}`} />}
       {user && <FeedSchedulePanel key={`feed-schedules-${user.id}`} />}

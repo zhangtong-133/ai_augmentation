@@ -8,7 +8,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，待接入执行器及页面。当前日报仍使用关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，待接入评分执行器及评分授权页面。当前日报仍使用关键词规则评分。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
@@ -16,9 +16,11 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
+- [x] [订阅连接管理页面](design/subscription-connections-ui.md)：私有列表/详情、明确撤销、版本冲突重新确认和未知结果核对；双入口浏览器验收。
+
 - [x] [订阅连接用户管理 HTTP](design/subscription-connections-http.md)：登录用户私有列表/详情、CSRF 与版本保护撤销、元数据白名单和双网关接入；没有网页创建连接或上传凭据入口。
 
-- [x] [订阅连接归属与撤销](design/subscription-connections.md)：本地显式绑定应用用户、连接元数据仓储、版本/期限/配额及 RSS 评分授权联动失效；尚未接入 Web 或评分执行器。
+- [x] [订阅连接归属与撤销](design/subscription-connections.md)：本地显式绑定应用用户、连接元数据仓储、版本/期限/配额及 RSS 评分授权联动失效；已接入 Web 管理，尚未接入评分执行器。
 
 - [x] [ChatGPT 订阅本地接入](design/chatgpt-local.md)：OAuth 登录、私有多账户凭据、模型列表、显式单次 Responses 调用与退出；真实账户待用户授权验证，尚未接入 Web/RSS 执行器。
 
