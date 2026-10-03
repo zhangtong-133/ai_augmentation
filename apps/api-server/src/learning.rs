@@ -20,8 +20,11 @@ use personal_ai_storage::{
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+mod model_authorization;
+
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .merge(model_authorization::routes())
         .route("/api/learning/snapshot", get(snapshot))
         .route("/api/learning/progress", get(progress))
         .route(

@@ -3,7 +3,7 @@ fn body(verdict: &str) -> serde_json::Value {
     let dim = json!({"verdict":verdict,"reason":"用户核验理由 <script>"});
     json!({"explanation":dim,"work":dim,"verification":dim,"limitations":dim})
 }
-async fn setup() -> (Fixture, String, String, Uuid) {
+pub(super) async fn setup() -> (Fixture, String, String, Uuid) {
     let f = Fixture::new().await;
     let skill = Uuid::new_v4();
     f.call(
@@ -29,7 +29,7 @@ async fn setup() -> (Fixture, String, String, Uuid) {
     );
     (f, plan_path, format!("{task_path}/evidence"), skill)
 }
-async fn evidence(f: &Fixture, path: &str) -> Uuid {
+pub(super) async fn evidence(f: &Fixture, path: &str) -> Uuid {
     let request = Uuid::new_v4();
     assert_eq!(f.call("POST", path, json!({"request_id":request,"body":{"explanation":"概念","work":"独立产物","verification":"验证过程","limitations":"局限"}})).await.0, StatusCode::OK);
     request
