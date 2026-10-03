@@ -353,3 +353,75 @@ test("expired model preview request clears private learning data", async ({ page
   await expect(detail).toHaveCount(0);
   await expect(panel.getByText("概念解释的材料", { exact: true })).toHaveCount(0);
 });
+
+test("model authorization binds connection and two consents, preserves lost requests and cancels", async ({ page }, testInfo) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  const connection = { id: "00000000-0000-4000-8000-000000000001", label: "fixture-local", revision: "1", status: "active", models: ["fixture-model"], valid_until_unix_ms: String(Date.now() + 3600000) };
+  await page.route("**/api/subscription-connections", route => route.fulfill({ json: { items: [connection], next_cursor: null } }));
+  let saved, preview, lostDraft = false, lostApproval = false; const drafts = [], approvals = [];
+  await page.route(/\/api\/learning\/(?:.*\/)?model-authorizations(?:[/?].*)?$/, async route => {
+    const req = route.request(), path = new URL(req.url()).pathname;
+    if (req.method() === "POST") {
+      expect(req.headers()["x-requested-with"]).toBe("personal-ai");
+      const body = req.postDataJSON();
+      if (path.endsWith("/approve")) {
+        approvals.push(body); expect(body).toEqual({ digest: saved.digest, acknowledge_sharing: true, acknowledge_subscription_usage: true });
+        saved = { ...saved, status: "authorized", approved_at_unix_ms: String(Date.now()) };
+        if (!lostApproval) { lostApproval = true; return route.abort("failed"); }
+      } else if (path.endsWith("/cancel")) saved = { ...saved, status: "cancelled", preview: null };
+      else {
+        drafts.push(body); expect(body.connection_id).toBe(connection.id); expect(body.connection_revision).toBe("1"); expect(body.model).toBe("fixture-model");
+        saved ??= { ...body, plan_id: "fixture-plan", task_id: "fixture-task", status: "draft", digest: "a".repeat(64), created_at_unix_ms: String(Date.now()), expires_at_unix_ms: String(Date.now() + 300000), approved_at_unix_ms: null, preview };
+        if (!lostDraft) { lostDraft = true; return route.abort("failed"); }
+      }
+    }
+    return route.fulfill({ json: req.method() === "GET" && path.endsWith("model-authorizations") ? { items: saved ? [saved] : [], next_cursor: null } : saved });
+  });
+  const previewResponse = page.waitForResponse(response => response.url().endsWith("/evidence/model-preview") && response.ok());
+  await detail.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  preview = await (await previewResponse).json();
+  await detail.getByRole("button", { name: "读取可用订阅连接", exact: true }).click();
+  await detail.getByRole("combobox", { name: "核验订阅连接", exact: true }).selectOption(connection.id);
+  await detail.getByRole("combobox", { name: "核验模型", exact: true }).selectOption("fixture-model");
+  await detail.getByRole("button", { name: "创建模型授权草稿", exact: true }).click();
+  const retry = detail.getByRole("button", { name: "重试原授权草稿", exact: true });
+  await expect(retry).toBeEnabled(); await retry.click();
+  expect(drafts).toHaveLength(2); expect(drafts[0]).toEqual(drafts[1]);
+  const auth = detail.getByRole("region", { name: "模型核验授权详情", exact: true });
+  const approve = auth.getByRole("button", { name: "确认保存本次模型授权", exact: true });
+  await expect(approve).toBeDisabled();
+  await auth.getByRole("checkbox", { name: "同意将本次预览中的证据分享给所选模型", exact: true }).check(); await expect(approve).toBeDisabled();
+  await auth.getByRole("checkbox", { name: "同意一次调用消耗所选连接的订阅额度", exact: true }).check();
+  const screenshot = testInfo.outputPath("model-authorization.png"); await auth.screenshot({ path: screenshot }); await testInfo.attach("model-authorization", { path: screenshot, contentType: "image/png" });
+  await approve.click();
+  const retryApproval = auth.getByRole("button", { name: "重试原模型授权操作", exact: true }); await expect(retryApproval).toBeEnabled(); await retryApproval.click();
+  await expect(auth).toContainText("已保存授权，尚未执行"); expect(approvals[0]).toEqual(approvals[1]);
+  await auth.getByRole("button", { name: "取消本次模型授权", exact: true }).click(); await expect(auth).toContainText("已取消"); await expect(auth.locator("pre")).toHaveCount(0);
+  const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
+  await expect(history.getByRole("region", { name: "模型核验授权详情", exact: true })).toContainText("已取消");
+});
+
+test("model authorization history drops expired material and clears on session failure", async ({ page }) => {
+  const { panel } = await prepareEvidenceReview(page);
+  const item = { request_id: "00000000-0000-4000-8000-000000000005", status: "draft", connection_id: "private-connection", connection_revision: "1", model: "fixture-model", digest: "a".repeat(64), expires_at_unix_ms: String(Date.now() - 1000), created_at_unix_ms: String(Date.now() - 300000), preview: { input: { evidence: "不应显示的过期材料" } } };
+  let expiredSession = false;
+  await page.route("**/api/learning/model-authorizations**", route => expiredSession ? route.fulfill({ status: 401, json: {} }) : route.fulfill({ json: new URL(route.request().url()).pathname.endsWith(item.request_id) ? item : { items: [item], next_cursor: null } }));
+  const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
+  await expect(history).toContainText("已到期，请核对服务器状态"); await expect(history).not.toContainText("不应显示的过期材料"); await expect(history.getByRole("checkbox")).toHaveCount(0);
+  expiredSession = true; await history.getByRole("button", { name: "核对模型授权状态", exact: true }).click();
+  await expect(panel).toContainText("登录已失效，请重新登录。"); await expect(history).toHaveCount(0); await expect(panel).not.toContainText("private-connection");
+});
+
+test("late authorization history cannot enter a different account", async ({ page }) => {
+  const other = await createAccount(); const panel = await start(page);
+  let release, received; const waiting = new Promise(resolve => { release = resolve; }); const arrived = new Promise(resolve => { received = resolve; });
+  await page.route("**/api/learning/model-authorizations", async route => {
+    received(); await waiting;
+    try { await route.fulfill({ json: { items: [{ request_id: "old-private-request", model: "上一账户私有模型", status: "cancelled", created_at_unix_ms: "1" }], next_cursor: null } }); } catch { /* unmounted account aborts the request */ }
+  });
+  await panel.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await arrived;
+  await page.getByRole("button", { name: "退出登录", exact: true }).click(); await login(page, other); release();
+  await expect(panel).toContainText("暂无学习计划"); await expect(panel).not.toContainText("上一账户私有模型");
+});

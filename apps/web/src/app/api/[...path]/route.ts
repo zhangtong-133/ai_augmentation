@@ -30,6 +30,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     || (request.method === "DELETE" && /^learning\/plans\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:assessments|plans(?:\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/result)?)$/i.test(endpoint));
   const learningEvidence = ["POST", "DELETE"].includes(request.method) && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence$/i.test(endpoint);
+  const learningAuthorization = (request.method === "GET" && /^learning\/model-authorizations(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
+    || (request.method === "POST" && /^learning\/(?:model-authorizations\/[a-f0-9-]{36}\/(?:approve|cancel)|plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-authorizations)$/i.test(endpoint));
   const learningPreview = request.method === "GET" && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-preview$/i.test(endpoint);
   const learningReview = request.method === "POST" && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/review(?:\/confirm)?$/i.test(endpoint);
   const subscriptionConnections = (request.method === "GET" && /^subscription-connections(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
@@ -44,7 +46,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
   const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning && !learningEvidence && !learningReview && !learningPreview && !subscriptionConnections && !feedValues) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning && !learningEvidence && !learningReview && !learningPreview && !learningAuthorization && !subscriptionConnections && !feedValues) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。

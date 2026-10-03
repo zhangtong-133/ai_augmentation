@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { type ModelReviewPreview, type Snapshot, type Skill, type History, type SavedPlan, type Operation, statuses, date } from "./learning-types";
+import { type Snapshot, type Skill, type History, type SavedPlan, type Operation, statuses, date } from "./learning-types";
 import { LearningProgressView, type LearningProgress } from "./learning-progress";
+import { LearningAuthorizationHistory } from "./learning-model-authorization";
 import { LearningPlanView } from "./learning-plan-view";
 const root = "/api/learning";
 const empty = (): History => ({ items: [], next_cursor: null });
@@ -16,6 +17,7 @@ class LearningHttpError extends Error {
   constructor(readonly status: number) { super(message(status)); }
 }
 export function LearningPanel() {
+  const [authorizationGeneration, setAuthorizationGeneration] = useState(0);
   const [progress, setProgress] = useState<LearningProgress | null>(null);
   const [progressError, setProgressError] = useState("");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -33,7 +35,7 @@ export function LearningPanel() {
   const active = useRef<AbortController | null>(null); const alive = useRef(true);
   const valid = (c: AbortController) => alive.current && active.current === c && !c.signal.aborted;
   function resetForms() { setEditing(null); setName(""); setEnabled(true); setParents([]); setRatingSkill(""); setScore("50"); setGoals([]); setBudget("30"); setDeleting(null); }
-  async function request<T>(path: string, c: AbortController, operation?: Operation): Promise<T> {
+  async function request<T>(path: string, c: AbortController, operation?: Pick<Operation, "method" | "body">): Promise<T> {
     const response = await fetch(path, { method: operation?.method ?? "GET", cache: "no-store", headers: operation ? { "Content-Type": "application/json", "X-Requested-With": "personal-ai" } : undefined, body: operation ? JSON.stringify(operation.body) : undefined, signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) {
       if (response.status === 401 && valid(c)) { setExpired(true); setReady(false); setProgress(null); setProgressError(""); setSnapshot(null); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setNotice(""); resetForms(); }
@@ -46,6 +48,9 @@ export function LearningPanel() {
     const c = new AbortController(); active.current = c; setBusy(true); setError("");
     try { await work(c); } catch (e) { if (valid(c)) setError(e instanceof Error && e.name === "Error" ? e.message : "连接中断，结果尚未确认。请核对或重试原操作。"); }
     finally { if (valid(c)) { active.current = null; setBusy(false); } }
+  }
+  function loadPreview<T>(path: string, accept: (value: T) => void, operation?: Pick<Operation, "method" | "body">) {
+    void run(async c => { const data = await request<T>(path, c, operation); if (valid(c)) accept(data); });
   }
   async function list(c: AbortController, cursors: string[]) {
     const data = await request<History>(`${root}/plans${cursors.length ? `?after=${encodeURIComponent(cursors.at(-1)!)}` : ""}`, c);
@@ -62,7 +67,7 @@ export function LearningPanel() {
     }
   }
   async function load(c: AbortController) {
-    setSelected(null); setReady(false); setProgress(null); setProgressError(""); resetForms();
+    setAuthorizationGeneration(n => n + 1); setSelected(null); setReady(false); setProgress(null); setProgressError(""); resetForms();
     const data = await request<Snapshot>(`${root}/snapshot`, c);
     await list(c, []);
     if (valid(c)) { setSnapshot(data); setReady(true); await loadProgress(c); }
@@ -75,7 +80,7 @@ export function LearningPanel() {
   }, []);
   async function mutate(operation: Operation) {
     await run(async c => {
-      setPending(operation); setNotice(""); setDeleting(null); setSelected(null); setProgress(null); setProgressError("");
+      setAuthorizationGeneration(n => n + 1); setPending(operation); setNotice(""); setDeleting(null); setSelected(null); setProgress(null); setProgressError("");
       const result = await request<SavedPlan>(operation.path, c, operation);
       if (!valid(c)) return;
       setPending(null); setNotice("学习操作已保存。");
@@ -85,7 +90,7 @@ export function LearningPanel() {
   }
   function inspect(path: string, recover = false) {
     void run(async c => {
-      setSelected(null);
+      setAuthorizationGeneration(n => n + 1); setSelected(null);
       if (path === `${root}/snapshot`) await load(c);
       else { const result = await request<SavedPlan>(path, c); if (valid(c)) { setSelected(result); await loadProgress(c); } }
       if (recover && valid(c)) { setPending(null); setNotice("已查询当前保存状态，请核对内容。查询不会提交新操作。"); }
@@ -130,6 +135,7 @@ export function LearningPanel() {
     <h3>学习计划历史</h3>{ready && !history.items.length && <p>暂无学习计划。</p>}
     <ul className="feedList" aria-label="学习计划历史">{history.items.map(p => <li key={p.request_id}>{date(p.created_at_unix_ms)} · {statuses[p.status]}<br /><button disabled={locked} onClick={() => inspect(`${root}/plans/${p.request_id}`)}>查看学习计划</button></li>)}</ul>
     <button disabled={locked || !pages.length} onClick={() => void run(c => list(c, pages.slice(0, -1)))}>上一页学习计划</button><button disabled={locked || !history.next_cursor} onClick={() => void run(c => list(c, [...pages, history.next_cursor!]))}>下一页学习计划</button>
-    {selected && <LearningPlanView key={selected.request_id} saved={selected} skills={skills} snapshotRevision={snapshot?.revision} locked={locked} inspect={inspect} loadPreview={(path, accept) => void run(async c => { const data = await request<ModelReviewPreview>(path, c); if (valid(c)) accept(data); })} submit={o => void mutate(o)} />}
+    {ready && <LearningAuthorizationHistory key={authorizationGeneration} locked={locked} load={loadPreview} />}
+    {selected && <LearningPlanView key={selected.request_id} saved={selected} skills={skills} snapshotRevision={snapshot?.revision} locked={locked} inspect={inspect} loadPreview={loadPreview} submit={o => void mutate(o)} />}
   </section>;
 }
