@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [RSS 订阅评分内部执行](design/rss-value-execution.md)：单次领取、身份复核、发送标记、结果校验与取消/超时恢复。
+
 - [订阅连接管理页面](design/subscription-connections-ui.md)：列表、详情、明确撤销、版本冲突与结果核对。
 
 - [订阅连接管理 HTTP](design/subscription-connections-http.md)：用户会话保护下的私有列表、详情和版本化撤销。

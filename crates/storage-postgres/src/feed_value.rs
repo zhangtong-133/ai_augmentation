@@ -105,7 +105,7 @@ fn digest(
     .map_err(|_| invalid())?;
     Ok(format!("{:x}", Sha256::digest(bytes)))
 }
-fn decode(row: &PgRow) -> StorageResult<ValueReview> {
+pub(super) fn decode(row: &PgRow) -> StorageResult<ValueReview> {
     let saved = ValueReview {
         request_id: row.get::<Uuid, _>("id").to_string(),
         status: row.get("status"),
@@ -115,6 +115,11 @@ fn decode(row: &PgRow) -> StorageResult<ValueReview> {
         created_at_unix_ms: row.get("created_ms"),
         expires_at_unix_ms: row.get("expires_ms"),
         approved_at_unix_ms: row.get("approved_ms"),
+        scores: row
+            .get::<Option<serde_json::Value>, _>("scores")
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|_| invalid())?,
         snapshot: row
             .get::<Option<serde_json::Value>, _>("snapshot")
             .map(serde_json::from_value)
@@ -140,7 +145,11 @@ fn decode(row: &PgRow) -> StorageResult<ValueReview> {
     }
     Ok(saved)
 }
-async fn read(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResult<ValueReview> {
+pub(super) async fn read(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    request: Uuid,
+) -> StorageResult<ValueReview> {
     let row = sqlx::query("SELECT * FROM feed_value_reviews WHERE user_id=$1 AND id=$2")
         .bind(owner)
         .bind(request)
@@ -149,12 +158,17 @@ async fn read(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResul
         .map_err(map_error)?;
     decode(&row)
 }
-async fn expire(tx: &mut PgConnection, owner: Uuid, time: i64) -> StorageResult<()> {
+pub(super) async fn expire(tx: &mut PgConnection, owner: Uuid, time: i64) -> StorageResult<()> {
     crate::subscription_connections::expire(tx, owner, time).await?;
-    sqlx::query("UPDATE feed_value_reviews SET status='expired',snapshot=NULL WHERE user_id=$1 AND status IN ('draft','authorized') AND expires_ms<=$2").bind(owner).bind(time).execute(tx).await.map_err(map_error)?;
+    sqlx::query("UPDATE feed_value_reviews SET status='expired',snapshot=NULL WHERE user_id=$1 AND status IN ('draft','authorized') AND expires_ms<=$2").bind(owner).bind(time).execute(&mut *tx).await.map_err(map_error)?;
+    sqlx::query("UPDATE feed_value_reviews SET status='unknown',snapshot=NULL,scores=NULL WHERE user_id=$1 AND status='running' AND (expires_ms<=$2 OR dispatch_deadline_ms<=$2)").bind(owner).bind(time).execute(&mut *tx).await.map_err(map_error)?;
     Ok(())
 }
-async fn snapshot(tx: &mut PgConnection, owner: Uuid, time: i64) -> StorageResult<ValueSnapshot> {
+pub(super) async fn snapshot(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    time: i64,
+) -> StorageResult<ValueSnapshot> {
     let preferences = briefs::preferences(tx, owner).await?;
     let start = time / 86_400_000 * 86_400_000;
     Ok(ValueSnapshot {
@@ -285,7 +299,7 @@ impl FeedValueStore for PostgresStore {
             let time = now(&mut tx).await?;
             expire(&mut tx, owner, time).await?;
             read(&mut tx, owner, request).await?;
-            sqlx::query("UPDATE feed_value_reviews SET status='cancelled',snapshot=NULL WHERE user_id=$1 AND id=$2 AND status IN ('draft','authorized')").bind(owner).bind(request).execute(&mut *tx).await.map_err(map_error)?;
+            sqlx::query("UPDATE feed_value_reviews SET status='cancelled',snapshot=NULL WHERE user_id=$1 AND id=$2 AND status IN ('draft','authorized','running')").bind(owner).bind(request).execute(&mut *tx).await.map_err(map_error)?;
             let saved = read(&mut tx, owner, request).await?;
             tx.commit().await.map_err(map_error)?;
             Ok(saved)

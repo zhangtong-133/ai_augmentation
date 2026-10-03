@@ -6,6 +6,7 @@ mod conversations;
 mod documents;
 mod feed_operations;
 mod feed_value;
+mod feed_value_execution;
 mod feeds;
 mod index_jobs;
 mod learning;

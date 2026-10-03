@@ -31,7 +31,9 @@ fn decode(row: &PgRow) -> StorageResult<SubscriptionConnection> {
         valid_until_unix_ms: row.get("expires_ms"),
     })
 }
-fn validate(input: &mut VerifiedSubscriptionConnection) -> StorageResult<(Uuid, String)> {
+pub(super) fn validate(
+    input: &mut VerifiedSubscriptionConnection,
+) -> StorageResult<(Uuid, String)> {
     let host = input
         .host_id
         .strip_prefix("urn:uuid:")

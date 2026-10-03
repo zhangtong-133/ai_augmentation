@@ -1,4 +1,4 @@
-//! 内部评分报价及同意仓储；本阶段不预留金额、不提供发送凭据。
+//! 评分报价、同意和订阅执行仓储；API 金额预留仍独立于订阅路径。
 use crate::{BoxFuture, StorageResult, feeds::FeedPage, model_agents::ModelCallBudget};
 use personal_ai_domain::UserId;
 use personal_ai_feeds::brief::BriefCandidate;
@@ -54,6 +54,7 @@ pub struct ValueReview {
     pub approved_at_unix_ms: Option<i64>,
     /// 取消、到期或失效后清除内容；元数据与审计保留。
     pub snapshot: Option<ValueSnapshot>,
+    pub scores: Option<Vec<ValueScore>>,
 }
 #[derive(Clone)]
 pub struct ValueApproval {
@@ -102,4 +103,43 @@ pub trait FeedValueStore: Send + Sync {
         owner: &UserId,
         request: &str,
     ) -> BoxFuture<'_, StorageResult<Vec<ValueAudit>>>;
+}
+
+/// 完整校验后的模型建议；id 是冻结候选中的临时编号。
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ValueScore {
+    pub id: usize,
+    #[serde(deserialize_with = "explicit_score")]
+    pub score: Option<u8>,
+    pub reason: String,
+}
+fn explicit_score<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u8>, D::Error> {
+    Option::<u8>::deserialize(d)
+}
+/// 内部一次领取凭据，不可反序列化或输出；重启后不能重领。
+pub struct ValueClaim {
+    pub owner: UserId,
+    pub request_id: String,
+    pub token: String,
+    pub review: ValueReview,
+}
+pub trait FeedValueExecutionStore: Send + Sync {
+    fn claim_subscription_value(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<Option<ValueClaim>>>;
+    /// 发送线性化点：匹配最新本地凭据身份与连接版本，并持久化单次发送标记。
+    fn begin_subscription_value(
+        &self,
+        claim: &ValueClaim,
+        proof: &crate::subscription_connections::VerifiedSubscriptionConnection,
+    ) -> BoxFuture<'_, StorageResult<bool>>;
+    /// None 表示未知/失败；有输出也须重新校验完整协议，不保存原始错误正文。
+    fn finish_subscription_value(
+        &self,
+        claim: &ValueClaim,
+        output: Option<Vec<u8>>,
+    ) -> BoxFuture<'_, StorageResult<ValueReview>>;
 }

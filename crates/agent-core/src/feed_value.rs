@@ -121,19 +121,7 @@ pub fn plan_value_scoring(
 struct Response {
     items: Vec<Score>,
 }
-#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Score {
-    /// 本次候选的临时编号，不接受模型返回的来源 URL 或数据库标识符。
-    pub id: usize,
-    // 必须显式出现 null；缺失字段不视作主动放弃评分。
-    #[serde(deserialize_with = "explicit_score")]
-    pub score: Option<u8>,
-    pub reason: String,
-}
-fn explicit_score<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<u8>, D::Error> {
-    Option::<u8>::deserialize(d)
-}
+pub use personal_ai_storage::feed_value::ValueScore as Score;
 
 /// 输出只是建议；不修改规则分数、不授权抓取，也不解析 reason 中的 HTML。
 /// 返回按分数降序排列的完整列表；同分和 null 按原规则候选顺序稳定排序。
