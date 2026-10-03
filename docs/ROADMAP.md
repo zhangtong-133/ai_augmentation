@@ -2,11 +2,11 @@
 
 已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，已落地[检索证据保存与受限回答协议](design/sprint-3-model-evidence.md)，已提供[固定模型适配器与一次性执行器](design/sprint-3-model-agent-executor.md)，已接入[显式部署配置、两阶段 HTTP 授权与页面](design/sprint-3-model-agent-app.md)，已提供[模型 Agent 配置查询、主动停用与共享账本核对](design/sprint-3-model-agent-operations.md)，已实现 [Scheduler 一次性提醒授权、取消与任务仓储](design/sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内提醒投递](design/sprint-3-scheduler-delivery.md)，已接入[Scheduler 管理/提醒 API 与页面](design/sprint-3-scheduler-app.md)，已提供[Scheduler 运维查询与积压/租约核对](design/sprint-3-scheduler-operations.md)，已提供 [MCP 本地 stdio 只读知识检索桥接](design/sprint-3-mcp-stdio.md)。已提供 [MCP 宿主专属可撤销凭据与授权 API](design/sprint-3-mcp-credentials.md)。已提供 [MCP 凭据管理与费用授权页面](design/sprint-3-mcp-credential-ui.md)。已提供 [MCP 凭据只读运维核对](design/sprint-3-mcp-operations.md)。已提供 [RSS 订阅与只读采集纯规划边界](design/sprint-4-rss-collection.md)。已实现[受限 RSS 2.0 解析器与条目身份/去重纯函数](design/sprint-4-rss-parser.md)。已实现[RSS 订阅仓储、一次性采集授权与审计事务](design/sprint-4-rss-store.md)。已实现[RSS 公网传输与一次性执行器](design/sprint-4-rss-executor.md)。已接入[默认关闭的 RSS 管理与一次性采集 HTTP 接口](design/sprint-4-rss-http.md)。已实现[RSS 订阅与采集确认页面](design/sprint-4-rss-ui.md)。已提供[RSS 只读运维核对与状态诊断](design/sprint-4-rss-operations.md)。已实现[RSS 规则评分与 Daily Brief 纯规划](design/sprint-4-rss-brief-planning.md)。已实现[日报偏好与不可变计划仓储](design/sprint-4-rss-brief-store.md)。已接入[Daily Brief HTTP 与页面](design/sprint-4-rss-brief-app.md)。已实现[Skill Graph、自评与受限训练计划纯规划](design/sprint-4-learning-planning.md)。已实现[技能图、自评记录与不可变训练计划仓储](design/sprint-4-learning-store.md)。已接入[学习 HTTP、页面与显式训练结果记录](design/sprint-4-learning-app.md)，并提供[学习数据只读运维核对与额度诊断](design/sprint-4-learning-operations.md)和[学习进度概览](design/sprint-4-learning-progress.md)。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
-Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有下列待补齐项，不代表产品设想全部实现：RSS 手动采集需明确确认，周期采集后台已接入但用户配置入口待实现；学习基于自评和显式训练记录；付费模型及公网采集需部署者主动启用。
+Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有下列待补齐项，不代表产品设想全部实现：RSS 手动采集需明确确认，周期采集后台及用户授权 HTTP 已接入，配置页面待实现；学习基于自评和显式训练记录；付费模型及公网采集需部署者主动启用。
 
 ## 原始 v1 尚未补齐
 
-- [ ] 自动 RSS 采集：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，用户配置/同意 HTTP 与页面尚未提供。
+- [ ] 自动 RSS 采集：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，配置/同意页面待实现。
 - [ ] AI 信息价值评分：目前使用可解释的关键词规则评分，不调用模型评判。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
@@ -15,7 +15,9 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
-- [x] [周期 RSS 后台运行](design/rss-schedule-runner.md)：有界游标扫描、周期请求超时恢复、独立 RSS 循环和默认关闭的部署开关；仅处理已明确授权的计划，用户配置入口待接入。
+- [x] [周期 RSS 用户授权 HTTP](design/rss-schedule-http.md)：会话/CSRF、严格预览、精确同意、取消、私有分页和审计；双网关已接入，配置页面待实现。同步修复 scheduler 进程测试共享数据库并行竞争。
+
+- [x] [周期 RSS 后台运行](design/rss-schedule-runner.md)：有界游标扫描、周期请求超时恢复、独立 RSS 循环和默认关闭的部署开关；仅处理已明确授权的计划，用户授权 HTTP 已接入，配置页面待实现。
 
 - [x] [周期 RSS 单次领取与内部执行器](design/rss-schedule-execution.md)：时段去重、共享采集额度、发送前复核、取消后结果丢弃与未知结果不重派；尚未接入后台轮询。
 

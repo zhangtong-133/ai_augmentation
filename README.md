@@ -107,4 +107,4 @@ npm --prefix apps/web run build
 
 可显式配置 [WebSearch 搜索工具](docs/design/web-search-tool.md)，通过固定 SearXNG 服务查询公开资料；默认关闭，每次调用必须同意对外发送查询，复用工具调用额度与审计。登录后的「外部搜索」页面支持逐次确认、来源展示与停止等待。
 
-周期 RSS 已接入[默认关闭的后台运行](docs/design/rss-schedule-runner.md)：需要 `SCHEDULER_MODE=local`、`RSS_SCHEDULES_ENABLED=true` 和持久化用户授权。尚未提供用户周期配置/同意页面。
+周期 RSS 已接入[默认关闭的后台运行](docs/design/rss-schedule-runner.md)：需要 `SCHEDULER_MODE=local`、`RSS_SCHEDULES_ENABLED=true` 和持久化用户授权。已提供[用户预览/授权/取消及历史 HTTP 接口](docs/design/rss-schedule-http.md)，配置/同意页面待实现。

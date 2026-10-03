@@ -16,6 +16,7 @@ use personal_ai_storage::{
     StorageError,
     brief_schedules::BriefScheduleStore,
     briefs::BriefStore,
+    feed_schedules::FeedScheduleStore,
     feeds::{FeedStore, SubscriptionInput},
 };
 use serde::{Deserialize, Serialize};
@@ -23,8 +24,10 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 mod briefs;
+mod schedules;
 
 pub struct FeedRuntime {
+    schedules: Arc<dyn FeedScheduleStore>,
     briefs: Arc<dyn BriefStore>,
     brief_schedules: Arc<dyn BriefScheduleStore>,
     store: Arc<dyn FeedStore>,
@@ -34,7 +37,9 @@ impl FeedRuntime {
     /// 默认只提供管理/预览；public 模式才允许确认后执行公网 GET。
     /// # Errors
     /// 未知 `RSS_COLLECTION_MODE` 导致启动失败，不隐式启用。
-    pub fn from_env<S: FeedStore + BriefStore + BriefScheduleStore + 'static>(
+    pub fn from_env<
+        S: FeedStore + BriefStore + BriefScheduleStore + FeedScheduleStore + 'static,
+    >(
         store: Arc<S>,
     ) -> Result<Arc<Self>, String> {
         let enabled = mode(std::env::var("RSS_COLLECTION_MODE").ok().as_deref())?;
@@ -45,12 +50,13 @@ impl FeedRuntime {
     }
     /// 仅应用装配和测试使用，传输实现不由 HTTP 输入选择。
     #[must_use]
-    pub fn new<S: FeedStore + BriefStore + BriefScheduleStore + 'static>(
+    pub fn new<S: FeedStore + BriefStore + BriefScheduleStore + FeedScheduleStore + 'static>(
         store: Arc<S>,
         transport: Option<Arc<dyn FeedTransport>>,
     ) -> Self {
         let executor = transport.map(|transport| FeedExecutor::new(store.clone(), transport));
         Self {
+            schedules: store.clone(),
             briefs: store.clone(),
             brief_schedules: store.clone(),
             store,
@@ -68,6 +74,7 @@ fn mode(value: Option<&str>) -> Result<bool, String> {
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .merge(briefs::routes())
+        .merge(schedules::routes())
         .route("/api/feeds/config", get(config))
         .route("/api/feed-subscriptions", get(subscriptions).post(create))
         .route(

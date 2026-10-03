@@ -464,3 +464,6 @@ async fn feed_http_unknown_results_are_queried_without_retry_and_recovery_is_exp
 
 #[path = "feed_tests/briefs.rs"]
 mod briefs;
+
+#[path = "feed_tests/schedules.rs"]
+mod schedules;

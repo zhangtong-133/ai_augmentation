@@ -1,5 +1,8 @@
 use std::process::{Command, Output};
 
+// 真实 scheduler 扫描所有用户；共享数据库的进程测试必须互斥，避免相互领取夹具。
+static PROCESS_DATABASE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 fn run(mode: Option<&str>, url: &str) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_scheduler"));
     command
@@ -41,6 +44,7 @@ async fn local_scheduler_process_delivers_once_and_survives_restart() {
     };
     use personal_ai_storage_postgres::PostgresStore;
     use uuid::Uuid;
+    let _database_guard = PROCESS_DATABASE.lock().await;
     let url = std::env::var("TEST_DATABASE_URL").unwrap();
     let store = PostgresStore::connect(&url).await.unwrap();
     let pool = sqlx::PgPool::connect(&url).await.unwrap();

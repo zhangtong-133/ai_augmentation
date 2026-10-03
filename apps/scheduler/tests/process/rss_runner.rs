@@ -28,6 +28,7 @@ impl FeedTransport for Transport {
 #[ignore = "需要一次性 TEST_DATABASE_URL"]
 #[allow(clippy::too_many_lines)] // 同一生命周期核对禁用、到期恢复、执行和重启去重。
 async fn runner_recovers_unknowns_without_resending_and_disabled_process_never_collects() {
+    let _database_guard = super::PROCESS_DATABASE.lock().await;
     let url = std::env::var("TEST_DATABASE_URL").unwrap();
     let store = Arc::new(PostgresStore::connect(&url).await.unwrap());
     let pool = sqlx::PgPool::connect(&url).await.unwrap();

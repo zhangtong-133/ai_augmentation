@@ -113,3 +113,5 @@
 - [周期 RSS 单次领取与内部执行器](design/rss-schedule-execution.md)：持久化时段去重、共享额度、发送复核和结果写回；尚未自动运行。
 
 - [周期 RSS 后台运行](design/rss-schedule-runner.md)：跨用户内部扫描、超时恢复、独立循环与默认关闭的部署配置。
+
+- [周期 RSS 用户授权 HTTP](design/rss-schedule-http.md)：不可变预览、明确同意、取消及私有历史/审计，配置页面待实现。
