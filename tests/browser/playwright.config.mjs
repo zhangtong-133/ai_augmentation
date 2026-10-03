@@ -11,6 +11,8 @@ if (!process.env.E2E_ADMIN_TOKEN) throw new Error("Missing isolated test credent
 export default defineConfig({
   testDir: ".",
   testMatch: "*.spec.mjs",
+  // Let Playwright stop its workers before the smoke runner tears down services.
+  globalTimeout: 25 * 60 * 1000,
   timeout: 60_000,
   expect: { timeout: 10_000 },
   workers: 1,

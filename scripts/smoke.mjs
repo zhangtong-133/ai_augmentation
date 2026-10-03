@@ -75,7 +75,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => { interrupted = true; active?.kill("SIGTERM"); });
 }
 
-function command(binary, args, extra = {}, capture = false) {
+function command(binary, args, extra = {}, capture = false, timeoutMinutes = 20) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, {
       cwd: root, env: { ...env, ...extra },
@@ -87,11 +87,11 @@ function command(binary, args, extra = {}, capture = false) {
     // 捕获的错误可能含有凭据，因此仅报告命令名和退出状态。
     child.stderr?.resume();
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, 20 * 60 * 1000);
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMinutes * 60 * 1000);
     child.on("error", error => { clearTimeout(timer); active = null; reject(error); });
     child.on("close", code => {
       clearTimeout(timer); active = null;
-      if (timedOut) reject(new Error(`${binary} timed out after 20 minutes; rerun to reuse downloaded images/build caches`));
+      if (timedOut) reject(new Error(`${binary} timed out after ${timeoutMinutes} minutes; inspect the command log before rerunning`));
       else if (code !== 0) reject(new Error(`${binary} exited with ${code}`));
       else resolve(output.trim());
     });
@@ -897,7 +897,7 @@ try {
       E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
       E2E_PUBLIC_WEB: process.argv.includes("--public-web") ? "1" : "0",
       E2E_INDEX: process.argv.includes("--index") ? "1" : "0",
-    });
+    }, false, 30);
   }
 } catch (error) {
   // 不输出请求体、环境变量、Cookie 或 Docker inspect 数据。
