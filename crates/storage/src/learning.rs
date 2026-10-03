@@ -3,7 +3,7 @@ pub mod evidence;
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
 use personal_ai_learning::planning::{LearningPlan, SelfAssessment, SkillNode};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct SkillInput {
@@ -79,6 +79,22 @@ pub struct LearningProgress {
     pub recorded_minutes_today: u64,
 }
 pub trait LearningStore: Send + Sync {
+    fn save_training_evidence(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        request: &str,
+        body: &TrainingEvidenceBody,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+    fn delete_training_evidence(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+
     /// 当前用户现存记录的只读统计；今日按数据库时钟的 UTC 自然日计算。
     fn learning_progress(&self, owner: &UserId) -> BoxFuture<'_, StorageResult<LearningProgress>>;
 
@@ -150,10 +166,28 @@ pub struct TrainingResultInput {
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct TrainingResult {
+    pub evidence: Option<TrainingEvidence>,
     pub task_id: String,
     pub request_id: String,
     pub outcome: TrainingOutcome,
     pub note: String,
     pub actual_minutes: u16,
     pub recorded_at_unix_ms: u64,
+}
+
+/// 用户提供的材料，不构成已验证能力；内容只按纯文本呈现。
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TrainingEvidenceBody {
+    pub explanation: String,
+    pub work: String,
+    pub verification: String,
+    pub limitations: String,
+}
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct TrainingEvidence {
+    pub request_id: String,
+    pub created_at_unix_ms: u64,
+    pub deleted: bool,
+    pub body: Option<TrainingEvidenceBody>,
 }

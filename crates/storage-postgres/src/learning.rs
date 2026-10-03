@@ -17,6 +17,7 @@ use personal_ai_storage::{
 use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
+mod evidence;
 mod plans;
 mod progress;
 mod results;
@@ -106,6 +107,31 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn save_training_evidence(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        request: &str,
+        body: &personal_ai_storage::learning::TrainingEvidenceBody,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>> {
+        let keys = (id(owner.as_str()), id(plan), id(task), id(request));
+        let body = body.clone();
+        Box::pin(
+            async move { evidence::save(self, keys.0?, keys.1?, keys.2?, keys.3?, body).await },
+        )
+    }
+    fn delete_training_evidence(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>> {
+        let keys = (id(owner.as_str()), id(plan), id(task), id(request));
+        Box::pin(async move { evidence::delete(self, keys.0?, keys.1?, keys.2?, keys.3?).await })
+    }
+
     fn learning_progress(
         &self,
         owner: &UserId,

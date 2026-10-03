@@ -10,13 +10,15 @@ pub(super) async fn list(
     plan: Uuid,
 ) -> StorageResult<Vec<TrainingResult>> {
     let rows = sqlx::query("SELECT r.* FROM learning_results r JOIN learning_tasks t ON t.user_id=r.user_id AND t.id=r.task_id WHERE t.user_id=$1 AND t.request_id=$2 ORDER BY t.ordinal LIMIT 6")
-        .bind(owner).bind(plan).fetch_all(tx).await.map_err(map_error)?;
+        .bind(owner).bind(plan).fetch_all(&mut *tx).await.map_err(map_error)?;
     if rows.len() > 5 {
         return Err(conflict());
     }
-    rows.iter()
+    let mut results: Vec<TrainingResult> = rows
+        .iter()
         .map(|r| {
             Ok(TrainingResult {
+                evidence: None,
                 task_id: r.get::<Uuid, _>("task_id").to_string(),
                 request_id: r.get::<Uuid, _>("request_id").to_string(),
                 outcome: match r.get::<&str, _>("outcome") {
@@ -30,7 +32,11 @@ pub(super) async fn list(
                 recorded_at_unix_ms: number(r.get("recorded_ms"))?,
             })
         })
-        .collect()
+        .collect::<StorageResult<_>>()?;
+    for result in &mut results {
+        result.evidence = super::evidence::read(tx, owner, id(&result.task_id)?).await?;
+    }
+    Ok(results)
 }
 pub(super) async fn record(
     store: &PostgresStore,

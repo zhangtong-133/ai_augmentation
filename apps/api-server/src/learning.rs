@@ -14,7 +14,7 @@ use personal_ai_storage::{
     StorageError,
     learning::{
         AssessmentInput, LearningPlanInput, LearningStore, SavedLearningPlan, SkillInput,
-        TrainingOutcome, TrainingResultInput,
+        TrainingEvidenceBody, TrainingOutcome, TrainingResultInput,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -34,6 +34,10 @@ pub(super) fn routes() -> Router<AppState> {
         .route(
             "/api/learning/plans/{plan}/tasks/{task}/result",
             post(result),
+        )
+        .route(
+            "/api/learning/plans/{plan}/tasks/{task}/evidence",
+            post(save_evidence).delete(delete_evidence),
         )
         .layer(middleware::from_fn(no_store))
 }
@@ -359,6 +363,56 @@ async fn progress(
     output(
         &runtime(&state)?
             .learning_progress(&user.id)
+            .await
+            .map_err(error)?,
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvidenceInput {
+    request_id: String,
+    body: TrainingEvidenceBody,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EvidenceDelete {
+    request_id: String,
+}
+async fn save_evidence(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    body: Result<Json<EvidenceInput>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    plan_output(
+        &runtime(&state)?
+            .save_training_evidence(
+                &user.id,
+                &id(&plan)?,
+                &id(&task)?,
+                &id(&input.request_id)?,
+                &input.body,
+            )
+            .await
+            .map_err(error)?,
+    )
+}
+async fn delete_evidence(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    body: Result<Json<EvidenceDelete>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    plan_output(
+        &runtime(&state)?
+            .delete_training_evidence(&user.id, &id(&plan)?, &id(&task)?, &id(&input.request_id)?)
             .await
             .map_err(error)?,
     )

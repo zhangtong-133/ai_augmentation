@@ -22,6 +22,13 @@ fn state(result: Option<&TrainingResult>) -> EvidenceState {
     match result {
         None => EvidenceState::NotRecorded,
         Some(r) if r.outcome == TrainingOutcome::Cancelled => EvidenceState::Cancelled,
+        Some(r)
+            if r.evidence
+                .as_ref()
+                .is_some_and(|e| !e.deleted && e.body.is_some()) =>
+        {
+            EvidenceState::Unverified
+        }
         Some(r) if r.note.trim().is_empty() => EvidenceState::MissingNote,
         Some(_) => EvidenceState::Unverified,
     }
@@ -57,6 +64,7 @@ mod tests {
     fn completion_time_and_note_never_establish_ability() {
         assert_eq!(state(None), EvidenceState::NotRecorded);
         let mut result = TrainingResult {
+            evidence: None,
             task_id: "task".into(),
             request_id: "result".into(),
             outcome: TrainingOutcome::Completed,
