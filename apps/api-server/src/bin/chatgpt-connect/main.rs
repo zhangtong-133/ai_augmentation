@@ -5,6 +5,10 @@ mod binding;
 mod callback;
 #[cfg(unix)]
 mod store;
+#[cfg(unix)]
+mod value;
+#[cfg(unix)]
+mod value_runtime;
 
 #[cfg(unix)]
 use personal_ai_llm_openai::chatgpt::{ChatGptClient, Error, PendingLogin, Result};
@@ -40,11 +44,20 @@ async fn run() -> Result<()> {
       chatgpt-connect DIRECTORY bind LABEL USER_UUID CONNECTION_UUID REVISION\n\
       chatgpt-connect DIRECTORY connections USER_UUID [AFTER_UUID]\n\
       chatgpt-connect DIRECTORY revoke-binding USER_UUID CONNECTION_UUID REVISION\n\
+      chatgpt-connect DIRECTORY value-preview USER_UUID CONNECTION_UUID MODEL REQUEST_UUID\n\
+      chatgpt-connect DIRECTORY value-approve USER_UUID REQUEST_UUID DIGEST --share-content --use-subscription\n\
+      chatgpt-connect DIRECTORY value-run LABEL USER_UUID REQUEST_UUID --use-subscription\n\
+      chatgpt-connect DIRECTORY value-show USER_UUID REQUEST_UUID\n\
+      chatgpt-connect DIRECTORY value-cancel USER_UUID REQUEST_UUID\n\
+value-* 是本机管理员操作，需要 DATABASE_URL；先预览并审阅分享内容，再精确批准，最后单独运行。\n\
 ask 从标准输入读取提示词，并发送给 OpenAI，消耗所选账户的订阅额度或设置允许的 credits。\n\
 DIRECTORY 应使用项目外的私有目录；每个 LABEL 对应独立账户/工作区。\n\
 管理授权与用量：https://chatgpt.com/settings/usage"
         );
         return Ok(());
+    }
+    if value::is_command(&args) {
+        return value::run(&args).await;
     }
     if binding::is_command(&args) {
         return binding::run(&args).await;

@@ -44,7 +44,7 @@ target/debug/chatgpt-connect "$HOME/.config/personal-ai-chatgpt" \
 
 ## 后续执行边界
 
-本地主机文件仍是凭据的唯一来源。执行器必须重新核对主机/client/subject、最新令牌权限、连接版本和用户同意，并在发送前处理撤销竞争；不能仅凭 `active` 元数据发起调用。OpenAI 侧权限和模型可用性可能在登记后变化，模型列表也不是推理验收。已提供用户会话下的管理 HTTP，已接入连接管理页面，已实现[评分内部执行领取与身份复核](rss-value-execution.md)，生产本地运行时仍待接入。
+本地主机文件仍是凭据的唯一来源。执行器必须重新核对主机/client/subject、最新令牌权限、连接版本和用户同意，并在发送前处理撤销竞争；不能仅凭 `active` 元数据发起调用。OpenAI 侧权限和模型可用性可能在登记后变化，模型列表也不是推理验收。已提供用户会话下的管理 HTTP，已接入连接管理页面，已实现[评分内部执行领取与身份复核](rss-value-execution.md)，已接入[本地运行时与显式评分命令](rss-value-local.md)。
 
 账户隔离及授权分离遵循 [官方 OpenAI documentation：账户与会话](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions)。
 

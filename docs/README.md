@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [RSS 本地订阅评分](design/rss-value-local.md)：本地身份锁、订阅流式请求及显式预览/批准/执行/查询/取消命令。
+
 - [RSS 订阅评分内部执行](design/rss-value-execution.md)：单次领取、身份复核、发送标记、结果校验与取消/超时恢复。
 
 - [订阅连接管理页面](design/subscription-connections-ui.md)：列表、详情、明确撤销、版本冲突与结果核对。

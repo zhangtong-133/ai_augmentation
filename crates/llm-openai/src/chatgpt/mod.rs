@@ -140,11 +140,60 @@ impl ChatGptClient {
                 "explicit subscription usage consent and bounded input required",
             ));
         }
+        self.response(registration, serde_json::json!({"model":model, "input":[{"role":"user", "content":prompt}], "store":false, "stream":true})).await
+    }
+
+    /// Send the frozen RSS scoring messages using subscription-compatible instructions.
+    /// API-only sampling and token-budget fields are deliberately absent on the wire.
+    /// # Errors
+    /// Rejects missing consent, unexpected message roles, oversized input and incomplete output.
+    pub async fn score_value(
+        &self,
+        registration: &Registration,
+        model: &str,
+        request: &personal_ai_llm::ChatRequest,
+        consent: bool,
+    ) -> Result<String> {
+        use personal_ai_llm::Role;
+        let [system, user] = request.messages.as_slice() else {
+            return Err(Error("scoring requires exactly two frozen messages"));
+        };
+        if !consent
+            || model.is_empty()
+            || model.len() > 128
+            || model.chars().any(char::is_control)
+            || system.role != Role::System
+            || user.role != Role::User
+            || system.content.trim().is_empty()
+            || user.content.trim().is_empty()
+            || system.content.len().saturating_add(user.content.len())
+                > personal_ai_agent_core::feed_value::MAX_INPUT_BYTES
+        {
+            return Err(Error(
+                "invalid scoring input or missing subscription consent",
+            ));
+        }
+        let text=self.response(registration,serde_json::json!({"model":model,"instructions":system.content,"input":[{"role":"user","content":user.content}],"store":false,"stream":true})).await?;
+        if text.len() > personal_ai_agent_core::feed_value::MAX_OUTPUT_BYTES {
+            return Err(Error("scoring output too large"));
+        }
+        Ok(text)
+    }
+
+    async fn response(
+        &self,
+        registration: &Registration,
+        payload: serde_json::Value,
+    ) -> Result<String> {
         let token = registration.access_token()?;
-        let mut response = self.client.post(format!("{}/responses", self.resource))
+        let mut response = self
+            .client
+            .post(format!("{}/responses", self.resource))
             .header(reqwest::header::AUTHORIZATION, bearer(token)?)
-            .json(&serde_json::json!({"model":model, "input":[{"role":"user", "content":prompt}], "store":false, "stream":true}))
-            .send().await.map_err(|_| Error("inference outcome unknown; not retried"))?;
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|_| Error("inference outcome unknown; not retried"))?;
         if !response.status().is_success() {
             body(response).await?;
             return Err(Error("inference rejected"));

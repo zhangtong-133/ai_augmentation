@@ -170,3 +170,84 @@ async fn catalog_uses_account_token_and_success_waits_for_completed_event() {
     );
     server.abort();
 }
+
+#[tokio::test]
+async fn scoring_maps_instructions_without_api_parameters_and_never_retries() {
+    use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::post};
+    use personal_ai_llm::{ChatMessage, ChatRequest, Role};
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let calls = Arc::new(AtomicUsize::new(0));
+    let seen = calls.clone();
+    let app=Router::new().route("/responses",post(move |Json(value):Json<serde_json::Value>| {
+        let seen=seen.clone(); async move {
+            seen.fetch_add(1,Ordering::SeqCst);
+            assert_eq!(value.as_object().unwrap().len(),5);
+            assert_eq!(value["instructions"],"frozen system");
+            assert_eq!(value["input"],serde_json::json!([{"role":"user","content":"x".repeat(40000)}]));
+            assert_eq!(value["store"],false); assert_eq!(value["stream"],true);
+            if value["model"]=="deny" { return (StatusCode::TOO_MANY_REQUESTS,"private quota error").into_response(); }
+            ([("content-type","text/event-stream")],"data: {\"type\":\"response.output_text.delta\",\"delta\":\"{}\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\"}}\n\n").into_response()
+        }
+    }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mut client = super::ChatGptClient::new().unwrap();
+    client.resource = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let registration = registration("resource.invoke chatgpt.tokens.use.direct");
+    let mut request = ChatRequest {
+        messages: vec![
+            ChatMessage {
+                role: Role::System,
+                content: "frozen system".into(),
+            },
+            ChatMessage {
+                role: Role::User,
+                content: "x".repeat(40000),
+            },
+        ],
+        temperature: Some(0.0),
+        max_output_tokens: Some(4096),
+    };
+    assert!(
+        client
+            .score_value(&registration, "model", &request, false)
+            .await
+            .is_err()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        client
+            .score_value(&registration, "model", &request, true)
+            .await
+            .unwrap(),
+        "{}"
+    );
+    let error = client
+        .score_value(&registration, "deny", &request, true)
+        .await
+        .unwrap_err();
+    assert!(!error.0.contains("private"));
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    request.messages[0].role = Role::User;
+    assert!(
+        client
+            .score_value(&registration, "model", &request, true)
+            .await
+            .is_err()
+    );
+    request.messages[0].role = Role::System;
+    request.messages[1].content = "x".repeat(65536);
+    assert!(
+        client
+            .score_value(&registration, "model", &request, true)
+            .await
+            .is_err()
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    server.abort();
+}

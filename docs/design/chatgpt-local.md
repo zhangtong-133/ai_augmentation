@@ -66,3 +66,5 @@ cargo test -p api-server --bin chatgpt-connect
 - [OpenAI：预览限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)
 
 可用性取决于实际账户与授权。该入口适用于符合条件的开源/本地项目，不能据此假设任意商业托管部署均已获支持。
+
+RSS 评分现已接入独立的[本地预览、批准和执行命令](rss-value-local.md)，不会由登录、bind 或普通 ask 自动触发。
