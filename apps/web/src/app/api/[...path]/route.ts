@@ -30,6 +30,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     || (request.method === "DELETE" && /^learning\/plans\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:assessments|plans(?:\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/result)?)$/i.test(endpoint));
   const learningEvidence = ["POST", "DELETE"].includes(request.method) && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence$/i.test(endpoint);
+  const learningEvents = request.method === "GET" && /^learning\/model-authorizations\/[a-f0-9-]{36}\/events$/i.test(endpoint);
   const learningAuthorization = (request.method === "GET" && /^learning\/model-authorizations(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:model-authorizations\/[a-f0-9-]{36}\/(?:approve|cancel)|plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-authorizations)$/i.test(endpoint));
   const learningPreview = request.method === "GET" && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-preview$/i.test(endpoint);
@@ -46,7 +47,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
   const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning && !learningEvidence && !learningReview && !learningPreview && !learningAuthorization && !subscriptionConnections && !feedValues) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning && !learningEvidence && !learningReview && !learningPreview && !learningAuthorization && !learningEvents && !subscriptionConnections && !feedValues) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。
@@ -62,6 +63,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     const requestId = request.headers.get("idempotency-key");
     if (requestId) headers.set("idempotency-key", requestId);
   }
+  if (learningEvents && request.headers.has("last-event-id")) headers.set("last-event-id", request.headers.get("last-event-id")!);
   try {
     const limit = endpoint === "documents" ? 8 * 1024 * 1024 : learningEvidence && request.method === "POST" ? 64 * 1024 : 16384;
     let body: string | undefined;
@@ -84,9 +86,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     }
     const response = await fetch(
       new URL("/api/" + endpoint + request.nextUrl.search, process.env.API_INTERNAL_URL ?? "http://127.0.0.1:8080"),
-      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(feedConfirmation ? 25000 : endpoint === "knowledge/answer" ? 60000 : (documentIndex || endpoint === "knowledge/search" || ["tools/knowledge_search", "tools/file_reader"].includes(endpoint)) ? 40000 : 10000) },
+      { method: request.method, headers, body, cache: "no-store", redirect: "error", signal: learningEvents ? AbortSignal.any([request.signal, AbortSignal.timeout(30000)]) : AbortSignal.timeout(feedConfirmation ? 25000 : endpoint === "knowledge/answer" ? 60000 : (documentIndex || endpoint === "knowledge/search" || ["tools/knowledge_search", "tools/file_reader"].includes(endpoint)) ? 40000 : 10000) },
     );
-    const output = new Headers({ "Content-Type": "application/json", "Cache-Control": "no-store" });
+    const output = new Headers({ "Content-Type": learningEvents && response.ok ? "text/event-stream" : "application/json", "Cache-Control": "no-store" });
+    if (learningEvents) output.set("X-Accel-Buffering", "no");
     const cookie = response.headers.get("set-cookie");
     if (cookie) output.set("set-cookie", cookie);
     return new Response(response.body, { status: response.status, headers: output });
