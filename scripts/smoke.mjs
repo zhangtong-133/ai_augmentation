@@ -1,5 +1,6 @@
 // 验收流程仅使用 Node 内置模块；不操作用户的 .env 或常规 Compose 项目。
 import assert from "node:assert/strict";
+import { learningEvents } from "./smoke-learning-events.mjs";
 import { spawn, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
@@ -345,6 +346,7 @@ try {
     await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
       `INSERT INTO subscription_connections(user_id,id,host_id,client_id,subject_hash,label,models,revision,status,expires_ms)
        VALUES('${owner.id}','${connection}','${randomUUID()}','oaiapp_${randomUUID()}','${"a".repeat(64)}','smoke','["fixture"]',1,'active',floor(extract(epoch FROM clock_timestamp())*1000)::bigint+3000000)`]);
+    await learningEvents({ base, cookie, otherCookie, connection, request });
     const valueSource = randomUUID();
     await request(base, "/api/feed-subscriptions", 201, { method: "POST", cookie, body: { id: valueSource, name: "Scoring smoke", source_url: "https://example.com/scoring", enabled: true } });
     await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
