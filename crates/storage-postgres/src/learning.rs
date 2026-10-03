@@ -21,6 +21,7 @@ mod evidence;
 mod plans;
 mod progress;
 mod results;
+mod reviews;
 mod skills;
 fn invalid() -> StorageError {
     StorageError::InvalidData("invalid learning input".into())
@@ -107,6 +108,29 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn save_training_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &personal_ai_storage::learning::review::ReviewInput,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>> {
+        let keys = (id(owner.as_str()), id(plan), id(task));
+        let input = input.clone();
+        Box::pin(async move { reviews::save(self, keys.0?, keys.1?, keys.2?, input).await })
+    }
+    fn confirm_training_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &personal_ai_storage::learning::review::ReviewConfirmation,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>> {
+        let keys = (id(owner.as_str()), id(plan), id(task));
+        let input = input.clone();
+        Box::pin(async move { reviews::confirm(self, keys.0?, keys.1?, keys.2?, input).await })
+    }
+
     fn save_training_evidence(
         &self,
         owner: &UserId,

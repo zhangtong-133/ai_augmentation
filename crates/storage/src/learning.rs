@@ -1,5 +1,6 @@
 //! 当前用户的技能、自评和不可变训练计划；无执行、模型或通知副作用。
 pub mod evidence;
+pub mod review;
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
 use personal_ai_learning::planning::{LearningPlan, SelfAssessment, SkillNode};
@@ -39,6 +40,7 @@ pub enum LearningPlanStatus {
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct SavedLearningPlan {
+    pub source_assessments_available: bool,
     pub results: Vec<TrainingResult>,
     pub request_id: String,
     pub snapshot_revision: u64,
@@ -79,6 +81,21 @@ pub struct LearningProgress {
     pub recorded_minutes_today: u64,
 }
 pub trait LearningStore: Send + Sync {
+    fn save_training_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &review::ReviewInput,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+    fn confirm_training_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &review::ReviewConfirmation,
+    ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+
     fn save_training_evidence(
         &self,
         owner: &UserId,
@@ -186,6 +203,7 @@ pub struct TrainingEvidenceBody {
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct TrainingEvidence {
+    pub review: Option<review::TrainingReview>,
     pub request_id: String,
     pub created_at_unix_ms: u64,
     pub deleted: bool,

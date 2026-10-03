@@ -41,6 +41,14 @@ pub(super) fn routes() -> Router<AppState> {
                 .layer(DefaultBodyLimit::max(64 * 1024))
                 .delete(delete_evidence),
         )
+        .route(
+            "/api/learning/plans/{plan}/tasks/{task}/evidence/review",
+            post(save_review),
+        )
+        .route(
+            "/api/learning/plans/{plan}/tasks/{task}/evidence/review/confirm",
+            post(confirm_review),
+        )
         .layer(middleware::from_fn(no_store))
 }
 #[derive(Deserialize)]
@@ -415,6 +423,73 @@ async fn delete_evidence(
     plan_output(
         &runtime(&state)?
             .delete_training_evidence(&user.id, &id(&plan)?, &id(&task)?, &id(&input.request_id)?)
+            .await
+            .map_err(error)?,
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewInput {
+    request_id: String,
+    evidence_request_id: String,
+    body: personal_ai_storage::learning::review::ReviewBody,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReviewConfirmation {
+    request_id: String,
+    review_request_id: String,
+    expected_revision: String,
+    score: u8,
+}
+async fn save_review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    body: Result<Json<ReviewInput>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    plan_output(
+        &runtime(&state)?
+            .save_training_review(
+                &user.id,
+                &id(&plan)?,
+                &id(&task)?,
+                &personal_ai_storage::learning::review::ReviewInput {
+                    request_id: id(&input.request_id)?,
+                    evidence_request_id: id(&input.evidence_request_id)?,
+                    body: input.body,
+                },
+            )
+            .await
+            .map_err(error)?,
+    )
+}
+async fn confirm_review(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    body: Result<Json<ReviewConfirmation>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    let input = payload(body)?;
+    plan_output(
+        &runtime(&state)?
+            .confirm_training_review(
+                &user.id,
+                &id(&plan)?,
+                &id(&task)?,
+                &personal_ai_storage::learning::review::ReviewConfirmation {
+                    request_id: id(&input.request_id)?,
+                    review_request_id: id(&input.review_request_id)?,
+                    expected_revision: revision(&input.expected_revision)?,
+                    score: input.score,
+                },
+            )
             .await
             .map_err(error)?,
     )

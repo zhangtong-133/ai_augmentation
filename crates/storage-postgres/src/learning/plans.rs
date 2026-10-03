@@ -42,6 +42,7 @@ fn normalize(mut input: LearningPlanInput) -> StorageResult<(LearningPlanInput, 
 fn record(row: &PgRow) -> StorageResult<SavedLearningPlan> {
     let owner = row.get::<Uuid, _>("user_id").to_string();
     let saved = SavedLearningPlan {
+        source_assessments_available: false,
         results: Vec::new(),
         request_id: row.get::<Uuid, _>("request_id").to_string(),
         snapshot_revision: number(row.get("snapshot_revision"))?,
@@ -123,6 +124,18 @@ pub(super) async fn read(
         .map_err(map_error)?;
     let mut saved = record(&row)?;
     verify_tasks(tx, owner, &saved).await?;
+    if let Some(plan) = &saved.plan {
+        let ids = plan
+            .evaluations
+            .iter()
+            .filter_map(|e| e.assessment_id.as_deref())
+            .map(id)
+            .collect::<StorageResult<Vec<_>>>()?;
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM learning_assessments WHERE user_id=$1 AND id=ANY($2) AND score IS NOT NULL")
+            .bind(owner).bind(&ids).fetch_one(&mut *tx).await.map_err(map_error)?;
+        saved.source_assessments_available =
+            usize::try_from(count).map_err(|_| invalid())? == ids.len();
+    }
     saved.results = super::results::list(tx, owner, key).await?;
     if saved.plan.is_none() && !saved.results.is_empty() {
         return Err(conflict());

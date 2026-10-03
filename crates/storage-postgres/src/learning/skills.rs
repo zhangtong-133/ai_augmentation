@@ -136,13 +136,23 @@ pub(super) async fn assess(
     key: Uuid,
     input: AssessmentInput,
 ) -> StorageResult<SelfAssessment> {
+    let mut tx = locked(store, owner).await?;
+    let saved = assess_locked(&mut tx, owner, key, input).await?;
+    tx.commit().await.map_err(map_error)?;
+    Ok(saved)
+}
+pub(super) async fn assess_locked(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    key: Uuid,
+    input: AssessmentInput,
+) -> StorageResult<SelfAssessment> {
     let skill = id(&input.skill_id)?;
     integer(input.expected_revision)?;
     integer(input.skill_revision)?;
     if input.score > 100 || input.skill_revision == 0 {
         return Err(invalid());
     }
-    let mut tx = locked(store, owner).await?;
     if let Some(row) = sqlx::query("SELECT * FROM learning_assessments WHERE user_id=$1 AND id=$2")
         .bind(owner)
         .bind(key)
@@ -160,7 +170,7 @@ pub(super) async fn assess(
         }
         return Ok(saved);
     }
-    if revision(&mut tx, owner).await? != input.expected_revision {
+    if revision(tx, owner).await? != input.expected_revision {
         return Err(conflict());
     }
     let row = sqlx::query(
@@ -177,12 +187,11 @@ pub(super) async fn assess(
     {
         return Err(conflict());
     }
-    assessment_count(&mut tx, owner).await?;
-    let time = now(&mut tx).await?;
+    assessment_count(tx, owner).await?;
+    let time = now(tx).await?;
     let row=sqlx::query("INSERT INTO learning_assessments(user_id,id,skill_id,skill_revision,expected_revision,score,assessed_ms) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING *")
         .bind(owner).bind(key).bind(skill).bind(integer(input.skill_revision)?).bind(integer(input.expected_revision)?).bind(i16::from(input.score)).bind(time).fetch_one(&mut *tx).await.map_err(map_error)?;
     let saved = rating(&row)?;
-    bump(&mut tx, owner).await?;
-    tx.commit().await.map_err(map_error)?;
+    bump(tx, owner).await?;
     Ok(saved)
 }

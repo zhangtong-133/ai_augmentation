@@ -80,6 +80,9 @@ pub(super) async fn record(
         }
         return Ok(saved);
     }
+    if !saved.source_assessments_available {
+        return Err(conflict());
+    }
     let time = now(&mut tx).await?;
     sqlx::query("INSERT INTO learning_results(user_id,task_id,request_id,outcome,note,actual_minutes,recorded_ms) VALUES($1,$2,$3,$4,$5,$6,$7)")
         .bind(owner).bind(task).bind(request).bind(match input.outcome { TrainingOutcome::Completed => "completed", TrainingOutcome::Cancelled => "cancelled" })

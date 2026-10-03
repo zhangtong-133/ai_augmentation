@@ -86,6 +86,7 @@ mod tests {
             LearningPlanStatus::Invalidated,
         ] {
             let saved = SavedLearningPlan {
+                source_assessments_available: true,
                 results: vec![],
                 request_id: "plan".into(),
                 snapshot_revision: 1,

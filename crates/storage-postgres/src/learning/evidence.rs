@@ -9,6 +9,7 @@ pub(super) async fn read(
     owner: Uuid,
     task: Uuid,
 ) -> StorageResult<Option<TrainingEvidence>> {
+    let review = super::reviews::read(tx, owner, task).await?;
     let row = sqlx::query("SELECT * FROM learning_evidence WHERE user_id=$1 AND task_id=$2")
         .bind(owner)
         .bind(task)
@@ -17,6 +18,7 @@ pub(super) async fn read(
         .map_err(map_error)?;
     row.map(|r| {
         Ok(TrainingEvidence {
+            review,
             request_id: r.get::<Uuid, _>("request_id").to_string(),
             created_at_unix_ms: number(r.get("created_ms"))?,
             deleted: r.get("deleted"),
@@ -80,6 +82,9 @@ pub(super) async fn save(
             return Err(conflict());
         }
         return Ok(saved);
+    }
+    if !saved.source_assessments_available {
+        return Err(conflict());
     }
     let current: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM learning_skills WHERE user_id=$1 AND id=$2 AND revision=$3 AND enabled AND NOT deleted)")
         .bind(owner).bind(id(&task.skill_id)?).bind(integer(task.skill_revision)?).fetch_one(&mut *tx).await.map_err(map_error)?;

@@ -567,3 +567,6 @@ async fn learning_evidence_rejects_cancelled_results_and_changed_skill_versions(
     }
     f.cleanup().await;
 }
+
+#[path = "learning_tests/reviews.rs"]
+mod reviews;
