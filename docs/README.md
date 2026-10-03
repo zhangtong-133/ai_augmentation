@@ -114,4 +114,6 @@
 
 - [周期 RSS 后台运行](design/rss-schedule-runner.md)：跨用户内部扫描、超时恢复、独立循环与默认关闭的部署配置。
 
-- [周期 RSS 用户授权 HTTP](design/rss-schedule-http.md)：不可变预览、明确同意、取消及私有历史/审计，配置页面待实现。
+- [周期 RSS 用户授权 HTTP](design/rss-schedule-http.md)：不可变预览、明确同意、取消及私有历史/审计，配置页面已接入。
+
+- [周期 RSS 配置与同意页面](design/rss-schedule-ui.md)：有限期限和频率、精确同意、取消/审计、原请求恢复及双入口浏览器验收。

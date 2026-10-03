@@ -10,6 +10,7 @@ import { McpCredentialPanel } from "./mcp-credential-panel";
 import { LearningPanel } from "./learning-panel";
 import { BriefPanel } from "./brief-panel";
 import { FeedPanel } from "./feed-panel";
+import { FeedSchedulePanel } from "./feed-schedule-panel";
 import { SchedulePanel } from "./schedule-panel";
 import { MemoryPanel } from "./memory-panel";
 import { ConversationPanel } from "./conversation-panel";
@@ -105,6 +106,7 @@ export function AccountPanel() {
       {user && <RetrievalPanel key={`retrieval-${user.id}`} />}
       {user && <McpCredentialPanel key={`mcp-${user.id}`} />}
       {user && <FeedPanel key={`feeds-${user.id}`} />}
+      {user && <FeedSchedulePanel key={`feed-schedules-${user.id}`} />}
       {user && <LearningPanel key={`learning-${user.id}`} />}
       {user && <BriefPanel key={`briefs-${user.id}`} />}
       {user && <SchedulePanel key={`schedules-${user.id}`} />}
