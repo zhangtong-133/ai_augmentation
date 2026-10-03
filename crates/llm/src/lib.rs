@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
 
+pub mod stream;
+
 use std::error::Error;
 use std::fmt::{self, Display};
 use std::future::Future;
