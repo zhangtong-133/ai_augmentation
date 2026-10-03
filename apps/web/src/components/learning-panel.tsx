@@ -135,7 +135,7 @@ export function LearningPanel() {
     <h3>学习计划历史</h3>{ready && !history.items.length && <p>暂无学习计划。</p>}
     <ul className="feedList" aria-label="学习计划历史">{history.items.map(p => <li key={p.request_id}>{date(p.created_at_unix_ms)} · {statuses[p.status]}<br /><button disabled={locked} onClick={() => inspect(`${root}/plans/${p.request_id}`)}>查看学习计划</button></li>)}</ul>
     <button disabled={locked || !pages.length} onClick={() => void run(c => list(c, pages.slice(0, -1)))}>上一页学习计划</button><button disabled={locked || !history.next_cursor} onClick={() => void run(c => list(c, [...pages, history.next_cursor!]))}>下一页学习计划</button>
-    {ready && <LearningAuthorizationHistory key={authorizationGeneration} locked={locked} load={loadPreview} />}
+    {ready && <LearningAuthorizationHistory key={authorizationGeneration} locked={locked} load={loadPreview} openPlan={inspect} />}
     {selected && <LearningPlanView key={selected.request_id} saved={selected} skills={skills} snapshotRevision={snapshot?.revision} locked={locked} inspect={inspect} loadPreview={loadPreview} submit={o => void mutate(o)} />}
   </section>;
 }

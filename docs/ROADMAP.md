@@ -6,14 +6,14 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 自动 RSS 采集已交付：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，已提供[配置与同意页面](design/rss-schedule-ui.md)。
 
-后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已完成协议、只读材料检查和任务内回看；10 项学习页面双入口验收通过。结构化证据保存、删除与页面已交付，14 项双入口验收通过；用户核验、显式确认和来源撤销保护已交付，22 项双入口验收通过；模型生成建议仍待接入。
+后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已完成协议、只读材料检查和任务内回看；10 项学习页面双入口验收通过。结构化证据保存、删除与页面已交付，14 项双入口验收通过；用户核验、显式确认和来源撤销保护已交付，22 项双入口验收通过；模型核验授权和显式本机执行已接入，真实订阅与建议质量验收仍待完成。
 
-已实现[模型核验分享预览与严格返回协议](design/learning-model-review.md)：私有只读接口和完整材料预览页面已接入，无迁移、无模型请求。已接入[连接绑定、精确授权、取消与历史页面](design/learning-model-authorization.md)（0038 迁移），尚不派发模型；下一批推进一次性执行和建议保存。
+已实现[模型核验分享预览与严格返回协议](design/learning-model-review.md)：私有只读接口和完整材料预览页面已接入，无迁移、无模型请求。已接入[连接绑定、精确授权、取消与历史页面](design/learning-model-authorization.md)（0038 迁移），已接入[一次性执行和建议回看](design/learning-model-execution.md)（0039 迁移、显式本机命令），网页批准不自动发送，真实 Pro 实测仍待完成。
 
 ## 原始 v1 尚未补齐
 
 - [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
-- [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，已提供只读材料检查、结构化证据保存/删除与页面；已实现[用户核验与版本确认](design/learning-review-confirmation.md)，模型生成建议仍待接入，完成训练不自动提高分数。
+- [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，已提供只读材料检查、结构化证据保存/删除与页面；已实现[用户核验与版本确认](design/learning-review-confirmation.md)，已接入[订阅模型核验执行与建议回看](design/learning-model-execution.md)，真实订阅及质量验收仍待完成；模型建议须由用户复核，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。

@@ -425,3 +425,44 @@ test("late authorization history cannot enter a different account", async ({ pag
   await page.getByRole("button", { name: "退出登录", exact: true }).click(); await login(page, other); release();
   await expect(panel).toContainText("暂无学习计划"); await expect(panel).not.toContainText("上一账户私有模型");
 });
+
+test("model advice remains separate from self assessment and disappears after cancellation", async ({ page }, testInfo) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  const response = page.waitForResponse(r => r.url().endsWith("/evidence/model-preview") && r.ok());
+  await detail.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  const preview = await (await response).json();
+  let planPath;
+  page.on("request", request => { if (/\/api\/learning\/plans\/[^/]+$/.test(new URL(request.url()).pathname) && request.method() === "GET") planPath = new URL(request.url()).pathname; });
+  const savedResponse = page.waitForResponse(r => /\/api\/learning\/plans\/[^/]+$/.test(new URL(r.url()).pathname) && r.ok());
+  await detail.getByRole("button", { name: "更新学习计划状态", exact: true }).click();
+  const savedPlan = await (await savedResponse).json();
+  const advice = { protocol_version: preview.protocol_version, input_digest: preview.input.input_digest };
+  for (const field of ["explanation", "work", "verification", "limitations"]) advice[field] = { verdict: "supported", reason: "模型私有建议 <img src=x onerror=alert(1)>", citations: [{ field, quote: preview.input.evidence[field] }] };
+  let item = { request_id: "00000000-0000-4000-8000-000000000007", plan_id: savedPlan.request_id, task_id: savedPlan.plan.tasks[0].task_id, connection_id: "fixture-local", connection_revision: "1", model: "fixture-model", status: "succeeded", digest: "a".repeat(64), created_at_unix_ms: "1", expires_at_unix_ms: "300001", approved_at_unix_ms: "2", preview, advice };
+  let posts = 0;
+  await page.route("**/api/learning/model-authorizations**", route => {
+    if (route.request().method() === "POST") { posts++; expect(route.request().url()).toMatch(/\/cancel$/); item = { ...item, status: "cancelled", preview: null, advice: null }; }
+    return route.fulfill({ json: new URL(route.request().url()).pathname.endsWith("model-authorizations") ? { items: [item], next_cursor: null } : item });
+  });
+  const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click();
+  await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
+  const result = history.getByRole("region", { name: "模型核验建议", exact: true });
+  await expect(result).toContainText("模型私有建议 <img"); await expect(result).toContainText("概念解释的材料"); await expect(result.locator("img")).toHaveCount(0);
+  await expect(history.getByRole("checkbox")).toHaveCount(0);
+  const screenshot = testInfo.outputPath("learning-model-advice.png"); await result.screenshot({ path: screenshot }); await testInfo.attach("learning-model-advice", { path: screenshot, contentType: "image/png" });
+  await history.getByRole("button", { name: "回到原训练证据", exact: true }).click(); await expect(detail.getByText("概念解释的材料", { exact: true })).toBeVisible(); expect(planPath).toContain(savedPlan.request_id);
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
+  await history.getByRole("button", { name: "取消本次模型授权", exact: true }).click(); await expect(result).toHaveCount(0); await expect(history).toContainText("已取消"); expect(posts).toBe(1);
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前版本尚未自评");
+});
+
+test("running and unknown learning reviews never offer automatic resend", async ({ page }) => {
+  const panel = await start(page);
+  let item = { request_id: "00000000-0000-4000-8000-000000000008", connection_id: "fixture-local", connection_revision: "1", model: "fixture-model", status: "running", created_at_unix_ms: "1", expires_at_unix_ms: "300001", preview: null, advice: null };
+  await page.route("**/api/learning/model-authorizations**", route => { expect(route.request().method()).toBe("GET"); return route.fulfill({ json: new URL(route.request().url()).pathname.endsWith("model-authorizations") ? { items: [item], next_cursor: null } : item }); });
+  const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click(); await history.getByRole("button", { name: "查看模型授权", exact: true }).click();
+  await expect(history).toContainText("正在执行一次核验"); await expect(history.getByRole("button", { name: "取消本次模型授权", exact: true })).toBeEnabled();
+  item = { ...item, status: "unknown" }; await history.getByRole("button", { name: "核对模型授权状态", exact: true }).click(); await expect(history).toContainText("结果未知，不会自动重发"); await expect(history.getByRole("checkbox")).toHaveCount(0); await expect(history.getByRole("button", { name: "取消本次模型授权", exact: true })).toHaveCount(0);
+});
