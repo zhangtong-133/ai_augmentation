@@ -91,7 +91,7 @@ npm --prefix apps/web run build
 
 ## 工程与文档
 
-- `apps/`：API（含索引、回复与模型 Agent 后台执行器）、Web 和处理一次性提醒、定时日报的 scheduler。
+- `apps/`：API（含索引、回复与模型 Agent 后台执行器）、Web 和处理一次性提醒、定时日报及显式启用周期 RSS 的 scheduler。
 - `crates/`：领域能力、端口及 PostgreSQL、S3、Qdrant、模型适配器。
 - `infra/`、`scripts/`：部署配置与开发/验收脚本。
 - [文档索引](docs/README.md)：设计、配置和验收边界。
@@ -106,3 +106,5 @@ npm --prefix apps/web run build
 可显式配置 [GitTool 本地只读提交历史](docs/design/git-log-tool.md)，让指定用户按仓库别名查询最近提交，复用工具调用额度与审计；默认关闭。
 
 可显式配置 [WebSearch 搜索工具](docs/design/web-search-tool.md)，通过固定 SearXNG 服务查询公开资料；默认关闭，每次调用必须同意对外发送查询，复用工具调用额度与审计。登录后的「外部搜索」页面支持逐次确认、来源展示与停止等待。
+
+周期 RSS 已接入[默认关闭的后台运行](docs/design/rss-schedule-runner.md)：需要 `SCHEDULER_MODE=local`、`RSS_SCHEDULES_ENABLED=true` 和持久化用户授权。尚未提供用户周期配置/同意页面。

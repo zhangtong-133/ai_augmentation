@@ -5,6 +5,7 @@ fn run(mode: Option<&str>, url: &str) -> Output {
     command
         .env_remove("SCHEDULER_MODE")
         .env_remove("RUN_FOREVER")
+        .env_remove("RSS_SCHEDULES_ENABLED")
         .env("DATABASE_URL", url);
     if let Some(mode) = mode {
         command.env("SCHEDULER_MODE", mode);
@@ -133,4 +134,34 @@ async fn local_scheduler_process_delivers_once_and_survives_restart() {
         .execute(&pool)
         .await
         .unwrap();
+}
+
+#[test]
+fn invalid_rss_switch_is_rejected_before_database_access() {
+    let output = Command::new(env!("CARGO_BIN_EXE_scheduler"))
+        .env("SCHEDULER_MODE", "local")
+        .env("RSS_SCHEDULES_ENABLED", "yes")
+        .env("DATABASE_URL", "private-invalid-url")
+        .env_remove("RUN_FOREVER")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("RSS_SCHEDULES_ENABLED"));
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("private-invalid-url"));
+}
+
+#[path = "process/rss_runner.rs"]
+mod rss_runner;
+
+#[test]
+fn disabled_scheduler_overrides_the_rss_switch() {
+    let output = Command::new(env!("CARGO_BIN_EXE_scheduler"))
+        .env("SCHEDULER_MODE", "disabled")
+        .env("RSS_SCHEDULES_ENABLED", "true")
+        .env_remove("RUN_FOREVER")
+        .env("DATABASE_URL", "private-invalid-url")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("scheduler disabled"));
 }

@@ -244,3 +244,4 @@ impl FeedScheduleStore for PostgresStore {
 }
 
 mod execution;
+mod scanning;

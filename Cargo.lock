@@ -2206,6 +2206,8 @@ version = "0.1.0"
 dependencies = [
  "personal-ai-agent-core",
  "personal-ai-domain",
+ "personal-ai-feed-http",
+ "personal-ai-feeds",
  "personal-ai-storage",
  "personal-ai-storage-postgres",
  "serde_json",

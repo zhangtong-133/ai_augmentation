@@ -116,6 +116,7 @@ services:
     environment:
       RUN_FOREVER: "1"
       SCHEDULER_MODE: ${SCHEDULER_MODE:-disabled}
+      RSS_SCHEDULES_ENABLED: ${RSS_SCHEDULES_ENABLED:-false}
       DATABASE_URL: ${DATABASE_URL}
     depends_on:
       postgres:

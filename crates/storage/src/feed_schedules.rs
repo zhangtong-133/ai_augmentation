@@ -72,3 +72,24 @@ pub trait FeedScheduleExecutionStore: Send + Sync {
         claim: &crate::feeds::CollectionClaim,
     ) -> BoxFuture<'_, StorageResult<bool>>;
 }
+
+/// 内部跨用户扫描游标；仅包含所有者和记录 ID，不授予执行权。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FeedScheduleCursor {
+    pub owner: UserId,
+    pub id: String,
+}
+pub struct FeedScheduleScan {
+    pub items: Vec<FeedScheduleCursor>,
+    pub next_cursor: Option<FeedScheduleCursor>,
+}
+pub trait FeedScheduleScanStore: Send + Sync {
+    fn scan_due_feed_schedules(
+        &self,
+        after: Option<&FeedScheduleCursor>,
+    ) -> BoxFuture<'_, StorageResult<FeedScheduleScan>>;
+    fn scan_expired_scheduled_collections(
+        &self,
+        after: Option<&FeedScheduleCursor>,
+    ) -> BoxFuture<'_, StorageResult<FeedScheduleScan>>;
+}
