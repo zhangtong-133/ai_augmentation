@@ -11,7 +11,19 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 const PLANS: &str = include_str!("learning_operations/plans.sql");
 const COUNTS: &str = include_str!("learning_operations/counts.sql");
+mod models;
 impl LearningOperationsStore for PostgresStore {
+    fn audit_learning_models(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_storage::learning_operations::LearningModelAudit>>
+    {
+        let owner = super::learning::id(owner.as_str());
+        let after = after.map(super::learning::id).transpose();
+        Box::pin(async move { models::audit(self, owner?, after?).await })
+    }
+
     fn audit_learning(
         &self,
         owner: &UserId,

@@ -3,9 +3,13 @@ use personal_ai_storage::learning_operations::LearningOperationsStore;
 use personal_ai_storage_postgres::PostgresStore;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: learning-operations audit --user UUID [--after PLAN_UUID]";
+const USAGE: &str =
+    "usage: learning-operations audit|audit-models --user UUID [--after REQUEST_UUID]";
 fn parse(args: &[String]) -> Result<(String, Option<String>), &'static str> {
-    if args.first().map(String::as_str) != Some("audit") {
+    if !matches!(
+        args.first().map(String::as_str),
+        Some("audit" | "audit-models")
+    ) {
         return Err(USAGE);
     }
     let mut user = None;
@@ -52,11 +56,19 @@ async fn run(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
         std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required and must be UTF-8")?;
     // 不执行迁移，不读取学习正文，不修复或修改记录。
     let store = PostgresStore::connect_existing(&url).await?;
-    let report = store
-        .audit_learning(&UserId::new(user), after.as_deref())
-        .await?;
-    println!("{}", serde_json::to_string(&report)?);
-    Ok(if report.consistent {
+    let (report, consistent) = if args[0] == "audit-models" {
+        let report = store
+            .audit_learning_models(&UserId::new(user), after.as_deref())
+            .await?;
+        (serde_json::to_string(&report)?, report.consistent)
+    } else {
+        let report = store
+            .audit_learning(&UserId::new(user), after.as_deref())
+            .await?;
+        (serde_json::to_string(&report)?, report.consistent)
+    };
+    println!("{report}");
+    Ok(if consistent {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(2)
@@ -70,6 +82,7 @@ mod tests {
         let id = uuid::Uuid::new_v4();
         let args = |s: &str| s.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
         assert!(parse(&args(&format!("audit --user {id} --after {id}"))).is_ok());
+        assert!(parse(&args(&format!("audit-models --user {id} --after {id}"))).is_ok());
         for input in [
             String::new(),
             "audit".into(),

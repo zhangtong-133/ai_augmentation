@@ -496,3 +496,6 @@ async fn inactive_tasks_and_deleted_plan_sources_are_reported() {
     assert!(r.items[0].issues.contains(&"deleted_plan_sources".into()));
     f.cleanup().await;
 }
+
+#[path = "learning_operations/model_reviews.rs"]
+mod model_reviews;
