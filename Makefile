@@ -120,3 +120,7 @@ test-learning-operations: ## 使用一次性 TEST_DATABASE_URL 验证学习只�
 .PHONY: test-subscription-connections
 test-subscription-connections: ## 使用一次性 TEST_DATABASE_URL 验证订阅连接管理 HTTP 与用户隔离
 	cargo test -p api-server --lib subscription_connection_tests -- --ignored
+
+.PHONY: learning-acceptance
+learning-acceptance: ## 在隔离环境中验收学习数据库、运维、HTTP 及双入口页面，不调用真实模型
+	$(MAKE) browser-test BROWSER_SPEC=learning.spec.mjs

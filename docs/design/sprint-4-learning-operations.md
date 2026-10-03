@@ -2,6 +2,8 @@
 
 新增 `LearningOperationsStore` 和 `learning-operations` 管理员命令，查询指定用户的学习元数据。使用 `connect_existing`，不执行迁移、不访问模型或对象存储、不创建计划、不修改或自动修复记录。无新增迁移和应用环境开关，生产 API 镜像包含此命令。
 
+模型授权、一次性派发与发送审计另见 [订阅核验运维](learning-model-operations.md)，通过独立 `audit-models` 子命令和列权限查询。
+
 ## 使用
 
 使用已初始化数据库的只读连接配置 `DATABASE_URL`，运行：

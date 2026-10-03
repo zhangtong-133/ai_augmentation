@@ -306,7 +306,11 @@ try {
   assert.equal(learningAudit.consistent, true);
   assert.equal(learningAudit.counts.plans, 0);
   assert.equal(learningAudit.quotas.plans_today.remaining, 10);
-  console.log("PASS: packaged learning metadata audit");
+  const learningModels = JSON.parse(await compose(["exec", "-T", "api-server", "learning-operations", "audit-models", "--user", owner.id], true));
+  assert.equal(learningModels.consistent, true);
+  assert.equal(learningModels.counts.authorizations, 0);
+  assert.equal(learningModels.quotas.authorizations_today.remaining, 20);
+  console.log("PASS: packaged learning and model authorization metadata audits");
   const feedAudit = JSON.parse(await compose(["exec", "-T", "api-server", "feed-operations", "audit", "--user", owner.id], true));
   assert.equal(feedAudit.consistent, true);
   assert.equal(feedAudit.counts.collections, 0);
