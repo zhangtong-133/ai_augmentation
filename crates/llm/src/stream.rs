@@ -121,3 +121,14 @@ impl TextAssembly {
 
 #[cfg(test)]
 mod tests;
+
+/// Trusted, synchronous notification port. Implementations must return promptly,
+/// must not block on consumers, and must never treat deltas as validated output.
+pub trait TextDeltaSink: Send + Sync {
+    fn delta(&self, text: &str);
+}
+
+pub struct IgnoreTextDeltas;
+impl TextDeltaSink for IgnoreTextDeltas {
+    fn delta(&self, _: &str) {}
+}
