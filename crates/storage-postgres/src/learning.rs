@@ -22,6 +22,7 @@ use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
 mod evidence;
 mod model_authorization;
+mod model_execution;
 mod model_review;
 mod plans;
 mod progress;

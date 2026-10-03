@@ -43,7 +43,7 @@ async fn state(
     status: &str,
 ) -> StorageResult<()> {
     sqlx::query(
-        "UPDATE learning_model_authorizations SET status=$3 WHERE user_id=$1 AND request_id=$2",
+        "UPDATE learning_model_authorizations SET status=$3,advice=NULL WHERE user_id=$1 AND request_id=$2",
     )
     .bind(owner)
     .bind(request)
@@ -53,7 +53,7 @@ async fn state(
     .map_err(map_error)?;
     Ok(())
 }
-async fn read(
+pub(super) async fn read(
     tx: &mut PgConnection,
     owner: Uuid,
     request: Uuid,
@@ -84,11 +84,22 @@ async fn read(
             .map(number)
             .transpose()?,
         preview: None,
+        advice: None,
     };
-    if !matches!(item.status.as_str(), "draft" | "authorized") {
+    if !matches!(
+        item.status.as_str(),
+        "draft" | "authorized" | "running" | "succeeded"
+    ) {
         return Ok(item);
     }
-    if integer(item.expires_at_unix_ms)? <= time {
+    if item.status == "running"
+        && r.get::<Option<i64>, _>("dispatch_deadline_ms")
+            .is_none_or(|deadline| deadline <= time)
+    {
+        item.status = "unknown".into();
+    } else if matches!(item.status.as_str(), "draft" | "authorized")
+        && integer(item.expires_at_unix_ms)? <= time
+    {
         item.status = "expired".into();
     } else {
         let current = async {
@@ -112,7 +123,27 @@ async fn read(
         }
         .await;
         match current {
-            Ok(preview) => item.preview = Some(preview),
+            Ok(preview) => {
+                if item.status == "succeeded" {
+                    let advice = r
+                        .get::<Option<serde_json::Value>, _>("advice")
+                        .and_then(|v| {
+                            personal_ai_learning::model_review::validate_response(
+                                &preview,
+                                &v.to_string(),
+                            )
+                            .ok()
+                        });
+                    if advice.is_none() {
+                        item.status = "invalidated".into();
+                    } else {
+                        item.advice = advice;
+                        item.preview = Some(preview);
+                    }
+                } else {
+                    item.preview = Some(preview);
+                }
+            }
             Err(StorageError::Conflict(_) | StorageError::NotFound) => {
                 item.status = "invalidated".into();
             }
@@ -184,6 +215,7 @@ pub(super) async fn create(
         expires_at_unix_ms: number(expires)?,
         approved_at_unix_ms: None,
         preview: None,
+        advice: None,
     };
     item.digest = digest(owner, &item, &preview.input().input_digest)?;
     sqlx::query("INSERT INTO learning_model_authorizations(user_id,request_id,plan_id,task_id,connection_id,connection_revision,model,input_digest,digest,status,created_ms,expires_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11)")
@@ -242,7 +274,11 @@ pub(super) async fn approve(
     let mut tx = locked(store, owner).await?;
     let time = now(&mut tx).await?;
     let mut item = read(&mut tx, owner, request, time).await?;
-    if !matches!(item.status.as_str(), "draft" | "authorized") || item.digest != input.digest {
+    if !matches!(
+        item.status.as_str(),
+        "draft" | "authorized" | "running" | "succeeded"
+    ) || item.digest != input.digest
+    {
         tx.commit().await.map_err(map_error)?;
         return Err(conflict());
     }
@@ -262,10 +298,14 @@ pub(super) async fn cancel(
     let mut tx = locked(store, owner).await?;
     let time = now(&mut tx).await?;
     let mut item = read(&mut tx, owner, request, time).await?;
-    if matches!(item.status.as_str(), "draft" | "authorized") {
+    if matches!(
+        item.status.as_str(),
+        "draft" | "authorized" | "running" | "succeeded"
+    ) {
         state(&mut tx, owner, request, "cancelled").await?;
         item.status = "cancelled".into();
         item.preview = None;
+        item.advice = None;
     }
     tx.commit().await.map_err(map_error)?;
     Ok(item)
