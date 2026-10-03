@@ -8,7 +8,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，待接入评分页面和 API 金额预留。当前日报仍使用关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，待接入 API 金额预留。当前日报仍使用关键词规则评分。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
@@ -16,11 +16,13 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
+- [x] [RSS 评分授权与结果页面](design/rss-value-ui.md)：连接/模型选择、冻结内容与双重同意、取消、评分/审计、原请求故障恢复及账户隔离；本机显式执行。
+
 - [x] [RSS 用户评分 HTTP](design/rss-value-http.md)：私有预览、精确分享/订阅用量同意、取消、结果及审计；双代理接入，模型仍由本地命令显式执行。
 
-- [x] [RSS 本地订阅评分](design/rss-value-local.md)：锁定本地身份、兼容订阅的流式传输、预览/精确批准/单独执行/查询/取消；真实 Pro 账户待验证，Web 评分入口待接入。
+- [x] [RSS 本地订阅评分](design/rss-value-local.md)：锁定本地身份、兼容订阅的流式传输、预览/精确批准/单独执行/查询/取消；真实 Pro 账户待验证，Web 授权/结果页面已接入。
 
-- [x] [订阅评分内部执行器](design/rss-value-execution.md)：持久化单次领取、发送前身份复核、取消栅栏、严格结果写回及未知结果不重派；已接入本地运行时和显式命令，Web 用户入口待接入。
+- [x] [订阅评分内部执行器](design/rss-value-execution.md)：持久化单次领取、发送前身份复核、取消栅栏、严格结果写回及未知结果不重派；已接入本地运行时和显式命令，Web 授权/查询入口已接入。
 
 - [x] [订阅连接管理页面](design/subscription-connections-ui.md)：私有列表/详情、明确撤销、版本冲突重新确认和未知结果核对；双入口浏览器验收。
 

@@ -1,6 +1,6 @@
 # RSS 评分预览与用量授权仓储
 
-在[评分协议](rss-value-protocol.md)之上新增内部 `FeedValueStore` 和迁移 `0033_feed_value_reviews.sql`，保存用户范围内的不可变候选快照、使用模式、费用或订阅额度同意、取消和审计。已提供[用户评分 HTTP](rss-value-http.md)，当前没有评分页面或金额预留；订阅模式已增加[内部执行领取和发送复核](rss-value-execution.md)。
+在[评分协议](rss-value-protocol.md)之上新增内部 `FeedValueStore` 和迁移 `0033_feed_value_reviews.sql`，保存用户范围内的不可变候选快照、使用模式、费用或订阅额度同意、取消和审计。已提供[用户评分 HTTP](rss-value-http.md)，已接入[评分页面](rss-value-ui.md)，当前没有金额预留；订阅模式已增加[内部执行领取和发送复核](rss-value-execution.md)。
 
 ## 两种使用模式
 

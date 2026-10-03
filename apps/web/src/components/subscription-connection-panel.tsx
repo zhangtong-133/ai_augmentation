@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-type Connection = { id: string; label: string; revision: string; status: "active" | "expired" | "revoked"; models: string[]; valid_until_unix_ms: string };
+export type Connection = { id: string; label: string; revision: string; status: "active" | "expired" | "revoked"; models: string[]; valid_until_unix_ms: string };
 type Review = { item: Connection; uncertain: boolean };
 const endpoint = "/api/subscription-connections";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-function connection(value: unknown): Connection {
+export function connection(value: unknown): Connection {
   const item = value as Connection;
   if (!item || typeof item.id !== "string" || !uuid.test(item.id) || typeof item.label !== "string" || !item.label || item.label.length > 64
     || typeof item.revision !== "string" || !/^[1-9]\d{0,3}$/.test(item.revision) || Number(item.revision) > 1000

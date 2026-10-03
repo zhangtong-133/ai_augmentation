@@ -188,3 +188,7 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
 .webSearchPanel input[type="checkbox"] { width: auto; margin-right: 8px; }
 .webSearchPanel a { color: var(--acid); }
 .webSearchPanel a:focus-visible { outline: 2px solid var(--acid); outline-offset: 3px; }
+
+.feedValuePanel fieldset { min-width: 0; border: 1px solid var(--line); padding: 16px; }
+.feedValuePanel label { display: block; margin: 12px 0; }
+.feedValuePanel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; padding: 12px; background: var(--surface); }

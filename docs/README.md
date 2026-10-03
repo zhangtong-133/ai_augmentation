@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [RSS 评分授权与结果页面](design/rss-value-ui.md)：连接/模型选择、精确双重同意、未知结果核对和私有评分展示。
+
 - [RSS 用户评分 HTTP](design/rss-value-http.md)：会话范围内的预览、精确批准、取消、私有结果和审计；网页不执行模型。
 
 - [RSS 本地订阅评分](design/rss-value-local.md)：本地身份锁、订阅流式请求及显式预览/批准/执行/查询/取消命令。
