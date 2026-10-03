@@ -235,3 +235,56 @@ fn no_explicit_preferences_means_no_model_request() {
             .is_none()
     );
 }
+
+#[test]
+fn reading_maps_frozen_content_without_changing_rule_order_or_sharing() {
+    let p = plan(&[entry(1), entry(2), entry(3), entry(4)])
+        .unwrap()
+        .unwrap();
+    let original_digest = p.digest().to_owned();
+    let original_input = p.request().messages[1].content.clone();
+    let scores: Vec<Score> = serde_json::from_value(json!([
+        score(4, None),
+        score(3, Some(80)),
+        score(1, Some(0)),
+        score(2, Some(80))
+    ]))
+    .unwrap();
+    let reading = value_reading_items(&p, &scores).unwrap();
+    assert_eq!(
+        reading.iter().map(|i| i.id).collect::<Vec<_>>(),
+        [2, 3, 1, 4]
+    );
+    assert_eq!(reading[2].model_score, Some(0));
+    assert_eq!(reading[3].model_score, None);
+    for item in &reading {
+        let original = &p.brief().items[item.id - 1];
+        assert_eq!(item.title, original.entry.title);
+        assert_eq!(item.summary, original.entry.summary);
+        assert_eq!(item.link, original.entry.link);
+        assert_eq!(item.rule_score, original.score);
+    }
+    let encoded = serde_json::to_string(&reading).unwrap();
+    for field in ["user_id", "subscription_id", "entry_key", "private-date"] {
+        assert!(!encoded.contains(field));
+    }
+    assert_eq!(p.digest(), original_digest);
+    assert_eq!(p.request().messages[1].content, original_input);
+}
+#[test]
+fn reading_rejects_partial_or_corrupt_scores_instead_of_mixing_results() {
+    let p = plan(&[entry(1), entry(2)]).unwrap().unwrap();
+    for input in [
+        json!([score(1, Some(90))]),
+        json!([score(1, Some(90)), score(1, Some(80))]),
+        json!([score(1, Some(90)), score(3, Some(80))]),
+        json!([score(1, Some(101)), score(2, Some(80))]),
+        json!([score(1, None), {"id":2,"score":null,"reason":""}]),
+    ] {
+        let scores = serde_json::from_value::<Vec<Score>>(input).unwrap();
+        assert_eq!(
+            value_reading_items(&p, &scores).err(),
+            Some(ValueError::InvalidOutput)
+        );
+    }
+}

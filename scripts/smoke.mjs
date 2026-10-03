@@ -367,7 +367,23 @@ try {
     assert.equal(cancelledValue.status, "cancelled"); assert.equal(cancelledValue.shared_content, null);
     assert.equal((await request(base, `${valuePath}/audit`, 200, { cookie })).data.items.at(-1).event, "cancelled");
     await request(base, `${valuePath}/approve`, 409, { method: "POST", cookie, body: valueConsent });
+    const readingValue = (await request(base, "/api/feed-values", 200, { method: "POST", cookie, body: { ...valueInput, id: randomUUID() } })).data;
+    const readingPath = `/api/feed-values/${readingValue.id}/reading`;
+    await request(base, readingPath, 401);
+    await request(base, readingPath, 404, { cookie: otherCookie });
+    await request(base, readingPath, 409, { cookie });
+    await request(base, `${readingPath}?order=untrusted`, 400, { cookie });
+    await request(base, `/api/feed-values/${readingValue.id}/approve`, 200, { method: "POST", cookie, body: { ...valueConsent, digest: readingValue.digest } });
+    // 只为读取投影设置已完成数据库夹具；真实一次性执行链路由 Rust 集成用例覆盖。
+    await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
+      `UPDATE feed_value_reviews SET status='succeeded', dispatch_token='${randomUUID()}', dispatch_deadline_ms=expires_ms, sent_ms=approved_ms, scores='[{"id":1,"score":80,"reason":"Rust relevance"}]' WHERE user_id='${owner.id}' AND id='${readingValue.id}'`]);
+    const reading = (await request(base, readingPath, 200, { cookie })).data;
+    assert.equal(reading.id, readingValue.id); assert.equal(reading.digest, readingValue.digest);
+    assert.equal(reading.items[0].summary, "Learning Rust"); assert.equal(reading.items[0].model_score, 80);
+    assert.equal(reading.items[0].rule_score, 52); assert.equal(typeof reading.as_of_unix_ms, "string");
     await request(base, `/api/feed-subscriptions/${valueSource}`, 200, { method: "DELETE", cookie, body: { revision: "1" } });
+    const unavailableReading = (await request(base, readingPath, 409, { cookie })).data;
+    assert(!JSON.stringify(unavailableReading).includes("Learning Rust"));
     const path = `/api/subscription-connections/${connection}`;
     await request(base, "/api/subscription-connections", 401);
     const page = await request(base, "/api/subscription-connections", 200, { cookie });

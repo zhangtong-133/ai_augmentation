@@ -157,5 +157,46 @@ pub fn decode_value_scores(
     Ok(result)
 }
 
+/// 已完成评分的只读阅读投影；不复制身份、订阅地址或执行凭据。
+#[derive(Clone, Serialize)]
+pub struct ValueReadingItem {
+    /// 原规则候选序号，同时是完整评分协议中的临时编号。
+    pub id: usize,
+    pub title: String,
+    pub summary: String,
+    pub link: Option<String>,
+    pub rule_score: u16,
+    pub model_score: Option<u8>,
+    pub reason: String,
+}
+
+/// 复核完整评分后按模型分数排序；null 最后，同分按原规则名次。
+/// 仅从同一冻结计划映射内容，绝不加载新候选或改写原规则日报。
+/// # Errors
+/// 存储评分缺失、重复、越界或理由不合法时整体拒绝。
+pub fn value_reading_items(
+    plan: &ValueScoringPlan,
+    scores: &[Score],
+) -> Result<Vec<ValueReadingItem>, ValueError> {
+    let encoded = serde_json::to_vec(&serde_json::json!({"items":scores}))
+        .map_err(|_| ValueError::InvalidOutput)?;
+    let scores = decode_value_scores(plan, &encoded)?;
+    Ok(scores
+        .into_iter()
+        .map(|s| {
+            let item = &plan.brief.items[s.id - 1];
+            ValueReadingItem {
+                id: s.id,
+                title: item.entry.title.clone(),
+                summary: item.entry.summary.clone(),
+                link: item.entry.link.clone(),
+                rule_score: item.score,
+                model_score: s.score,
+                reason: s.reason,
+            }
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests;

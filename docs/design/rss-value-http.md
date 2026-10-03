@@ -9,6 +9,7 @@
 | `POST /api/feed-values` | `id`、`connection_id`、`connection_revision`、`model` | 从当前用户数据库候选生成不可变预览 |
 | `GET /api/feed-values` | 可选 `after=UUID` | UUID 升序，每页 20 条摘要及 next_cursor |
 | `GET /api/feed-values/{id}` | 无 | 私有详情、精确分享内容、候选映射和已校验评分 |
+| `GET /api/feed-values/{id}/reading` | 无 | 已完成评分的私有阅读投影，含摘要、原文链接与两种分数 |
 | `GET /api/feed-values/{id}/audit` | 无 | 私有状态/时间审计 |
 | `POST /api/feed-values/{id}/approve` | `digest`、`acknowledge_sharing`、`acknowledge_subscription_usage` | 精确摘要与两项明确同意，不执行模型 |
 | `POST /api/feed-values/{id}/cancel` | 空对象 `{}` | 幂等取消尚未完成的计划并清除内容 |

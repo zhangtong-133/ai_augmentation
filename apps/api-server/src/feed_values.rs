@@ -27,6 +27,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/api/feed-values", get(list).post(preview))
         .route("/api/feed-values/{id}", get(detail))
         .route("/api/feed-values/{id}/audit", get(audit))
+        .route("/api/feed-values/{id}/reading", get(reading))
         .route("/api/feed-values/{id}/approve", post(approve))
         .route("/api/feed-values/{id}/cancel", post(cancel))
         .layer(middleware::from_fn(no_store))
@@ -178,6 +179,44 @@ async fn detail(
         .await
         .map_err(error)?;
     Ok(Json(full(&owner.id, &saved)?).into_response())
+}
+async fn reading(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(key): Path<String>,
+    query: Result<Query<Empty>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let owner = auth::current_user(&state, &headers).await?;
+    query.map_err(|_| invalid())?;
+    let saved = runtime(&state)?
+        .get_feed_value(&owner.id, &id(&key)?)
+        .await
+        .map_err(error)?;
+    if saved.status != "succeeded" {
+        return Err(ApiError(StatusCode::CONFLICT, "feed_value_not_readable"));
+    }
+    let corrupt = || ApiError(StatusCode::SERVICE_UNAVAILABLE, "feed_values_unavailable");
+    let snapshot = saved.snapshot.as_ref().ok_or_else(corrupt)?;
+    let scores = saved.scores.as_ref().ok_or_else(corrupt)?;
+    let plan = personal_ai_agent_core::feed_value::plan_value_scoring(
+        &owner.id,
+        &saved.request_id,
+        snapshot.day_start_unix_ms,
+        snapshot.as_of_unix_ms,
+        &snapshot.keywords,
+        &snapshot.candidates,
+    )
+    .map_err(|_| corrupt())?
+    .ok_or_else(corrupt)?;
+    let items = personal_ai_agent_core::feed_value::value_reading_items(&plan, scores)
+        .map_err(|_| corrupt())?;
+    Ok(Json(json!({
+        "id":saved.request_id,"digest":saved.digest,"status":"succeeded",
+        "day_start_unix_ms":snapshot.day_start_unix_ms.to_string(),
+        "as_of_unix_ms":snapshot.as_of_unix_ms.to_string(),
+        "keywords":plan.brief().keywords,"items":items,
+    }))
+    .into_response())
 }
 async fn audit(
     State(state): State<AppState>,

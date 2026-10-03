@@ -35,7 +35,7 @@ async fn setup() -> (Fixture, String) {
         .claim_collection(&f.owner, &preview.plan.request_id, &preview.digest)
         .await
         .unwrap();
-    f.store.finish_collection(&claim,CollectionOutcome::Response(b"<rss version=\"2.0\"><channel><title>News</title><description>News</description><link>https://example.com/</link><item><guid>one</guid><title>Rust &lt;script&gt;title&lt;/script&gt;</title><description>Rust summary</description></item></channel></rss>".to_vec())).await.unwrap();
+    f.store.finish_collection(&claim,CollectionOutcome::Response(b"<rss version=\"2.0\"><channel><title>News</title><description>News</description><link>https://example.com/</link><item><guid>one</guid><title>Rust &lt;script&gt;title&lt;/script&gt;</title><description>Rust summary</description><link>https://example.com/read</link></item></channel></rss>".to_vec())).await.unwrap();
     f.store
         .save_brief_preferences(&f.owner, 0, &["Rust".into()])
         .await
@@ -79,6 +79,7 @@ async fn value_http_requires_private_exact_consent_and_reads_completed_results()
     for (method, url, body) in [
         ("GET", path.clone(), json!({})),
         ("GET", format!("{path}/audit"), json!({})),
+        ("GET", format!("{path}/reading"), json!({})),
         ("POST", format!("{path}/approve"), approve(&saved)),
         ("POST", format!("{path}/cancel"), json!({})),
     ] {
@@ -88,6 +89,16 @@ async fn value_http_requires_private_exact_consent_and_reads_completed_results()
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
         assert_eq!(response.headers()["cache-control"], "no-store");
     }
+    assert_eq!(
+        f.call("GET", &format!("{path}/reading"), json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        f.call("GET", &format!("{path}/reading?owner=forged"), json!({}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
     let mut wrong = approve(&saved);
     wrong["acknowledge_subscription_usage"] = json!(false);
     assert_eq!(
@@ -147,6 +158,46 @@ async fn value_http_requires_private_exact_consent_and_reads_completed_results()
     assert_eq!(complete["status"], "succeeded");
     assert!(complete["scores"][0]["score"].is_null());
     assert_eq!(complete["candidates"][0]["id"], 1);
+    let (status, reading) = f.call("GET", &format!("{path}/reading"), json!({})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(reading["id"], complete["id"]);
+    assert_eq!(reading["digest"], complete["digest"]);
+    assert!(reading["as_of_unix_ms"].is_string());
+    assert_eq!(reading["keywords"], json!(["rust"]));
+    assert_eq!(
+        reading["items"][0]["title"],
+        complete["candidates"][0]["title"]
+    );
+    assert_eq!(reading["items"][0]["summary"], "Rust summary");
+    assert_eq!(reading["items"][0]["link"], "https://example.com/read");
+    assert_eq!(reading["items"][0]["rule_score"], 52);
+    assert!(reading["items"][0]["model_score"].is_null());
+    for private in [
+        "private=secret",
+        "user_id",
+        "host_id",
+        "subscription_id",
+        "dispatch_token",
+    ] {
+        assert!(!reading.to_string().contains(private));
+    }
+    sqlx::query("UPDATE feed_value_reviews SET scores='[]'::jsonb WHERE user_id=$1 AND id=$2")
+        .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+        .bind(Uuid::parse_str(key).unwrap())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        f.call("GET", &format!("{path}/reading"), json!({})).await.0,
+        StatusCode::SERVICE_UNAVAILABLE
+    );
+    sqlx::query("UPDATE feed_value_reviews SET scores=$3 WHERE user_id=$1 AND id=$2")
+        .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+        .bind(Uuid::parse_str(key).unwrap())
+        .bind(&complete["scores"])
+        .execute(&f.pool)
+        .await
+        .unwrap();
     let (_, audit) = f.call("GET", &format!("{path}/audit"), json!({})).await;
     assert!(
         audit["items"]
@@ -165,6 +216,9 @@ async fn value_http_requires_private_exact_consent_and_reads_completed_results()
         .unwrap();
     let (_, cleared) = f.call("GET", &path, json!({})).await;
     assert_eq!(cleared["status"], "invalidated");
+    let (status, unavailable) = f.call("GET", &format!("{path}/reading"), json!({})).await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(!unavailable.to_string().contains("Rust summary"));
     assert!(
         cleared["shared_content"].is_null()
             && cleared["candidates"].is_null()
@@ -279,6 +333,7 @@ async fn value_http_checks_session_and_csrf_before_optional_runtime() {
         ("GET", "/api/feed-values".into(), json!({})),
         ("GET", format!("/api/feed-values/{id}"), json!({})),
         ("GET", format!("/api/feed-values/{id}/audit"), json!({})),
+        ("GET", format!("/api/feed-values/{id}/reading"), json!({})),
         ("POST", "/api/feed-values".into(), create),
         ("POST", format!("/api/feed-values/{id}/approve"), consent),
         ("POST", format!("/api/feed-values/{id}/cancel"), json!({})),
