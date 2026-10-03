@@ -19,3 +19,6 @@ export type Operation = { path: string; lookup: string; method: string; body: ob
 export const statuses = { ready: "已生成", invalidated: "来源已删除，计划已失效", deleted: "已删除" };
 export const states: Record<string, string> = { unavailable: "不可用", blocked: "前置技能未满足", needs_assessment: "待自评", needs_practice: "待练习", satisfied: "已达到自评目标" };
 export function date(value: string) { const d = new Date(Number(value)); return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 16).replace("T", " ") + " UTC" : "日期不可显示"; }
+
+export type ModelReviewPreview = { protocol_version: string; system_prompt: string; input: { input_digest: string; skill_name: string; task_instructions: string; evidence: EvidenceBody } };
+export type ModelPreviewLoader = (path: string, accept: (preview: ModelReviewPreview) => void) => void;

@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { LearningEvidenceForm } from "./learning-evidence-form";
 import { LearningEvidenceReview } from "./learning-evidence-review";
-import { type Skill, type Operation, type SavedPlan, type Task, statuses, states, date } from "./learning-types";
+import { type ModelPreviewLoader, type Skill, type Operation, type SavedPlan, type Task, statuses, states, date } from "./learning-types";
 function ResultForm({ task, path, locked, submit }: { task: Task; path: string; locked: boolean; submit: (o: Operation) => void }) {
   const [note, setNote] = useState("");
   const [minutes, setMinutes] = useState(String(task.target_minutes));
@@ -19,7 +19,7 @@ function ResultForm({ task, path, locked, submit }: { task: Task; path: string; 
     </div>}
   </div>;
 }
-export function LearningPlanView({ saved, skills, snapshotRevision, locked, inspect, submit }: { snapshotRevision?: string; skills: Skill[]; saved: SavedPlan; locked: boolean; inspect: (p: string) => void; submit: (o: Operation) => void }) {
+export function LearningPlanView({ saved, skills, snapshotRevision, locked, inspect, loadPreview, submit }: { loadPreview: ModelPreviewLoader; snapshotRevision?: string; skills: Skill[]; saved: SavedPlan; locked: boolean; inspect: (p: string) => void; submit: (o: Operation) => void }) {
   const [deleting, setDeleting] = useState(false);
   const path = `/api/learning/plans/${saved.request_id}`;
   return <div className="feedReview" aria-label="学习计划详情"><h3>{statuses[saved.status]} · {date(saved.created_at_unix_ms)}</h3>
@@ -35,7 +35,7 @@ export function LearningPlanView({ saved, skills, snapshotRevision, locked, insp
         const noteId = `training-note-${task.task_id}`;
         return <li key={task.task_id}><h4>{task.title}</h4><p>{task.instructions}</p><p>{task.kind === "self_assessment" ? "自评准备" : "练习"} · 建议 {task.target_minutes} 分钟 · 自评参考目标 {task.target_score} 分</p>
           {result ? <div id={noteId} tabIndex={-1}><p>{result.outcome === "completed" ? "已记录完成" : "已取消训练"} · {result.actual_minutes} 分钟 · {date(result.recorded_at_unix_ms)}</p><p className="feedText">{result.note || "未填写记录"}</p></div> : <ResultForm task={task} path={path} locked={locked || saved.source_assessments_available === false} submit={submit} />}
-          {result?.outcome === "completed" && <LearningEvidenceForm evidence={result.evidence} snapshotRevision={snapshotRevision} path={`${path}/tasks/${task.task_id}/evidence`} lookup={path} locked={locked} current={saved.source_assessments_available !== false && skills.some(s => s.skill_id === task.skill_id && s.revision === task.skill_revision && s.enabled && !s.deleted)} submit={submit} />}
+          {result?.outcome === "completed" && <LearningEvidenceForm loadPreview={loadPreview} evidence={result.evidence} snapshotRevision={snapshotRevision} path={`${path}/tasks/${task.task_id}/evidence`} lookup={path} locked={locked} current={saved.source_assessments_available !== false && skills.some(s => s.skill_id === task.skill_id && s.revision === task.skill_revision && s.enabled && !s.deleted)} submit={submit} />}
           {review && <LearningEvidenceReview review={review} noteId={noteId} />}
         </li>;
       })}</ol>

@@ -323,3 +323,33 @@ test("revoked plan sources disable new work while keeping explicit deletion avai
   await expect(detail.getByRole("button", { name: "取消这项训练", exact: true })).toBeDisabled();
   await expect(detail.getByRole("button", { name: "删除学习计划", exact: true })).toBeEnabled();
 });
+
+test("model sharing preview is explicit, read only, and cleared with its evidence", async ({ page }, testInfo) => {
+  const { detail } = await prepareEvidenceReview(page);
+  const preview = detail.getByRole("region", { name: "模型分享预览", exact: true });
+  await expect(preview.getByText("模型分享预览（未发送）", { exact: true })).toHaveCount(0);
+  await preview.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  await expect(preview.getByText("模型分享预览（未发送）", { exact: true })).toBeVisible();
+  await expect(preview.locator("pre")).toContainText("learning-model-review-v1");
+  await expect(preview.locator("pre")).toContainText("概念解释的材料");
+  await expect(preview.locator("pre")).toContainText("用户核验技能");
+  const screenshot = testInfo.outputPath("model-review-preview.png");
+  await preview.screenshot({ path: screenshot });
+  await testInfo.attach("model-review-preview", { path: screenshot, contentType: "image/png" });
+  await preview.getByRole("button", { name: "关闭分享预览", exact: true }).click();
+  await expect(preview.locator("pre")).toHaveCount(0);
+  await preview.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  await expect(preview.locator("pre")).toBeVisible();
+  await detail.getByRole("button", { name: "删除结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认删除证据", exact: true }).click();
+  await expect(preview).toHaveCount(0);
+});
+
+test("expired model preview request clears private learning data", async ({ page }) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  await page.route("**/api/learning/plans/*/tasks/*/evidence/model-preview", route => route.fulfill({ status: 401, json: { error: { code: "unauthorized" } } }));
+  await detail.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  await expect(panel.getByText("登录已失效，请重新登录。", { exact: true })).toBeVisible();
+  await expect(detail).toHaveCount(0);
+  await expect(panel.getByText("概念解释的材料", { exact: true })).toHaveCount(0);
+});
