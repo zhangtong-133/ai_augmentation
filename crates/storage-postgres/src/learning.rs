@@ -7,6 +7,9 @@ use personal_ai_learning::planning::{
     LEARNING_VERSION, LearningPlan, LearningRequest, SelfAssessment, SkillNode,
     normalize_skill_graph, plan_learning,
 };
+use personal_ai_storage::learning::model_authorization::{
+    ModelApproval, ModelAuthorization, ModelAuthorizationInput, ModelAuthorizationPage,
+};
 use personal_ai_storage::{
     BoxFuture, StorageError, StorageResult,
     learning::{
@@ -18,6 +21,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
 mod evidence;
+mod model_authorization;
 mod model_review;
 mod plans;
 mod progress;
@@ -109,6 +113,54 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn create_model_authorization(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &ModelAuthorizationInput,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(plan), id(task));
+        let input = input.clone();
+        Box::pin(async move {
+            model_authorization::create(self, keys.0?, keys.1?, keys.2?, input).await
+        })
+    }
+    fn get_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(request));
+        Box::pin(async move { model_authorization::get(self, keys.0?, keys.1?).await })
+    }
+    fn list_model_authorizations(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorizationPage>> {
+        let owner = id(owner.as_str());
+        let after = after.map(id).transpose();
+        Box::pin(async move { model_authorization::list(self, owner?, after?).await })
+    }
+    fn approve_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+        input: &ModelApproval,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(request));
+        let input = input.clone();
+        Box::pin(async move { model_authorization::approve(self, keys.0?, keys.1?, input).await })
+    }
+    fn cancel_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(request));
+        Box::pin(async move { model_authorization::cancel(self, keys.0?, keys.1?).await })
+    }
     fn preview_training_model_review(
         &self,
         owner: &UserId,

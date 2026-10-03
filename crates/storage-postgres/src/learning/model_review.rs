@@ -13,7 +13,17 @@ pub(super) async fn preview(
     task: Uuid,
 ) -> StorageResult<ModelReviewPreview> {
     let mut tx = locked(store, owner).await?;
-    let saved = plans::read(&mut tx, owner, plan).await?;
+    let preview = read(&mut tx, owner, plan, task).await?;
+    tx.commit().await.map_err(map_error)?;
+    Ok(preview)
+}
+pub(super) async fn read(
+    tx: &mut sqlx::PgConnection,
+    owner: Uuid,
+    plan: Uuid,
+    task: Uuid,
+) -> StorageResult<ModelReviewPreview> {
+    let saved = plans::read(tx, owner, plan).await?;
     let definition = saved.plan.as_ref().ok_or_else(conflict)?;
     if !saved.source_assessments_available {
         return Err(conflict());
@@ -60,6 +70,5 @@ pub(super) async fn preview(
         },
     )
     .map_err(|_| invalid())?;
-    tx.commit().await.map_err(map_error)?;
     Ok(preview)
 }

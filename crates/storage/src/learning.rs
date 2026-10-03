@@ -1,5 +1,6 @@
 //! 当前用户的技能、自评和不可变训练计划；无执行、模型或通知副作用。
 pub mod evidence;
+pub mod model_authorization;
 pub mod review;
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
@@ -95,6 +96,35 @@ pub trait LearningStore: Send + Sync {
         task: &str,
         input: &review::ReviewConfirmation,
     ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
+
+    fn create_model_authorization(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &model_authorization::ModelAuthorizationInput,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>>;
+    fn get_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>>;
+    fn list_model_authorizations(
+        &self,
+        owner: &UserId,
+        after: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorizationPage>>;
+    fn approve_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+        input: &model_authorization::ModelApproval,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>>;
+    fn cancel_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>>;
 
     fn preview_training_model_review(
         &self,
