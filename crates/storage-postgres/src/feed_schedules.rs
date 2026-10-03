@@ -42,7 +42,11 @@ async fn expire(tx: &mut PgConnection, owner: Uuid, time: i64) -> StorageResult<
         .bind(owner).bind(time).execute(tx).await.map_err(map_error)?;
     Ok(())
 }
-async fn read(tx: &mut PgConnection, owner: Uuid, schedule: Uuid) -> StorageResult<FeedSchedule> {
+pub(super) async fn read(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    schedule: Uuid,
+) -> StorageResult<FeedSchedule> {
     let row = sqlx::query("SELECT * FROM feed_schedules WHERE user_id=$1 AND id=$2")
         .bind(owner)
         .bind(schedule)
@@ -238,3 +242,5 @@ impl FeedScheduleStore for PostgresStore {
         })
     }
 }
+
+mod execution;

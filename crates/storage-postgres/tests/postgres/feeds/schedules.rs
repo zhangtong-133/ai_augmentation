@@ -2,7 +2,7 @@ use super::*;
 use personal_ai_feeds::schedule::{ScheduleInput, SchedulePlan};
 use personal_ai_storage::feed_schedules::{FeedSchedule, FeedScheduleStatus, FeedScheduleStore};
 
-async fn draft(f: &Fixture, sub: &Subscription) -> FeedSchedule {
+pub(super) async fn draft(f: &Fixture, sub: &Subscription) -> FeedSchedule {
     let time: i64 =
         sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint")
             .fetch_one(&f.pool)

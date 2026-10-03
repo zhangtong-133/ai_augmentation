@@ -6,7 +6,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] 自动 RSS 采集：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，时段领取、执行器及页面尚未接入；目前采集仍需显式手动发起。
+- [ ] 自动 RSS 采集：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，后台扫描、运行入口及页面尚未接入；目前产品采集仍需显式手动发起。
 - [ ] AI 信息价值评分：目前使用可解释的关键词规则评分，不调用模型评判。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
@@ -14,6 +14,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [周期 RSS 单次领取与内部执行器](design/rss-schedule-execution.md)：时段去重、共享采集额度、发送前复核、取消后结果丢弃与未知结果不重派；尚未接入后台轮询。
 
 - [x] [周期 RSS 采集授权仓储](design/rss-schedule-store.md)：不可变预览、精确同意、并发取消/订阅变更作废、到期回收、配额、分页和私有审计；尚不执行采集。
 

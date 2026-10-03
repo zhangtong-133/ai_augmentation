@@ -109,3 +109,5 @@
 - [自动 RSS 授权与时段规划](design/rss-schedule-planning.md)：有期限精确同意、频率/窗口边界与时段去重标识；尚未接入执行。
 
 - [周期 RSS 采集授权仓储](design/rss-schedule-store.md)：不可变预览、同意/取消、订阅变更作废、到期与私有审计；尚未接入执行。
+
+- [周期 RSS 单次领取与内部执行器](design/rss-schedule-execution.md)：持久化时段去重、共享额度、发送复核和结果写回；尚未自动运行。

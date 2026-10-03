@@ -138,7 +138,7 @@ async fn check_active_quota(tx: &mut PgConnection, owner: Uuid) -> StorageResult
     }
     Ok(())
 }
-async fn audit(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResult<()> {
+pub(super) async fn audit(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResult<()> {
     sqlx::query("INSERT INTO feed_collection_audit(user_id,request_id,event,at_ms,reason,inserted,updated,unchanged) SELECT user_id,request_id,status,COALESCE(finished_ms,claimed_ms,created_ms),reason,inserted,updated,unchanged FROM feed_collections WHERE user_id=$1 AND request_id=$2")
         .bind(owner).bind(request).execute(tx).await.map_err(map_error)?;
     Ok(())
@@ -169,6 +169,19 @@ fn page<T>(mut items: Vec<T>, key: impl Fn(&T) -> String) -> FeedPage<T> {
     items.truncate(20);
     let next_cursor = if more { items.last().map(key) } else { None };
     FeedPage { items, next_cursor }
+}
+
+pub(super) async fn check_collection_quota(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    time: i64,
+) -> StorageResult<()> {
+    let quota=sqlx::query("SELECT count(*) FILTER (WHERE claimed_ms>=$2 AND claimed_ms<$2+86400000) AS daily,count(*) FILTER (WHERE status='running') AS running FROM feed_collections WHERE user_id=$1 AND claimed_ms IS NOT NULL")
+        .bind(owner).bind(time/86_400_000*86_400_000).fetch_one(tx).await.map_err(map_error)?;
+    if quota.get::<i64, _>("daily") >= 20 || quota.get::<i64, _>("running") > 0 {
+        return Err(conflict());
+    }
+    Ok(())
 }
 
 impl FeedStore for PostgresStore {
@@ -426,11 +439,7 @@ impl FeedStore for PostgresStore {
                 u64::try_from(time).map_err(|_| invalid())?,
             )
             .map_err(|_| conflict())?;
-            let quota=sqlx::query("SELECT count(*) FILTER (WHERE claimed_ms>=$2 AND claimed_ms<$2+86400000) AS daily,count(*) FILTER (WHERE status='running') AS running FROM feed_collections WHERE user_id=$1 AND claimed_ms IS NOT NULL")
-                .bind(owner).bind(time/86_400_000*86_400_000).fetch_one(&mut *tx).await.map_err(map_error)?;
-            if quota.get::<i64, _>("daily") >= 20 || quota.get::<i64, _>("running") > 0 {
-                return Err(conflict());
-            }
+            check_collection_quota(&mut tx, owner, time).await?;
             let claim = Uuid::new_v4();
             sqlx::query("UPDATE feed_collections SET status='running',accepted_digest=$3,claimed_ms=$4,deadline_ms=$4+60000,claim_id=$5 WHERE user_id=$1 AND request_id=$2")
                 .bind(owner).bind(request).bind(accepted).bind(time).bind(claim).execute(&mut *tx).await.map_err(map_error)?;
@@ -618,6 +627,8 @@ impl PostgresStore {
         }
         let current = read_sub(&mut tx, owner, id(&saved.plan.subscription_id)?).await?;
         let time = now(&mut tx).await?;
+        let scheduled_invalid: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM feed_schedule_occurrences o JOIN feed_schedules s ON s.user_id=o.user_id AND s.id=o.schedule_id WHERE o.user_id=$1 AND o.request_id=$2 AND (o.dispatched_ms IS NULL OR s.status<>'active' OR s.ends_ms<=$3))")
+            .bind(owner).bind(request).bind(time).fetch_one(&mut *tx).await.map_err(map_error)?;
         let mut end = Terminal {
             status: "succeeded",
             reason: None,
@@ -626,7 +637,8 @@ impl PostgresStore {
         if saved.deadline_unix_ms.ok_or_else(conflict)? <= time {
             end.status = "unknown";
             end.reason = Some("execution_expired");
-        } else if current.deleted
+        } else if scheduled_invalid
+            || current.deleted
             || !current.snapshot.enabled
             || current.snapshot.revision != saved.plan.subscription_revision
             || current.snapshot.source_url != saved.plan.source_url

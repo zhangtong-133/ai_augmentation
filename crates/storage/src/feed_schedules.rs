@@ -58,3 +58,17 @@ pub trait FeedScheduleStore: Send + Sync {
         schedule: &str,
     ) -> BoxFuture<'_, StorageResult<Vec<FeedScheduleAudit>>>;
 }
+
+/// 内部周期采集领取与发送栅栏；不从 HTTP 暴露，也不接受客户端计划。
+pub trait FeedScheduleExecutionStore: Send + Sync {
+    fn claim_scheduled_collection(
+        &self,
+        owner: &UserId,
+        schedule: &str,
+    ) -> BoxFuture<'_, StorageResult<crate::feeds::CollectionClaim>>;
+    /// 每份凭据只成功一次；再次检查当前授权、订阅及派发期限。
+    fn dispatch_scheduled_collection(
+        &self,
+        claim: &crate::feeds::CollectionClaim,
+    ) -> BoxFuture<'_, StorageResult<bool>>;
+}

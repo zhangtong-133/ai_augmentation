@@ -58,20 +58,95 @@ impl FeedExecutor {
             .await
             .map_err(|_| FeedExecutionError::OutcomeUnknown)?
             .map_err(FeedExecutionError::Storage)?;
-            let outcome =
-                match tokio::time::timeout(FETCH_TIMEOUT, transport.fetch(&claim.plan.source_url))
-                    .await
-                {
-                    Ok(Ok(bytes)) => CollectionOutcome::Response(bytes),
-                    Err(_) | Ok(Err(FetchError::Timeout | FetchError::Unavailable)) => {
-                        CollectionOutcome::Failure(CollectionFailure::Unknown)
-                    }
-                    Ok(Err(_)) => CollectionOutcome::Failure(CollectionFailure::Transport),
-                };
-            tokio::time::timeout(STORAGE_TIMEOUT, store.finish_collection(&claim, outcome))
+            fetch_and_finish(store, transport, claim).await
+        })
+        .await
+        .map_err(|_| FeedExecutionError::OutcomeUnknown)?
+    }
+}
+
+async fn fetch_and_finish(
+    store: Arc<dyn FeedStore>,
+    transport: Arc<dyn FeedTransport>,
+    claim: personal_ai_storage::feeds::CollectionClaim,
+) -> Result<Collection, FeedExecutionError> {
+    let outcome =
+        match tokio::time::timeout(FETCH_TIMEOUT, transport.fetch(&claim.plan.source_url)).await {
+            Ok(Ok(bytes)) => CollectionOutcome::Response(bytes),
+            Err(_) | Ok(Err(FetchError::Timeout | FetchError::Unavailable)) => {
+                CollectionOutcome::Failure(CollectionFailure::Unknown)
+            }
+            Ok(Err(_)) => CollectionOutcome::Failure(CollectionFailure::Transport),
+        };
+    tokio::time::timeout(STORAGE_TIMEOUT, store.finish_collection(&claim, outcome))
+        .await
+        .map_err(|_| FeedExecutionError::OutcomeUnknown)?
+        .map_err(FeedExecutionError::Storage)
+}
+
+/// 内部周期执行入口；应用启动尚未接入自动轮询。
+pub struct ScheduledFeedExecutor {
+    store: Arc<dyn FeedStore>,
+    schedules: Arc<dyn personal_ai_storage::feed_schedules::FeedScheduleExecutionStore>,
+    transport: Arc<dyn FeedTransport>,
+}
+impl ScheduledFeedExecutor {
+    #[must_use]
+    pub fn new<T>(store: Arc<T>, transport: Arc<dyn FeedTransport>) -> Self
+    where
+        T: FeedStore + personal_ai_storage::feed_schedules::FeedScheduleExecutionStore + 'static,
+    {
+        Self {
+            store: store.clone(),
+            schedules: store,
+            transport,
+        }
+    }
+    /// 仅处理当前时段，先原子领取，再复核发送栅栏；不重试。
+    /// # Errors
+    /// 额度/授权变化、存储提交未知或传输故障时保留一次性账本。
+    pub async fn execute(
+        &self,
+        owner: &UserId,
+        schedule: &str,
+    ) -> Result<Collection, FeedExecutionError> {
+        let permit = SLOTS.try_acquire().map_err(|_| FeedExecutionError::Busy)?;
+        let (store, schedules, transport, owner, schedule) = (
+            self.store.clone(),
+            self.schedules.clone(),
+            self.transport.clone(),
+            owner.clone(),
+            schedule.to_owned(),
+        );
+        tokio::spawn(async move {
+            let _permit = permit;
+            let claim = tokio::time::timeout(
+                STORAGE_TIMEOUT,
+                schedules.claim_scheduled_collection(&owner, &schedule),
+            )
+            .await
+            .map_err(|_| FeedExecutionError::OutcomeUnknown)?
+            .map_err(FeedExecutionError::Storage)?;
+            let allowed = tokio::time::timeout(
+                STORAGE_TIMEOUT,
+                schedules.dispatch_scheduled_collection(&claim),
+            )
+            .await
+            .map_err(|_| FeedExecutionError::OutcomeUnknown)?
+            .map_err(FeedExecutionError::Storage)?;
+            if !allowed {
+                return tokio::time::timeout(
+                    STORAGE_TIMEOUT,
+                    store.finish_collection(
+                        &claim,
+                        CollectionOutcome::Failure(CollectionFailure::Unknown),
+                    ),
+                )
                 .await
                 .map_err(|_| FeedExecutionError::OutcomeUnknown)?
-                .map_err(FeedExecutionError::Storage)
+                .map_err(FeedExecutionError::Storage);
+            }
+            fetch_and_finish(store, transport, claim).await
         })
         .await
         .map_err(|_| FeedExecutionError::OutcomeUnknown)?

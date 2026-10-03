@@ -280,3 +280,36 @@ async fn executor_timeout_and_writeback_failure_do_not_retry_network_or_claim() 
     );
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn scheduled_executor_sends_once_and_retains_unknown_transport_outcomes() {
+    use personal_ai_agent_core::feeds::ScheduledFeedExecutor;
+    let _serial = SERIAL.lock().await;
+    let f = Fixture::new().await;
+    let store = store().await;
+    for mode in [Mode::Success, Mode::Fail(FetchError::Unavailable)] {
+        let sub = f.sub().await;
+        let schedule = super::scheduled_execution::due(&f, &sub).await;
+        let expected = if matches!(&mode, Mode::Success) {
+            CollectionStatus::Succeeded
+        } else {
+            CollectionStatus::Unknown
+        };
+        let transport = Transport::new(mode);
+        let executor = ScheduledFeedExecutor::new(store.clone(), transport.clone());
+        let result = executor
+            .execute(&f.owner, &schedule.plan.input.schedule_id)
+            .await
+            .unwrap();
+        assert_eq!(result.status, expected);
+        assert!(
+            executor
+                .execute(&f.owner, &schedule.plan.input.schedule_id)
+                .await
+                .is_err()
+        );
+        assert_eq!(transport.calls.load(Ordering::SeqCst), 1);
+    }
+    f.cleanup().await;
+}
