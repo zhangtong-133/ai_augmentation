@@ -26,6 +26,27 @@ fn pricing(item: &ModelAuthorization) -> ValuePricing {
     }
 }
 impl SubscriptionReviewRuntime for Runtime<'_> {
+    fn review_observed<'a>(
+        &'a self,
+        item: &'a ModelAuthorization,
+        request: &'a ChatRequest,
+        sink: &'a dyn personal_ai_llm::stream::TextDeltaSink,
+    ) -> BoxFuture<'a, std::result::Result<Vec<u8>, ReviewRuntimeError>> {
+        Box::pin(async move {
+            let registration = self
+                .store
+                .data
+                .accounts
+                .get(self.label)
+                .ok_or(ReviewRuntimeError)?;
+            self.client
+                .score_observed(registration, &item.model, request, sink)
+                .await
+                .map(String::into_bytes)
+                .map_err(|_| ReviewRuntimeError)
+        })
+    }
+
     fn verify<'a>(
         &'a self,
         item: &'a ModelAuthorization,
@@ -136,6 +157,13 @@ pub(super) async fn run(args: &[String]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    struct Sink(std::sync::Mutex<String>);
+    impl personal_ai_llm::stream::TextDeltaSink for Sink {
+        fn delta(&self, text: &str) {
+            self.0.lock().unwrap().push_str(text);
+        }
+    }
+
     #[test]
     fn execution_requires_exact_explicit_flag_and_valid_ids() {
         let owner = uuid::Uuid::new_v4().to_string();
@@ -204,9 +232,11 @@ mod tests {
             temperature: None,
             max_output_tokens: None,
         };
-        SubscriptionReviewRuntime::review(&runtime, &item, &request)
+        let sink = Sink(std::sync::Mutex::new(String::new()));
+        SubscriptionReviewRuntime::review_observed(&runtime, &item, &request, &sink)
             .await
             .unwrap();
+        assert_eq!(*sink.0.lock().unwrap(), "provisional fixture text");
         assert_eq!(client.calls.load(Ordering::SeqCst), 1);
         drop(store);
         std::fs::remove_dir_all(path).unwrap();

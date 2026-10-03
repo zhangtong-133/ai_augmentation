@@ -8,6 +8,16 @@ use personal_ai_storage::{
 };
 
 pub(super) trait ValueClient: Send + Sync {
+    fn score_observed<'a>(
+        &'a self,
+        registration: &'a Registration,
+        model: &'a str,
+        request: &'a ChatRequest,
+        _sink: &'a dyn personal_ai_llm::stream::TextDeltaSink,
+    ) -> BoxFuture<'a, Result<String>> {
+        self.score(registration, model, request)
+    }
+
     fn models<'a>(&'a self, registration: &'a Registration) -> BoxFuture<'a, Result<Vec<String>>>;
     fn score<'a>(
         &'a self,
@@ -17,6 +27,19 @@ pub(super) trait ValueClient: Send + Sync {
     ) -> BoxFuture<'a, Result<String>>;
 }
 impl ValueClient for ChatGptClient {
+    fn score_observed<'a>(
+        &'a self,
+        registration: &'a Registration,
+        model: &'a str,
+        request: &'a ChatRequest,
+        sink: &'a dyn personal_ai_llm::stream::TextDeltaSink,
+    ) -> BoxFuture<'a, Result<String>> {
+        Box::pin(async move {
+            self.score_value_observed(registration, model, request, true, sink)
+                .await
+        })
+    }
+
     fn models<'a>(&'a self, registration: &'a Registration) -> BoxFuture<'a, Result<Vec<String>>> {
         Box::pin(async move {
             self.models(registration)
@@ -112,6 +135,19 @@ pub(super) mod tests {
         pub calls: AtomicUsize,
     }
     impl ValueClient for Client {
+        fn score_observed<'a>(
+            &'a self,
+            registration: &'a Registration,
+            model: &'a str,
+            request: &'a ChatRequest,
+            sink: &'a dyn personal_ai_llm::stream::TextDeltaSink,
+        ) -> BoxFuture<'a, Result<String>> {
+            Box::pin(async move {
+                sink.delta("provisional fixture text");
+                self.score(registration, model, request).await
+            })
+        }
+
         fn models<'a>(&'a self, _: &'a Registration) -> BoxFuture<'a, Result<Vec<String>>> {
             Box::pin(async { Ok(vec!["fixture".into()]) })
         }

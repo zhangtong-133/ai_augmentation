@@ -1,5 +1,7 @@
 use super::{Error, Result};
-use personal_ai_llm::stream::{StreamState, TextAssembly, TextEvent};
+#[cfg(test)]
+use personal_ai_llm::stream::IgnoreTextDeltas;
+use personal_ai_llm::stream::{StreamState, TextAssembly, TextDeltaSink, TextEvent};
 use serde_json::Value;
 
 // Byte buffering preserves UTF-8 even when transport chunks split a code point.
@@ -14,11 +16,19 @@ pub(super) struct TextStream {
     previous_cr: bool,
 }
 impl TextStream {
+    #[cfg(test)]
     pub fn push(&mut self, bytes: &[u8]) -> Result<Option<String>> {
+        self.push_observed(bytes, &IgnoreTextDeltas)
+    }
+    pub fn push_observed(
+        &mut self,
+        bytes: &[u8],
+        sink: &dyn TextDeltaSink,
+    ) -> Result<Option<String>> {
         if self.failed {
             return Err(Error("inference stream already failed"));
         }
-        let result = self.parse(bytes);
+        let result = self.parse(bytes, sink);
         if result.is_err() {
             self.failed = true;
             self.line.clear();
@@ -28,7 +38,7 @@ impl TextStream {
         }
         result
     }
-    fn parse(&mut self, bytes: &[u8]) -> Result<Option<String>> {
+    fn parse(&mut self, bytes: &[u8], sink: &dyn TextDeltaSink) -> Result<Option<String>> {
         self.total = self.total.saturating_add(bytes.len());
         if self.total > 4 * 1024 * 1024 {
             return Err(Error("inference stream too large"));
@@ -44,7 +54,7 @@ impl TextStream {
             self.previous_cr = byte == b'\r';
             if byte == b'\n' || byte == b'\r' {
                 if self.line.is_empty() {
-                    self.dispatch()?;
+                    self.dispatch(sink)?;
                 } else if let Some(data) = self.line.strip_prefix(b"data:") {
                     let data = data.strip_prefix(b" ").unwrap_or(data);
                     self.event.extend_from_slice(data);
@@ -60,7 +70,7 @@ impl TextStream {
         }
         Ok(self.text.take_completed())
     }
-    fn dispatch(&mut self) -> Result<()> {
+    fn dispatch(&mut self, sink: &dyn TextDeltaSink) -> Result<()> {
         if self.event.is_empty() {
             return Ok(());
         }
@@ -77,6 +87,7 @@ impl TextStream {
                     .apply(self.sequence, TextEvent::Delta(delta))
                     .map_err(|_| Error("invalid or oversized text stream"))?;
                 self.sequence += 1;
+                sink.delta(delta);
             }
             Some("response.completed") => {
                 if value.pointer("/response/status").and_then(Value::as_str) != Some("completed") {

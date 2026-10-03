@@ -140,7 +140,7 @@ impl ChatGptClient {
                 "explicit subscription usage consent and bounded input required",
             ));
         }
-        self.response(registration, serde_json::json!({"model":model, "input":[{"role":"user", "content":prompt}], "store":false, "stream":true})).await
+        self.response(registration, serde_json::json!({"model":model, "input":[{"role":"user", "content":prompt}], "store":false, "stream":true}), &personal_ai_llm::stream::IgnoreTextDeltas).await
     }
 
     /// Send the frozen RSS scoring messages using subscription-compatible instructions.
@@ -153,6 +153,27 @@ impl ChatGptClient {
         model: &str,
         request: &personal_ai_llm::ChatRequest,
         consent: bool,
+    ) -> Result<String> {
+        self.score_value_observed(
+            registration,
+            model,
+            request,
+            consent,
+            &personal_ai_llm::stream::IgnoreTextDeltas,
+        )
+        .await
+    }
+
+    /// Identical authorization and wire contract, with provisional text notifications.
+    /// # Errors
+    /// Rejects invalid input, missing consent, transport failures or incomplete output.
+    pub async fn score_value_observed(
+        &self,
+        registration: &Registration,
+        model: &str,
+        request: &personal_ai_llm::ChatRequest,
+        consent: bool,
+        sink: &dyn personal_ai_llm::stream::TextDeltaSink,
     ) -> Result<String> {
         use personal_ai_llm::Role;
         let [system, user] = request.messages.as_slice() else {
@@ -173,7 +194,7 @@ impl ChatGptClient {
                 "invalid scoring input or missing subscription consent",
             ));
         }
-        let text=self.response(registration,serde_json::json!({"model":model,"instructions":system.content,"input":[{"role":"user","content":user.content}],"store":false,"stream":true})).await?;
+        let text=self.response(registration,serde_json::json!({"model":model,"instructions":system.content,"input":[{"role":"user","content":user.content}],"store":false,"stream":true}), sink).await?;
         if text.len() > personal_ai_agent_core::feed_value::MAX_OUTPUT_BYTES {
             return Err(Error("scoring output too large"));
         }
@@ -184,6 +205,7 @@ impl ChatGptClient {
         &self,
         registration: &Registration,
         payload: serde_json::Value,
+        sink: &dyn personal_ai_llm::stream::TextDeltaSink,
     ) -> Result<String> {
         let token = registration.access_token()?;
         let mut response = self
@@ -217,7 +239,7 @@ impl ChatGptClient {
             .await
             .map_err(|_| Error("inference stream interrupted; not retried"))?
         {
-            if let Some(text) = stream.push(&chunk)? {
+            if let Some(text) = stream.push_observed(&chunk, sink)? {
                 completed = Some(text);
             }
         }

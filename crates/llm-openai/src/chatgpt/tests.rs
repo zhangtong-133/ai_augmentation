@@ -358,3 +358,29 @@ async fn transport_waits_for_eof_and_rejects_late_failure_truncation_and_timeout
         server.abort();
     }
 }
+
+#[test]
+fn provisional_notifications_preserve_split_unicode_and_never_include_provider_metadata() {
+    use personal_ai_llm::stream::TextDeltaSink;
+    #[derive(Default)]
+    struct Sink(std::sync::Mutex<Vec<String>>);
+    impl TextDeltaSink for Sink {
+        fn delta(&self, text: &str) {
+            self.0.lock().unwrap().push(text.into());
+        }
+    }
+    let sink = Sink::default();
+    let mut stream = TextStream::default();
+    let events = "data: {\"type\":\"response.created\",\"private\":\"metadata\"}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}\n\n";
+    for byte in events.bytes() {
+        assert!(stream.push_observed(&[byte], &sink).unwrap().is_none());
+    }
+    assert_eq!(*sink.0.lock().unwrap(), ["你好"]);
+    assert!(
+        stream
+            .push_observed(b"data: {\"type\":\"error\"}\n\n", &sink)
+            .is_err()
+    );
+    assert!(stream.push_observed(events.as_bytes(), &sink).is_err());
+    assert_eq!(sink.0.lock().unwrap().len(), 1);
+}
