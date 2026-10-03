@@ -35,10 +35,15 @@ export function LearningPanel() {
   const active = useRef<AbortController | null>(null); const alive = useRef(true);
   const valid = (c: AbortController) => alive.current && active.current === c && !c.signal.aborted;
   function resetForms() { setEditing(null); setName(""); setEnabled(true); setParents([]); setRatingSkill(""); setScore("50"); setGoals([]); setBudget("30"); setDeleting(null); }
+  function expireSession() {
+    active.current?.abort(); active.current = null; setBusy(false); setExpired(true); setReady(false);
+    setProgress(null); setProgressError(""); setSnapshot(null); setHistory(empty()); setPages([]); setSelected(null);
+    setPending(null); setNotice(""); resetForms(); setError("登录已失效，请重新登录。");
+  }
   async function request<T>(path: string, c: AbortController, operation?: Pick<Operation, "method" | "body">): Promise<T> {
     const response = await fetch(path, { method: operation?.method ?? "GET", cache: "no-store", headers: operation ? { "Content-Type": "application/json", "X-Requested-With": "personal-ai" } : undefined, body: operation ? JSON.stringify(operation.body) : undefined, signal: AbortSignal.any([c.signal, AbortSignal.timeout(10000)]) });
     if (!response.ok) {
-      if (response.status === 401 && valid(c)) { setExpired(true); setReady(false); setProgress(null); setProgressError(""); setSnapshot(null); setHistory(empty()); setPages([]); setSelected(null); setPending(null); setNotice(""); resetForms(); }
+      if (response.status === 401 && valid(c)) expireSession();
       throw new LearningHttpError(response.status);
     }
     return response.json();
@@ -52,6 +57,8 @@ export function LearningPanel() {
   function loadPreview<T>(path: string, accept: (value: T) => void, operation?: Pick<Operation, "method" | "body">) {
     void run(async c => { const data = await request<T>(path, c, operation); if (valid(c)) accept(data); });
   }
+  loadPreview.expireSession = expireSession;
+  const previewLoader = loadPreview;
   async function list(c: AbortController, cursors: string[]) {
     const data = await request<History>(`${root}/plans${cursors.length ? `?after=${encodeURIComponent(cursors.at(-1)!)}` : ""}`, c);
     if (valid(c)) { setHistory(data); setPages(cursors); }
@@ -135,7 +142,7 @@ export function LearningPanel() {
     <h3>学习计划历史</h3>{ready && !history.items.length && <p>暂无学习计划。</p>}
     <ul className="feedList" aria-label="学习计划历史">{history.items.map(p => <li key={p.request_id}>{date(p.created_at_unix_ms)} · {statuses[p.status]}<br /><button disabled={locked} onClick={() => inspect(`${root}/plans/${p.request_id}`)}>查看学习计划</button></li>)}</ul>
     <button disabled={locked || !pages.length} onClick={() => void run(c => list(c, pages.slice(0, -1)))}>上一页学习计划</button><button disabled={locked || !history.next_cursor} onClick={() => void run(c => list(c, [...pages, history.next_cursor!]))}>下一页学习计划</button>
-    {ready && <LearningAuthorizationHistory key={authorizationGeneration} locked={locked} load={loadPreview} openPlan={inspect} />}
-    {selected && <LearningPlanView key={selected.request_id} saved={selected} skills={skills} snapshotRevision={snapshot?.revision} locked={locked} inspect={inspect} loadPreview={loadPreview} submit={o => void mutate(o)} />}
+    {ready && <LearningAuthorizationHistory key={authorizationGeneration} locked={locked} load={previewLoader} openPlan={inspect} />}
+    {selected && <LearningPlanView key={selected.request_id} saved={selected} skills={skills} snapshotRevision={snapshot?.revision} locked={locked} inspect={inspect} loadPreview={previewLoader} submit={o => void mutate(o)} />}
   </section>;
 }

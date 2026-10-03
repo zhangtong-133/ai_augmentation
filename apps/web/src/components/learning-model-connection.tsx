@@ -4,7 +4,7 @@ import { type ModelAuthorization, type ModelPreviewLoader } from "./learning-typ
 import { LearningAuthorizationDetail } from "./learning-model-authorization";
 type Connection = { id: string; label: string; revision: string; status: string; models: string[]; valid_until_unix_ms: string };
 type Connections = { items: Connection[]; next_cursor: string | null };
-export function LearningModelConnection({ path, locked, load }: { path: string; locked: boolean; load: ModelPreviewLoader }) {
+export function LearningModelConnection({ path, locked, load, hideSharing }: { hideSharing: () => void; path: string; locked: boolean; load: ModelPreviewLoader }) {
   const [now, setNow] = useState(Date.now);
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
   const [connections, setConnections] = useState<Connections | null>(null); const [selected, setSelected] = useState(""); const [model, setModel] = useState("");
@@ -24,6 +24,6 @@ export function LearningModelConnection({ path, locked, load }: { path: string; 
       {connections.next_cursor && <button disabled={locked} onClick={() => list(connections.next_cursor!)}>下一页订阅连接</button>}
     </div>}
     {pending && <div><p>草稿结果尚未核对，请保留原请求。</p><button disabled={locked} onClick={() => create(pending)}>重试原授权草稿</button><button disabled={locked} onClick={() => load<ModelAuthorization>(`/api/learning/model-authorizations/${pending.request_id}`, receive)}>查询原授权草稿</button></div>}
-    {item && <LearningAuthorizationDetail key={`${item.request_id}:${item.status}`} item={item} locked={locked} load={load} accept={receive} />}
+    {item && <LearningAuthorizationDetail key={`${item.request_id}:${item.status}`} item={item} locked={locked} load={load} hideSharing={hideSharing} accept={receive} />}
   </div>;
 }
