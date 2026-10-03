@@ -39,6 +39,7 @@ dependencies = [
  "argon2",
  "axum",
  "base64",
+ "futures-util",
  "personal-ai-agent-core",
  "personal-ai-domain",
  "personal-ai-feed-http",
