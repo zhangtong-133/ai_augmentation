@@ -6,6 +6,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 自动 RSS 采集已交付：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，已提供[配置与同意页面](design/rss-schedule-ui.md)。
 
+后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮依次推进可重复验收入口、评分阅读接口、阅读交互。
+
 ## 原始 v1 尚未补齐
 
 - [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，待接入 API 金额预留。当前日报仍使用关键词规则评分。
@@ -15,6 +17,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] v1 多步交付计划及 `BROWSER_SPEC` 定向浏览器验收入口：完整隔离数据库/HTTP smoke 后执行指定文件的双入口测试，不指定时保留完整回归。
 
 - [x] [RSS 评分授权与结果页面](design/rss-value-ui.md)：连接/模型选择、冻结内容与双重同意、取消、评分/审计、原请求故障恢复及账户隔离；本机显式执行。
 

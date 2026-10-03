@@ -61,7 +61,7 @@ browser-install: ## 安装锁定的 Playwright 依赖与当前平台的无头 Ch
 	npm --prefix tests/browser ci
 	npm --prefix tests/browser run install-browser
 
-browser-test: ## 在隔离 Compose 环境中运行 HTTP 与无头浏览器验收
+browser-test: ## 在隔离 Compose 环境中验收；可用环境变量 BROWSER_SPEC 指定单个浏览器用例文件
 	node scripts/smoke.mjs --browser
 
 .PHONY: browser-test-public

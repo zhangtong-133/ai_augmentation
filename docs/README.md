@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [v1 后续交付计划](design/v1-completion-plan.md)：订阅评分阅读闭环及能力评估、流式/本地适配、可选 API 和最终集成的验收门槛。
+
 - [RSS 评分授权与结果页面](design/rss-value-ui.md)：连接/模型选择、精确双重同意、未知结果核对和私有评分展示。
 
 - [RSS 用户评分 HTTP](design/rss-value-http.md)：会话范围内的预览、精确批准、取消、私有结果和审计；网页不执行模型。

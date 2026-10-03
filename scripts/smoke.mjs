@@ -11,6 +11,16 @@ import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
+// 只接受仓库内一个明确的浏览器用例文件；不读取其他测试进程的环境。
+const browserSpec = process.env.BROWSER_SPEC;
+if (browserSpec !== undefined) {
+  if (!process.argv.includes("--browser") || !/^[a-z][a-z0-9-]*\.spec\.mjs$/.test(browserSpec)) {
+    throw new Error("BROWSER_SPEC requires --browser and a filename such as feed-values.spec.mjs");
+  }
+  await access(join(root, "tests/browser", browserSpec));
+}
+const browserSelection = browserSpec ? ["--", `(^|/)${browserSpec.replaceAll(".", "\\.")}$`] : [];
+
 if (process.argv.includes("--public-web") && !process.argv.includes("--browser")) {
   throw new Error("--public-web requires --browser");
 }
@@ -866,7 +876,7 @@ try {
     // API 重启时，Docker 可能重新分配临时宿主端口。
     const browserApi = await endpoint("api-server", 8080);
     await ready(browserApi + "/api/readyz");
-    await command("npm", ["--prefix", "tests/browser", "test"], {
+    await command("npm", ["--prefix", "tests/browser", "test", ...browserSelection], {
       E2E_API_URL: browserApi, E2E_WEB_URL: web, E2E_GATEWAY_URL: gateway,
       E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
       E2E_PUBLIC_WEB: process.argv.includes("--public-web") ? "1" : "0",

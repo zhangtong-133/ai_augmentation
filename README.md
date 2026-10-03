@@ -19,6 +19,8 @@
 
 已提供[模型 Agent 纯规划与两阶段费用授权](docs/design/sprint-3-model-agent-budget.md)：严格校验只读检索建议，分别确认规划、检索与回答的金额及次数。已落地[第一阶段请求仓储与事务预算](docs/design/sprint-3-model-planning-store.md)，支持精确批准、一次性领取、结算和取消；第二阶段仓储及模型执行入口尚待接入。
 
+定向复验单个浏览器功能可运行 `BROWSER_SPEC=feed-values.spec.mjs make browser-test`，仍会新建隔离栈、运行数据库和 HTTP smoke，并自动清理。省略 `BROWSER_SPEC` 时运行完整浏览器回归。
+
 ## 快速开始
 
 需要 Rust 1.96+、Node.js 20.9+、npm 和可用的 Docker / Compose。macOS 的 PDF 提取使用 Linux API 容器；浏览器验收使用无头 Chromium，不占用前台。详见 [环境说明](docs/ENVIRONMENT.md)。
