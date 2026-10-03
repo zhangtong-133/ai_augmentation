@@ -144,6 +144,8 @@ async fn learning_http_auth_validation_idempotency_and_result_cleanup() {
     assert_eq!(plan["snapshot_revision"], "2");
     assert_eq!(plan["plan"]["tasks"][0]["skill_revision"], "1");
     assert_eq!(f.call("POST", "/api/learning/plans", input).await.1, plan);
+    assert_eq!(plan["evidence_reviews"][0]["state"], "not_recorded");
+    assert_eq!(plan["evidence_reviews"][0]["skill_revision"], "1");
     let task = plan["plan"]["tasks"][0]["task_id"].as_str().unwrap();
     let result_path = format!("{plan_path}/tasks/{task}/result");
     let result = json!({"request_id":Uuid::new_v4(),"outcome":"completed","note":"私有结果 <img>","actual_minutes":25});
@@ -167,6 +169,13 @@ async fn learning_http_auth_validation_idempotency_and_result_cleanup() {
     );
     let (status, saved) = f.call("POST", &result_path, result.clone()).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["evidence_reviews"][0]["state"], "unverified");
+    assert_eq!(
+        saved["evidence_reviews"][0]["result_request_id"],
+        result["request_id"]
+    );
+    assert_eq!(saved["evidence_reviews"][0]["task_id"], task);
+    assert_eq!(f.call("GET", &plan_path, json!({})).await.1, saved);
     assert_eq!(saved["plan"], plan["plan"]);
     assert_eq!(saved["digest"], plan["digest"]);
     assert_eq!(saved["results"][0]["note"], "私有结果 <img>");
@@ -208,6 +217,7 @@ async fn learning_http_auth_validation_idempotency_and_result_cleanup() {
     assert_eq!(erased["status"], "invalidated");
     assert!(erased["plan"].is_null());
     assert_eq!(erased["results"], json!([]));
+    assert_eq!(erased["evidence_reviews"], json!([]));
     assert_eq!(
         f.call("POST", &result_path, result).await.0,
         StatusCode::CONFLICT

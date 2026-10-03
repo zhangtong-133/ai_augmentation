@@ -1,4 +1,5 @@
 //! 当前用户的技能、自评和不可变训练计划；无执行、模型或通知副作用。
+pub mod evidence;
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
 use personal_ai_learning::planning::{LearningPlan, SelfAssessment, SkillNode};

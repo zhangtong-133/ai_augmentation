@@ -13,8 +13,8 @@ use axum::{
 use personal_ai_storage::{
     StorageError,
     learning::{
-        AssessmentInput, LearningPlanInput, LearningStore, SkillInput, TrainingOutcome,
-        TrainingResultInput,
+        AssessmentInput, LearningPlanInput, LearningStore, SavedLearningPlan, SkillInput,
+        TrainingOutcome, TrainingResultInput,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -168,6 +168,18 @@ fn output(value: &impl Serialize) -> Result<Response, ApiError> {
     exact(&mut value);
     Ok(Json(value).into_response())
 }
+fn plan_output(saved: &SavedLearningPlan) -> Result<Response, ApiError> {
+    #[derive(Serialize)]
+    struct Detail<'a> {
+        #[serde(flatten)]
+        saved: &'a SavedLearningPlan,
+        evidence_reviews: Vec<personal_ai_storage::learning::evidence::EvidenceReview<'a>>,
+    }
+    output(&Detail {
+        saved,
+        evidence_reviews: saved.evidence_reviews(),
+    })
+}
 async fn snapshot(State(state): State<AppState>, headers: HeaderMap) -> Result<Response, ApiError> {
     let user = auth::current_user(&state, &headers).await?;
     output(
@@ -261,7 +273,7 @@ async fn generate(
         )
         .await
         .map_err(error)?;
-    let mut response = output(&saved)?;
+    let mut response = plan_output(&saved)?;
     *response.status_mut() = StatusCode::CREATED;
     Ok(response)
 }
@@ -285,7 +297,7 @@ async fn detail(
     Path(key): Path<String>,
 ) -> Result<Response, ApiError> {
     let user = auth::current_user(&state, &headers).await?;
-    output(
+    plan_output(
         &runtime(&state)?
             .get_learning_plan(&user.id, &id(&key)?)
             .await
@@ -316,7 +328,7 @@ async fn result(
     let user = auth::current_user(&state, &headers).await?;
     auth::mutation_guard(&headers)?;
     let input = payload(body)?;
-    output(
+    plan_output(
         &runtime(&state)?
             .record_training_result(
                 &user.id,
