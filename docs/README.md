@@ -117,3 +117,5 @@
 - [周期 RSS 用户授权 HTTP](design/rss-schedule-http.md)：不可变预览、明确同意、取消及私有历史/审计，配置页面已接入。
 
 - [周期 RSS 配置与同意页面](design/rss-schedule-ui.md)：有限期限和频率、精确同意、取消/审计、原请求恢复及双入口浏览器验收。
+
+- [RSS 模型价值评分协议](design/rss-value-protocol.md)：冻结候选与最小分享、严格完整返回和明确放弃评分；费用授权及执行仍待实现。
