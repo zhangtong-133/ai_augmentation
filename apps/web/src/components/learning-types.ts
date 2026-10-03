@@ -8,8 +8,10 @@ export type EvidenceReview = {
   result_request_id: string | null;
   state: "not_recorded" | "cancelled" | "missing_note" | "unverified";
 };
+export type EvidenceBody = { explanation: string; work: string; verification: string; limitations: string };
+export type TrainingEvidence = { request_id: string; created_at_unix_ms: string; deleted: boolean; body: EvidenceBody | null };
 export type SavedPlan = Summary & {
-  evidence_reviews?: EvidenceReview[]; snapshot_revision: string; results: { task_id: string; request_id: string; outcome: "completed" | "cancelled"; note: string; actual_minutes: number; recorded_at_unix_ms: string }[]; plan: null | { budget_minutes: number; remaining_minutes: number; unscheduled_ready_count: number; evaluations: { skill_id: string; name: string; state: string; self_reported_score: number | null; blocking_skill_ids: string[] }[]; tasks: Task[] } };
+  evidence_reviews?: EvidenceReview[]; snapshot_revision: string; results: { evidence?: TrainingEvidence | null; task_id: string; request_id: string; outcome: "completed" | "cancelled"; note: string; actual_minutes: number; recorded_at_unix_ms: string }[]; plan: null | { budget_minutes: number; remaining_minutes: number; unscheduled_ready_count: number; evaluations: { skill_id: string; name: string; state: string; self_reported_score: number | null; blocking_skill_ids: string[] }[]; tasks: Task[] } };
 export type Operation = { path: string; lookup: string; method: string; body: object; showPlan?: boolean };
 export const statuses = { ready: "已生成", invalidated: "来源已删除，计划已失效", deleted: "已删除" };
 export const states: Record<string, string> = { unavailable: "不可用", blocked: "前置技能未满足", needs_assessment: "待自评", needs_practice: "待练习", satisfied: "已达到自评目标" };

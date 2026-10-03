@@ -3,7 +3,7 @@ const labels: Record<EvidenceReview["state"], string> = {
   not_recorded: "尚未记录训练结果",
   cancelled: "训练已取消，不作为完成证据",
   missing_note: "已记录完成，但缺少文字材料",
-  unverified: "已有文字记录，内容尚待核验",
+  unverified: "已有文字材料，内容尚待核验",
 };
 export function LearningEvidenceReview({ review, noteId }: { review: EvidenceReview; noteId: string }) {
   return <details>

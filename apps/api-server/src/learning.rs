@@ -2,7 +2,7 @@ use crate::{ApiError, AppState, auth};
 use axum::{
     Json, Router,
     extract::{
-        Path, Query, Request, State,
+        DefaultBodyLimit, Path, Query, Request, State,
         rejection::{JsonRejection, QueryRejection},
     },
     http::{HeaderMap, StatusCode, header},
@@ -37,7 +37,9 @@ pub(super) fn routes() -> Router<AppState> {
         )
         .route(
             "/api/learning/plans/{plan}/tasks/{task}/evidence",
-            post(save_evidence).delete(delete_evidence),
+            post(save_evidence)
+                .layer(DefaultBodyLimit::max(64 * 1024))
+                .delete(delete_evidence),
         )
         .layer(middleware::from_fn(no_store))
 }

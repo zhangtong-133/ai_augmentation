@@ -6,17 +6,19 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 自动 RSS 采集已交付：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，已提供[配置与同意页面](design/rss-schedule-ui.md)。
 
-后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已完成协议、只读材料检查和任务内回看；10 项学习页面双入口验收通过。结构化证据的保存/删除仓储与接口已实现；持久化建议与确认评分仍待实现。
+后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已完成协议、只读材料检查和任务内回看；10 项学习页面双入口验收通过。结构化证据保存、删除与页面已交付，14 项双入口验收通过；持久化建议与确认评分仍待实现。
 
 ## 原始 v1 尚未补齐
 
 - [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
-- [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，计划接口已提供只读材料检查及结构化证据保存/删除；持久化建议与版本确认尚未实现，完成训练不自动提高分数。
+- [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，已提供只读材料检查、结构化证据保存/删除与页面；持久化建议与版本确认尚未实现，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [结构化训练证据](design/learning-evidence.md)：保存概念、练习、验证与局限材料；显式删除正文留墓碑，拒绝旧版本补写，支持原请求恢复和满长度中文输入。
 
 - [x] [训练材料检查与回看](design/learning-evidence.md)：区分未记录、取消、缺少备注与待核验，关联任务和技能版本；四项核验提示不输出能力分数，删除来源同步清除。
 

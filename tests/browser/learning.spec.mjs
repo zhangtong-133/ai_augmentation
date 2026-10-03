@@ -45,7 +45,7 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await task.getByRole("button", { name: "确认训练结果", exact: true }).click();
   await expect(detail).toContainText("已记录完成 · 20 分钟");
   await detail.getByText("查看证据检查", { exact: true }).click();
-  await expect(detail).toContainText("已有文字记录，内容尚待核验");
+  await expect(detail).toContainText("已有文字材料，内容尚待核验");
   await detail.getByRole("link", { name: "回看原始训练记录", exact: true }).click();
   await expect(detail.locator("[id^=training-note-]")).toBeFocused();
   await expect(metric("今日完成")).toHaveText("1");
@@ -160,4 +160,72 @@ test("completed training without a note remains missing evidence and does not as
   await detail.getByText("查看证据检查", { exact: true }).click();
   await expect(detail).toContainText("已记录完成，但缺少文字材料");
   await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前版本尚未自评");
+});
+
+test("structured training evidence survives retries and reload, deletes without revival and stays private", async ({ page }, testInfo) => {
+  const owner = await createAccount(), other = await createAccount();
+  const panel = await start(page, owner); await skill(panel, "结构化证据技能");
+  const detail = await generate(panel, "结构化证据技能");
+  await detail.getByRole("button", { name: "记录完成", exact: true }).click();
+  await detail.getByRole("button", { name: "确认训练结果", exact: true }).click();
+  await expect(detail).toContainText("已记录完成");
+  await detail.getByText("补充结构化证据", { exact: true }).click();
+  await expect(detail.getByRole("button", { name: "保存结构化证据", exact: true })).toBeDisabled();
+  await detail.getByLabel("概念解释", { exact: true }).fill("私有解释 <img src=x onerror=alert(1)>");
+  await detail.getByLabel("练习产物与独立完成范围", { exact: true }).fill("独立完成一个练习");
+  await detail.getByLabel("验证步骤与结果", { exact: true }).fill("本地执行检查通过 https://example.com/private");
+  await detail.getByLabel("局限与待验证问题", { exact: true }).fill("边界条件仍需检查");
+  await detail.getByRole("button", { name: "保存结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "返回修改证据", exact: true }).click();
+  const saves = [], deletes = []; let dropSave = true, dropDelete = true;
+  await page.route("**/api/learning/plans/*/tasks/*/evidence", async route => {
+    const method = route.request().method();
+    (method === "POST" ? saves : deletes).push(route.request().postDataJSON());
+    const response = await route.fetch(); expect(response.status()).toBe(200);
+    if (method === "POST" && dropSave) { dropSave = false; return route.abort("failed"); }
+    if (method === "DELETE" && dropDelete) { dropDelete = false; return route.abort("failed"); }
+    return route.fulfill({ response });
+  });
+  await detail.getByRole("button", { name: "保存结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认保存证据", exact: true }).click();
+  await panel.getByRole("button", { name: "重试原学习操作", exact: true }).click();
+  const evidence = detail.getByRole("region", { name: "已保存的结构化证据", exact: true });
+  await expect(evidence).toContainText("私有解释 <img src=x onerror=alert(1)>");
+  expect(saves).toHaveLength(2); expect(saves[0]).toEqual(saves[1]);
+  await expect(evidence.locator("img,script,a")).toHaveCount(0);
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前版本尚未自评");
+  expect(await panel.evaluate(n => n.scrollWidth <= n.clientWidth)).toBe(true);
+  const screenshot = testInfo.outputPath("structured-evidence.png");
+  await evidence.screenshot({ path: screenshot }); await testInfo.attach("structured-evidence", { path: screenshot, contentType: "image/png" });
+  await page.reload(); await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
+  await expect(evidence).toContainText("边界条件仍需检查");
+  await evidence.getByRole("button", { name: "删除结构化证据", exact: true }).click();
+  await evidence.getByRole("button", { name: "保留证据", exact: true }).click();
+  await evidence.getByRole("button", { name: "删除结构化证据", exact: true }).click();
+  await evidence.getByRole("button", { name: "确认删除证据", exact: true }).click();
+  await panel.getByRole("button", { name: "重试原学习操作", exact: true }).click();
+  await expect(detail).toContainText("结构化证据已删除");
+  expect(deletes).toHaveLength(2); expect(deletes[0]).toEqual(deletes[1]);
+  await expect(detail).not.toContainText("私有解释");
+  await expect(detail.getByText("补充结构化证据", { exact: true })).toHaveCount(0);
+  await page.reload(); await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
+  await expect(detail).toContainText("结构化证据已删除");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click(); await login(page, other);
+  await expect(panel).toContainText("暂无学习计划"); await expect(panel).not.toContainText("私有解释");
+});
+
+test("structured evidence accepts four full Chinese fields through each gateway", async ({ page }) => {
+  const panel = await start(page); await skill(panel, "大文本证据");
+  const detail = await generate(panel, "大文本证据");
+  await detail.getByRole("button", { name: "记录完成", exact: true }).click();
+  await detail.getByRole("button", { name: "确认训练结果", exact: true }).click();
+  await detail.getByText("补充结构化证据", { exact: true }).click();
+  for (const label of ["概念解释", "练习产物与独立完成范围", "验证步骤与结果", "局限与待验证问题"]) {
+    await detail.getByLabel(label, { exact: true }).fill("证据".repeat(1000));
+  }
+  await detail.getByRole("button", { name: "保存结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认保存证据", exact: true }).click();
+  const evidence = detail.getByRole("region", { name: "已保存的结构化证据", exact: true });
+  await expect(evidence.locator(".feedText")).toHaveCount(4);
+  await expect(evidence.locator(".feedText").first()).toHaveText("证据".repeat(1000));
 });

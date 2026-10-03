@@ -417,7 +417,7 @@ async fn learning_evidence_is_private_immutable_version_bound_and_erased_without
     let (_, plan) = f.call("POST", "/api/learning/plans", json!({"request_id":plan_id,"expected_revision":"1","budget_minutes":30,"goal_skill_ids":[skill]})).await;
     let task = plan["plan"]["tasks"][0]["task_id"].as_str().unwrap();
     let path = format!("{plan_path}/tasks/{task}/evidence");
-    let input = json!({"request_id":Uuid::new_v4(),"body":{"explanation":"解释 <script>","work":"自己的解答","verification":"执行检查，结果通过","limitations":"尚未验证边界情况"}});
+    let input = json!({"request_id":Uuid::new_v4(),"body":{"explanation":"证据".repeat(1000),"work":"证据".repeat(1000),"verification":"证据".repeat(1000),"limitations":"证据".repeat(1000)}});
     for method in ["POST", "DELETE"] {
         assert_eq!(
             f.send(method, &path, input.clone(), None, true)
@@ -447,6 +447,12 @@ async fn learning_evidence_is_private_immutable_version_bound_and_erased_without
         bad["body"]["verification"] = json!(text);
         assert_eq!(f.call("POST", &path, bad).await.0, StatusCode::BAD_REQUEST);
     }
+    let mut oversized = input.clone();
+    oversized["body"]["work"] = json!("x".repeat(65536));
+    assert_eq!(
+        f.call("POST", &path, oversized).await.0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
     let mut bad = input.clone();
     bad["body"]["work"] = json!("字".repeat(2001));
     assert_eq!(f.call("POST", &path, bad).await.0, StatusCode::BAD_REQUEST);
