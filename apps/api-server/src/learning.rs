@@ -42,6 +42,10 @@ pub(super) fn routes() -> Router<AppState> {
                 .delete(delete_evidence),
         )
         .route(
+            "/api/learning/plans/{plan}/tasks/{task}/evidence/model-preview",
+            get(model_preview),
+        )
+        .route(
             "/api/learning/plans/{plan}/tasks/{task}/evidence/review",
             post(save_review),
         )
@@ -490,6 +494,22 @@ async fn confirm_review(
                     score: input.score,
                 },
             )
+            .await
+            .map_err(error)?,
+    )
+}
+
+async fn model_preview(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    query: Result<Query<Empty>, QueryRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    query.map_err(|_| invalid())?;
+    output(
+        &runtime(&state)?
+            .preview_training_model_review(&user.id, &id(&plan)?, &id(&task)?)
             .await
             .map_err(error)?,
     )

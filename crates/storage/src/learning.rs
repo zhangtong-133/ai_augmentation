@@ -96,6 +96,13 @@ pub trait LearningStore: Send + Sync {
         input: &review::ReviewConfirmation,
     ) -> BoxFuture<'_, StorageResult<SavedLearningPlan>>;
 
+    fn preview_training_model_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_learning::model_review::ModelReviewPreview>>;
+
     fn save_training_evidence(
         &self,
         owner: &UserId,

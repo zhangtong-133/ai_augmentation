@@ -388,6 +388,12 @@ async fn revoked_source_blocks_new_work_but_preserves_historical_plans_and_autho
         assert_eq!(saved["status"], "ready");
         assert!(!saved["plan"].is_null());
         assert_eq!(saved["source_assessments_available"], false);
+        assert_eq!(
+            f.call("GET", &format!("{task}/evidence/model-preview"), json!({}))
+                .await
+                .0,
+            StatusCode::CONFLICT
+        );
         if stage > 0 {
             assert_eq!(saved["results"][0]["note"], "独立训练记录保留");
         }
@@ -417,5 +423,85 @@ async fn revoked_source_blocks_new_work_but_preserves_historical_plans_and_autho
     let progress = f.call("GET", "/api/learning/progress", json!({})).await.1;
     assert_eq!(progress["pending_tasks"], 0);
     assert_eq!(progress["completed_tasks"], 3);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn model_preview_is_private_read_only_and_requires_live_evidence_and_skill() {
+    let (f, plan, path, skill) = setup().await;
+    let endpoint = format!("{path}/model-preview");
+    assert_eq!(
+        f.call("GET", &endpoint, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    let evidence_id = evidence(&f, &path).await;
+    let before = f.call("GET", &plan, json!({})).await.1;
+    let snapshot = f.call("GET", "/api/learning/snapshot", json!({})).await.1;
+    for (cookie, status) in [
+        (None, StatusCode::UNAUTHORIZED),
+        (Some(f.other_cookie.as_str()), StatusCode::NOT_FOUND),
+    ] {
+        let response = f.send("GET", &endpoint, json!({}), cookie, false).await;
+        assert_eq!(response.status(), status);
+        assert_eq!(response.headers()["cache-control"], "no-store");
+    }
+    let response = f
+        .send("GET", &endpoint, json!({}), Some(&f.cookie), false)
+        .await;
+    assert_eq!(response.headers()["cache-control"], "no-store");
+    let (status, preview) = decode(response).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(preview["protocol_version"], "learning-model-review-v1");
+    assert_eq!(preview["input"]["skill_name"], "核验技能");
+    assert_eq!(preview["input"]["evidence"]["work"], "独立产物");
+    assert_eq!(preview.as_object().unwrap().len(), 3);
+    assert_eq!(preview["input"].as_object().unwrap().len(), 4);
+    assert_eq!(preview["input"]["input_digest"].as_str().unwrap().len(), 64);
+    assert!(!preview.to_string().contains(f.owner.as_str()));
+    assert!(!preview.to_string().contains(&evidence_id.to_string()));
+    assert_eq!(f.call("GET", &endpoint, json!({})).await.1, preview);
+    assert_eq!(f.call("GET", &plan, json!({})).await.1, before);
+    assert_eq!(
+        f.call("GET", "/api/learning/snapshot", json!({})).await.1,
+        snapshot
+    );
+    assert_eq!(
+        f.call("GET", &format!("{endpoint}?include_notes=true"), json!({}))
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        f.send("POST", &endpoint, json!({}), Some(&f.cookie), true)
+            .await
+            .status(),
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    assert_eq!(
+        f.call(
+            "PUT",
+            &format!("/api/learning/skills/{skill}"),
+            json!({"revision":"1","name":"新版本","enabled":true,"prerequisite_ids":[]})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        f.call("GET", &endpoint, json!({})).await.0,
+        StatusCode::CONFLICT
+    );
+    f.cleanup().await;
+    let (f, _, path, _) = setup().await;
+    let evidence_id = evidence(&f, &path).await;
+    f.call("DELETE", &path, json!({"request_id":evidence_id}))
+        .await;
+    assert_eq!(
+        f.call("GET", &format!("{path}/model-preview"), json!({}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
     f.cleanup().await;
 }

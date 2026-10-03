@@ -18,6 +18,7 @@ use sha2::{Digest, Sha256};
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
 mod evidence;
+mod model_review;
 mod plans;
 mod progress;
 mod results;
@@ -108,6 +109,16 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn preview_training_model_review(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+    ) -> BoxFuture<'_, StorageResult<personal_ai_learning::model_review::ModelReviewPreview>> {
+        let keys = (id(owner.as_str()), id(plan), id(task));
+        Box::pin(async move { model_review::preview(self, keys.0?, keys.1?, keys.2?).await })
+    }
+
     fn save_training_review(
         &self,
         owner: &UserId,
