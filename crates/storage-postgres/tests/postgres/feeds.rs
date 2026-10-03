@@ -786,3 +786,6 @@ mod scanning;
 
 #[path = "feeds/value.rs"]
 mod value;
+
+#[path = "feeds/connections.rs"]
+mod connections;

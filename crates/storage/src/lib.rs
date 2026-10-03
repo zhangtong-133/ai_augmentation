@@ -20,6 +20,7 @@ pub mod model_operations;
 pub mod replies;
 pub mod reply_budgets;
 pub mod reply_operations;
+pub mod subscription_connections;
 pub mod tool_calls;
 
 use personal_ai_domain::{ConversationId, User, UserId};

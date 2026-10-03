@@ -1,5 +1,7 @@
 //! Local, explicit `ChatGPT` subscription connection utility; no API server credentials.
 #[cfg(unix)]
+mod binding;
+#[cfg(unix)]
 mod callback;
 #[cfg(unix)]
 mod store;
@@ -35,11 +37,17 @@ async fn run() -> Result<()> {
       chatgpt-connect DIRECTORY logout LABEL\n\
       chatgpt-connect DIRECTORY models LABEL\n\
       chatgpt-connect DIRECTORY ask LABEL MODEL --use-subscription\n\
+      chatgpt-connect DIRECTORY bind LABEL USER_UUID CONNECTION_UUID REVISION\n\
+      chatgpt-connect DIRECTORY connections USER_UUID [AFTER_UUID]\n\
+      chatgpt-connect DIRECTORY revoke-binding USER_UUID CONNECTION_UUID REVISION\n\
 ask 从标准输入读取提示词，并发送给 OpenAI，消耗所选账户的订阅额度或设置允许的 credits。\n\
 DIRECTORY 应使用项目外的私有目录；每个 LABEL 对应独立账户/工作区。\n\
 管理授权与用量：https://chatgpt.com/settings/usage"
         );
         return Ok(());
+    }
+    if binding::is_command(&args) {
+        return binding::run(&args).await;
     }
     let valid = match args.get(1).map(String::as_str) {
         Some("status") => args.len() == 2,

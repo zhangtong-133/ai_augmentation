@@ -13,7 +13,7 @@ struct Planner {
 impl ValueQuotePlanner for Planner {
     fn quote(
         &self,
-        _owner: &UserId,
+        owner: &UserId,
         _request: &str,
         snapshot: &ValueSnapshot,
     ) -> StorageResult<ValuePricing> {
@@ -23,8 +23,8 @@ impl ValueQuotePlanner for Planner {
             ValuePricing::Subscription {
                 provider: "chatgpt-plan".into(),
                 model: "fixture".into(),
-                configuration_version: "v1".into(),
-                connection_id: "11111111-1111-4111-8111-111111111111".into(),
+                configuration_version: "connection-v1".into(),
+                connection_id: owner.as_str().into(),
                 valid_until_unix_ms: until,
             }
         } else {
@@ -54,7 +54,31 @@ fn planner(subscription: bool) -> Arc<Planner> {
     })
 }
 async fn setup() -> (Fixture, Subscription) {
+    use personal_ai_storage::subscription_connections::{
+        SubscriptionConnectionStore, VerifiedSubscriptionConnection,
+    };
     let f = Fixture::new().await;
+    let time: i64 =
+        sqlx::query_scalar("SELECT floor(extract(epoch FROM clock_timestamp())*1000)::bigint")
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    f.store
+        .save_subscription_connection(
+            &f.owner,
+            f.owner.as_str(),
+            0,
+            &VerifiedSubscriptionConnection {
+                host_id: Uuid::new_v4().urn().to_string(),
+                client_id: format!("oaiapp_{}", Uuid::new_v4().simple()),
+                subject: "fixture".into(),
+                label: "fixture".into(),
+                models: vec!["fixture".into()],
+                valid_until_unix_ms: time + 3_000_000,
+            },
+        )
+        .await
+        .unwrap();
     let sub = f.sub().await;
     let claim = f.claim(&sub).await;
     f.store
@@ -342,5 +366,132 @@ async fn value_review_audit_failure_rolls_back_authorization() {
             .len(),
         1
     );
+    f.cleanup().await;
+}
+
+struct ConnectionPlanner(ValuePricing);
+impl ValueQuotePlanner for ConnectionPlanner {
+    fn quote(&self, _: &UserId, _: &str, _: &ValueSnapshot) -> StorageResult<ValuePricing> {
+        Ok(self.0.clone())
+    }
+}
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn subscription_reviews_reject_unknown_foreign_stale_models_and_revoke_atomically() {
+    use personal_ai_storage::subscription_connections::SubscriptionConnectionStore;
+    let (f, _) = setup().await;
+    let saved = preview(&f, planner(true)).await;
+    for field in ["connection", "version", "model", "provider", "expiry"] {
+        let mut pricing = saved.pricing.clone();
+        if let ValuePricing::Subscription {
+            connection_id,
+            configuration_version,
+            model,
+            provider,
+            valid_until_unix_ms,
+        } = &mut pricing
+        {
+            match field {
+                "connection" => *connection_id = f.other.as_str().into(),
+                "version" => *configuration_version = "connection-v2".into(),
+                "model" => *model = "not-in-catalog".into(),
+                "provider" => *provider = "api-key".into(),
+                _ => *valid_until_unix_ms += 3_600_000,
+            }
+        }
+        assert!(
+            f.store
+                .preview_feed_value(
+                    &f.owner,
+                    &Uuid::new_v4().to_string(),
+                    Arc::new(ConnectionPlanner(pricing))
+                )
+                .await
+                .is_err(),
+            "{field}"
+        );
+    }
+    let api = preview(&f, planner(false)).await;
+    let consent = approval(&saved);
+    let (revoked, _) = tokio::join!(
+        f.store
+            .revoke_subscription_connection(&f.owner, f.owner.as_str(), 1),
+        f.store
+            .approve_feed_value(&f.owner, &saved.request_id, &consent)
+    );
+    assert_eq!(revoked.unwrap().status, "revoked");
+    let invalid = f
+        .store
+        .get_feed_value(&f.owner, &saved.request_id)
+        .await
+        .unwrap();
+    assert_eq!(invalid.status, "invalidated");
+    assert!(invalid.snapshot.is_none());
+    assert!(
+        f.store
+            .approve_feed_value(&f.owner, &saved.request_id, &consent)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.store
+            .get_feed_value(&f.owner, &api.request_id)
+            .await
+            .unwrap()
+            .status,
+        "draft"
+    );
+    assert_eq!(
+        f.store
+            .feed_value_audit(&f.owner, &saved.request_id)
+            .await
+            .unwrap()
+            .last()
+            .unwrap()
+            .event,
+        "invalidated"
+    );
+    f.cleanup().await;
+}
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn subscription_revocation_rolls_back_when_review_audit_fails() {
+    use personal_ai_storage::subscription_connections::SubscriptionConnectionStore;
+    let (f, _) = setup().await;
+    let saved = preview(&f, planner(true)).await;
+    let name = format!("reject_connection_{}", Uuid::new_v4().simple());
+    sqlx::query(&format!("ALTER TABLE feed_value_audit ADD CONSTRAINT {name} CHECK(user_id<>'{}' OR event<>'invalidated') NOT VALID",f.owner.as_str())).execute(&f.pool).await.unwrap();
+    assert!(
+        f.store
+            .revoke_subscription_connection(&f.owner, f.owner.as_str(), 1)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        f.store
+            .get_subscription_connection(&f.owner, f.owner.as_str())
+            .await
+            .unwrap()
+            .status,
+        "active"
+    );
+    assert_eq!(
+        f.store
+            .get_feed_value(&f.owner, &saved.request_id)
+            .await
+            .unwrap()
+            .status,
+        "draft"
+    );
+    sqlx::query(&format!(
+        "ALTER TABLE feed_value_audit DROP CONSTRAINT {name}"
+    ))
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    f.store
+        .revoke_subscription_connection(&f.owner, f.owner.as_str(), 1)
+        .await
+        .unwrap();
     f.cleanup().await;
 }

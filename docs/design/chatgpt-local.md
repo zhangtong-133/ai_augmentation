@@ -1,6 +1,6 @@
 # ChatGPT 订阅本地接入
 
-本阶段提供 `chatgpt-connect` 本地命令：登录、查看连接、列出账户可用模型、显式单次调用、退出。它使用独立 OAuth 凭据，不读取 Codex 或 ChatGPT 桌面端的登录文件，不需要 `OPENAI_API_KEY`，不写入 API 金额账本。网页、RSS 评分执行器和用户级连接绑定仍待接入；命令成功不代表已有网页模型入口已经使用订阅。
+本阶段提供 `chatgpt-connect` 本地命令：登录、查看连接、列出账户可用模型、显式单次调用、退出。它使用独立 OAuth 凭据，不读取 Codex 或 ChatGPT 桌面端的登录文件，不需要 `OPENAI_API_KEY`，不写入 API 金额账本。已提供[本地显式用户连接绑定](subscription-connections.md)，网页和 RSS 评分执行器仍待接入；命令成功不代表已有网页模型入口已经使用订阅。
 
 ## 使用
 
@@ -45,7 +45,7 @@ target/debug/chatgpt-connect "$HOME/.config/personal-ai-chatgpt" logout personal
 - 固定官方端点，禁用环境代理（需要直连官方服务），禁止重定向、推理重试和 API Key 回退。HTTP 总超时 90 秒，普通响应 1 MiB、单个 SSE 事件 1 MiB、累计流 4 MiB、正文输出 128 KiB；支持分片 UTF-8 和 LF/CRLF/CR。只有合法 `response.completed` 才返回成功，额度不足、failed、incomplete 和断流均失败。
 - 本地输出/接收限制不是远端生成 token 上限，也不构成费用上界。订阅通道与 API 金额授权保持独立。
 - 错误只包含固定诊断，不打印供应商响应、回调 code 或凭据；账户/模型元数据以 JSON 转义输出，答案过滤终端控制字符。
-- 当前凭据属于执行命令的本地 OS 用户，未绑定网页用户。后续接入 Web 时必须实现独立所有者关联、连接撤销与评分授权失效，不能把这个文件直接当作多用户凭据仓储。
+- 当前凭据属于执行命令的本地 OS 用户，可用独立的 `bind` 命令显式绑定应用用户，详见[连接归属与撤销](subscription-connections.md)。这个文件仍不是多用户 Web 凭据仓储。
 
 ## 验证
 

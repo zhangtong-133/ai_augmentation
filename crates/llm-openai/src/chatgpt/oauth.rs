@@ -64,6 +64,16 @@ impl Registration {
         let c = self.credentials.as_ref().ok_or(Error("sign in first"))?;
         Ok(c.expires_at <= now()?.saturating_add(60))
     }
+    /// Expiry of the currently authorized access credential, without exposing its value.
+    /// # Errors
+    /// Requires current plan/resource scopes and an unexpired access token.
+    pub fn access_expires_at(&self) -> Result<u64> {
+        self.access_token()?;
+        self.credentials
+            .as_ref()
+            .map(|c| c.expires_at)
+            .ok_or(Error("sign in first"))
+    }
     pub(super) fn access_token(&self) -> Result<&str> {
         if !self.plan_enabled() {
             return Err(Error(

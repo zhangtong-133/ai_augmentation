@@ -150,6 +150,7 @@ async fn read(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResul
     decode(&row)
 }
 async fn expire(tx: &mut PgConnection, owner: Uuid, time: i64) -> StorageResult<()> {
+    crate::subscription_connections::expire(tx, owner, time).await?;
     sqlx::query("UPDATE feed_value_reviews SET status='expired',snapshot=NULL WHERE user_id=$1 AND status IN ('draft','authorized') AND expires_ms<=$2").bind(owner).bind(time).execute(tx).await.map_err(map_error)?;
     Ok(())
 }
@@ -211,6 +212,7 @@ impl FeedValueStore for PostgresStore {
                 &input,
             )?;
             let (amount, valid_until) = quote(&pricing, time)?;
+            crate::subscription_connections::check_quote(&mut tx, owner, &pricing, time).await?;
             let expires = time
                 .checked_add(300_000)
                 .ok_or_else(invalid)?
@@ -257,6 +259,8 @@ impl FeedValueStore for PostgresStore {
             {
                 return Err(conflict());
             }
+            crate::subscription_connections::check_quote(&mut tx, owner, &saved.pricing, time)
+                .await?;
             let current = snapshot(&mut tx, owner, saved.created_at_unix_ms).await?;
             if saved.snapshot.as_ref() != Some(&current) {
                 return Err(conflict());

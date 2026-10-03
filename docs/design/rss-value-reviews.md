@@ -5,9 +5,9 @@
 ## 两种使用模式
 
 - `api`：服务端计数器对固定请求报价，冻结模型/供应商/配置、价格和计数器版本、输入上界、4096 输出 token 硬上限、币种及报价有效期。复用费用算术分别向上取整，校验正价格、正请求限额和 BIGINT 金额范围。
-- `subscription`：冻结供应商、模型、配置版本、服务端验证并绑定当前用户的连接 ID 及有效期。`amount` 为 null，不以 0 美元或虚拟 API 价格代表订阅额度。没有真实订阅连接适配器时不能启用这一模式；本轮测试使用夹具连接。
+- `subscription`：冻结供应商、模型、配置版本、服务端验证并绑定当前用户的连接 ID 及有效期。`amount` 为 null，不以 0 美元或虚拟 API 价格代表订阅额度。当前通过[订阅连接仓储](subscription-connections.md)复核 owner、版本、模型及期限；测试使用夹具连接。
 
-报价回调只能来自可信服务端代码，禁止接受 HTTP 价格、调用网络或把客户端自报 Pro 身份当成授权。API 模式后续须证明完整计费上界；订阅模式后续须验证连接、用户同意范围、模型权限及有效期。已有 API 适配器不能直接使用订阅凭据。
+报价回调只能来自可信服务端代码，禁止接受 HTTP 价格、调用网络或把客户端自报 Pro 身份当成授权。API 模式后续须证明完整计费上界；订阅模式已经在预览与批准事务内验证连接元数据，执行前仍须复核实际令牌权限和用户同意。已有 API 适配器不能直接使用订阅凭据。
 
 ## 不可变预览与同意
 
@@ -27,10 +27,12 @@
 
 截至 2026-10-03，官方文档介绍了 [Sign in with ChatGPT 的订阅使用能力](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt)：符合条件的 Plus/Pro 用户可授权开源项目或本地个人项目使用其计划，无需配置 API Key。具体账户/应用能否使用需登录和实际权限核验，不能仅根据订阅名称判定。
 
-[当前预览接口限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)要求流式 Responses 请求及不保存服务端响应，且不接受现有协议请求使用的 temperature、max_output_tokens 等字段。因此需要独立 OAuth/订阅适配器；不能直接复用 API 计费上界，也不能把本地响应字节限制宣称为供应商用量上限。本轮只准备持久化结构，不读取用户 ChatGPT/Codex 凭据，不发出模型请求。
+[当前预览接口限制](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations)要求流式 Responses 请求及不保存服务端响应，且不接受现有协议请求使用的 temperature、max_output_tokens 等字段。已提供[独立本地 OAuth/订阅适配器](chatgpt-local.md)；不能直接复用 API 计费上界，也不能把本地响应字节限制宣称为供应商用量上限。此评分仓储不读取用户 ChatGPT/Codex 凭据，不发出模型请求。
 
 ## 验证范围
 
-PostgreSQL 用例验证两种模式的精确同意、重复报价不重算、并发批准/取消、跨用户隔离、到期正文清理、源/条目/偏好变更作废、额度和分页、重连持久化、审计失败原子回滚，以及未写金额账本。下一步优先实现订阅连接适配与授权验证；API 金额预留仍是另一条执行路径的后续工作。
+PostgreSQL 用例验证两种模式的精确同意、重复报价不重算、并发批准/取消、跨用户隔离、到期正文清理、源/条目/偏好变更作废、额度和分页、重连持久化、审计失败原子回滚，以及未写金额账本。下一步接入评分执行器和用户 HTTP；API 金额预留仍是另一条执行路径的后续工作。
 
-2026-10-03 验收：Rust 1.99 `make check`、前端 lint/typecheck/build、完整 `make smoke` 通过，包含 151 项 PostgreSQL 测试（新增 5 项）、scheduler 进程测试、双入口 HTTP、重启及缓存恢复。生产 API 镜像使用 Rust 1.96 构建成功。测试容器、网络和数据已清理；本轮没有页面改动，未重跑 Playwright、对象存储/向量专项，没有调用实际 API 或订阅模型。
+0033 阶段历史验收（2026-10-03）：Rust 1.99 `make check`、前端 lint/typecheck/build、完整 `make smoke` 通过，包含 151 项 PostgreSQL 测试（新增 5 项）、scheduler 进程测试、双入口 HTTP、重启及缓存恢复。生产 API 镜像使用 Rust 1.96 构建成功。测试容器、网络和数据已清理；本轮没有页面改动，未重跑 Playwright、对象存储/向量专项，没有调用实际 API 或订阅模型。
+
+连接校验现已由 [订阅连接仓储](subscription-connections.md)落实：订阅预览和批准必须匹配当前用户的有效连接、版本及模型，连接撤销/更新/到期会作废对应预览。

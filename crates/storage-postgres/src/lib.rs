@@ -22,6 +22,7 @@ mod replies;
 mod reply_dispatch;
 mod reply_money;
 mod reply_operations;
+mod subscription_connections;
 mod tool_calls;
 pub use originals::MaintenanceReport;
 use personal_ai_domain::{User, UserId};
