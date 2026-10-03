@@ -1,6 +1,7 @@
 //! `OpenAI` 兼容 Embedding/引用问答，以及官方固定快照回复 HTTP 适配器。
 pub mod agents;
 mod chat;
+pub mod chatgpt;
 pub mod replies;
 pub use chat::OpenAiAnswers;
 

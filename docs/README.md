@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [ChatGPT 订阅本地接入](design/chatgpt-local.md)：独立 OAuth 登录、账户模型列表和显式订阅调用命令；尚未接入网页。
+
 - [API 与用户](design/sprint-1-api-users.md)：管理接口、认证边界和数据库迁移。
 - [账户与会话](design/sprint-1-sessions-dashboard.md)：首次账户初始化、登录/退出和前端代理。
 - [服务状态与概览](design/sprint-1-overview.md)：用户统计、UTC 日界线和刷新规则。

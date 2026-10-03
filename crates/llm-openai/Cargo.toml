@@ -13,6 +13,11 @@ tiktoken-rs = "=0.12.1"
 reqwest = { version = "0.12.28", default-features = false, features = ["rustls-tls", "json", "stream"] }
 serde.workspace = true
 serde_json.workspace = true
+base64 = "0.22"
+sha2.workspace = true
+uuid.workspace = true
+subtle.workspace = true
+jsonwebtoken = { version = "10", default-features = false, features = ["rust_crypto"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util"] }
