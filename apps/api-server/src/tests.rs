@@ -430,6 +430,7 @@ fn app() -> Router {
     let store = Arc::new(MemoryStore::default());
     router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -552,6 +553,7 @@ async fn rejects_unauthorized_and_invalid_requests() {
 async fn readiness_checks_storage_but_liveness_does_not() {
     let app = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -918,6 +920,7 @@ async fn documents_are_private_deduplicated_and_validated() {
     );
     let app = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1128,6 +1131,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
     );
     let app = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1211,6 +1215,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
     let importer = Arc::new(FixtureWebImporter::default());
     let app = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1444,6 +1449,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
     );
     let state = AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1571,6 +1577,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
     }
     let disabled = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1640,6 +1647,7 @@ async fn retrieval_fixture() -> (
     assert!(indexer.index_batch(&owner.id, &document, 0).await.is_ok());
     let state = AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         model_agents: None,
@@ -1888,6 +1896,7 @@ async fn tools_require_session_csrf_and_server_owned_context() {
     );
     let disabled = router(AppState {
         learning: None,
+        subscription_connections: None,
         feeds: None,
         schedules: None,
         indexing: None,
@@ -2335,3 +2344,6 @@ mod feed_tests;
 
 #[path = "learning_tests.rs"]
 mod learning_tests;
+
+#[path = "subscription_connection_tests.rs"]
+mod subscription_connection_tests;

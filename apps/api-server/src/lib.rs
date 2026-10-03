@@ -35,6 +35,7 @@ mod learning;
 mod mcp_credentials;
 mod memories;
 mod schedules;
+mod subscription_connections;
 pub use feeds::FeedRuntime;
 pub use schedules::SchedulerStore;
 mod messages;
@@ -82,6 +83,8 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub subscription_connections:
+        Option<Arc<dyn personal_ai_storage::subscription_connections::SubscriptionConnectionStore>>,
     pub learning: Option<Arc<dyn personal_ai_storage::learning::LearningStore>>,
     pub feeds: Option<Arc<FeedRuntime>>,
     pub schedules: Option<Arc<dyn SchedulerStore>>,
@@ -120,6 +123,7 @@ pub fn router(state: AppState) -> Router {
         .merge(schedules::routes())
         .merge(feeds::routes())
         .merge(learning::routes())
+        .merge(subscription_connections::routes())
         .merge(messages::routes())
         .merge(replies::routes())
         .merge(conversations::routes())

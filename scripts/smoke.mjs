@@ -237,6 +237,9 @@ try {
   await command("make", ["test-learning"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("make", ["test-subscription-connections"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
@@ -319,6 +322,30 @@ try {
   await request(web, "/api/overview", 401);
   const empty = await request(web, "/api/overview", 200, { cookie });
   assert.equal(empty.data.knowledge.total_documents, 0);
+  for (const base of [web, gateway]) {
+    const connection = randomUUID();
+    // Trusted fixture metadata only; no OAuth credentials or external model calls.
+    await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
+      `INSERT INTO subscription_connections(user_id,id,host_id,client_id,subject_hash,label,models,revision,status,expires_ms)
+       VALUES('${owner.id}','${connection}','${randomUUID()}','oaiapp_${randomUUID()}','${"a".repeat(64)}','smoke','["fixture"]',1,'active',floor(extract(epoch FROM clock_timestamp())*1000)::bigint+3000000)`]);
+    const path = `/api/subscription-connections/${connection}`;
+    await request(base, "/api/subscription-connections", 401);
+    const page = await request(base, "/api/subscription-connections", 200, { cookie });
+    assert(page.data.items.some(item => item.id === connection));
+    const detail = await request(base, path, 200, { cookie });
+    assert.equal(detail.data.revision, "1");
+    assert.deepEqual(Object.keys(detail.data).sort(), ["id", "label", "models", "revision", "status", "valid_until_unix_ms"]);
+    await request(base, path, 404, { cookie: otherCookie });
+    await request(base, `${path}/revoke`, 403, { method: "POST", cookie, csrf: false, body: { revision: "1" } });
+    await request(base, `${path}/revoke`, 404, { method: "POST", cookie: otherCookie, body: { revision: "1" } });
+    await request(base, `${path}/revoke`, 422, { method: "POST", cookie, body: { revision: "1", access_token: "rejected" } });
+    const revoked = await request(base, `${path}/revoke`, 200, { method: "POST", cookie, body: { revision: "1" } });
+    assert.equal(revoked.data.status, "revoked");
+    assert.equal(revoked.data.revision, "2");
+    const replay = await request(base, `${path}/revoke`, 200, { method: "POST", cookie, body: { revision: "1" } });
+    assert.deepEqual(replay.data, revoked.data);
+  }
+  console.log("PASS: owner-scoped subscription management through both gateways");
   for (const base of [web, gateway]) {
     await request(base, "/api/feeds/config", 401);
     const config = await request(base, "/api/feeds/config", 200, { cookie });

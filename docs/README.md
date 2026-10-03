@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [订阅连接管理 HTTP](design/subscription-connections-http.md)：用户会话保护下的私有列表、详情和版本化撤销。
+
 - [订阅连接归属与撤销](design/subscription-connections.md)：显式绑定应用用户、查询和撤销，并作废相关 RSS 评分授权。
 
 - [ChatGPT 订阅本地接入](design/chatgpt-local.md)：独立 OAuth 登录、账户模型列表和显式订阅调用命令；尚未接入网页。

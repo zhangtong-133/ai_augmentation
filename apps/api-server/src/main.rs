@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         listener,
         router(AppState {
             learning: Some(store.clone()),
+            subscription_connections: Some(store.clone()),
             feeds: Some(feeds),
             schedules: Some(store.clone()),
             model_agents: Some(model_agents),

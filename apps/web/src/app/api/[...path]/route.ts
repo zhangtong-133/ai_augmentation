@@ -29,6 +29,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     || (["PUT", "DELETE"].includes(request.method) && /^learning\/skills\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "DELETE" && /^learning\/plans\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:assessments|plans(?:\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/result)?)$/i.test(endpoint));
+  const subscriptionConnections = (request.method === "GET" && /^subscription-connections(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
+    || (request.method === "POST" && /^subscription-connections\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));
   const feedConfirmation = request.method === "POST" && /^feed-collections\/[a-f0-9-]{36}\/confirm$/i.test(endpoint);
   const mcpCredentials = (["GET", "POST"].includes(request.method) && endpoint === "mcp/credentials")
     || (request.method === "POST" && /^mcp\/credentials\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));
@@ -37,7 +39,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const documentIndex = request.method === "POST" && /^documents\/[a-f0-9-]{36}\/index$/i.test(endpoint);
   const documentIndexJob = ["GET", "POST"].includes(request.method) && /^documents\/[a-f0-9-]{36}\/index-job$/i.test(endpoint);
   const toolAudit = request.method === "GET" && (endpoint === "tool-calls" || /^tool-calls\/[a-f0-9-]{36}$/i.test(endpoint));
-  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning) {
+  if (!allowed.includes(endpoint) && !documentDetail && !documentIndex && !documentIndexJob && !memoryMutation && !conversationDetail && !conversationMessages && !conversationReplies && !agentPlans && !modelAgents && !toolAudit && !schedules && !mcpCredentials && !feeds && !briefs && !learning && !subscriptionConnections) {
     return Response.json({ error: { code: "not_found" } }, { status: 404 });
   }
   // 必须携带非简单请求头；不得替不可信请求自动补充该请求头。

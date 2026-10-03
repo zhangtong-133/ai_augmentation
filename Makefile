@@ -116,3 +116,7 @@ test-learning: ## 使用一次性 TEST_DATABASE_URL 验证学习 HTTP 与结果�
 .PHONY: test-learning-operations
 test-learning-operations: ## 使用一次性 TEST_DATABASE_URL 验证学习只读诊断及权限
 	cargo test -p api-server --test learning_operations -- --ignored
+
+.PHONY: test-subscription-connections
+test-subscription-connections: ## 使用一次性 TEST_DATABASE_URL 验证订阅连接管理 HTTP 与用户隔离
+	cargo test -p api-server --lib subscription_connection_tests -- --ignored

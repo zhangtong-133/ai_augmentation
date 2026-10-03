@@ -8,13 +8,15 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，待接入 HTTP 管理、执行器及页面。当前日报仍使用关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，待接入执行器及页面。当前日报仍使用关键词规则评分。
 - [ ] 基于训练证据的能力评估：目前仅有用户自评，完成训练不自动提高分数。
 - [ ] 流式模型输出及独立本地模型适配：当前是固定供应商的完整响应，不宣称兼容任意模型。
 
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [订阅连接用户管理 HTTP](design/subscription-connections-http.md)：登录用户私有列表/详情、CSRF 与版本保护撤销、元数据白名单和双网关接入；没有网页创建连接或上传凭据入口。
 
 - [x] [订阅连接归属与撤销](design/subscription-connections.md)：本地显式绑定应用用户、连接元数据仓储、版本/期限/配额及 RSS 评分授权联动失效；尚未接入 Web 或评分执行器。
 
