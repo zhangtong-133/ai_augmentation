@@ -383,3 +383,125 @@ async fn learning_completed_advice_is_cleared_with_evidence_and_failed_finish_ne
     assert!(body.is_none());
     f.cleanup().await;
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn learning_model_to_human_confirmation_and_source_erasure_is_a_complete_loop() {
+    use personal_ai_storage::learning_operations::LearningOperationsStore;
+    let (f, path, request, proof) = authorized().await;
+    let runtime = Runtime {
+        proof,
+        calls: AtomicUsize::new(0),
+        fail: false,
+    };
+    let before = f.call("GET", "/api/learning/snapshot", json!({})).await.1;
+    let report = f.store.audit_learning_models(&f.owner, None).await.unwrap();
+    assert!(report.consistent, "{:?}", report.issues);
+    assert_eq!(report.counts["authorized"], 1);
+    let item = execute_model_review(f.store.as_ref(), &runtime, &f.owner, &request)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(item.status, "succeeded");
+    let report = f.store.audit_learning_models(&f.owner, None).await.unwrap();
+    assert!(report.consistent, "{:?}", report.issues);
+    assert_eq!(report.counts["succeeded"], 1);
+    assert_eq!(
+        f.call("GET", "/api/learning/snapshot", json!({})).await.1,
+        before
+    );
+    let plan_path = format!("/api/learning/plans/{}", item.plan_id);
+    let plan = f.call("GET", &plan_path, json!({})).await.1;
+    assert!(plan["results"][0]["evidence"]["review"].is_null());
+    let evidence = plan["results"][0]["evidence"]["request_id"].clone();
+    let review = Uuid::new_v4();
+    let dim = json!({"verdict":"supported","reason":"人工检查了实际产物和复现记录"});
+    let review_path = format!("{path}/review");
+    let (status, _) = f.call("POST", &review_path, json!({"request_id":review,"evidence_request_id":evidence,"body":{"explanation":dim,"work":dim,"verification":dim,"limitations":dim}})).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        f.call("GET", "/api/learning/snapshot", json!({})).await.1,
+        before
+    );
+    let confirmation = json!({"request_id":Uuid::new_v4(),"review_request_id":review,"expected_revision":"1","score":65});
+    let confirm_path = format!("{review_path}/confirm");
+    assert_eq!(
+        f.call("POST", &confirm_path, confirmation.clone()).await.0,
+        StatusCode::OK
+    );
+    let snapshot = f.call("GET", "/api/learning/snapshot", json!({})).await.1;
+    assert_eq!(snapshot["revision"], "2");
+    assert_eq!(snapshot["assessments"][0]["score"], 65);
+    let (status, erased) = f
+        .call("DELETE", &path, json!({"request_id":evidence}))
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(erased["results"][0]["note"], plan["results"][0]["note"]);
+    assert!(erased["results"][0]["evidence"]["review"]["confirmed_score"].is_null());
+    let snapshot = f.call("GET", "/api/learning/snapshot", json!({})).await.1;
+    assert_eq!(snapshot["revision"], "3");
+    assert_eq!(snapshot["assessments"], json!([]));
+    assert_eq!(
+        f.call("POST", &confirm_path, confirmation).await.0,
+        StatusCode::CONFLICT
+    );
+    let item = f
+        .store
+        .get_model_authorization(&f.owner, &request)
+        .await
+        .unwrap();
+    assert_eq!(item.status, "invalidated");
+    assert!(item.advice.is_none());
+    assert!(
+        execute_model_review(f.store.as_ref(), &runtime, &f.owner, &request)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
+    let report = f.store.audit_learning_models(&f.owner, None).await.unwrap();
+    assert!(report.consistent, "{:?}", report.issues);
+    assert_eq!(report.counts["invalidated"], 1);
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn learning_model_audit_warns_about_elapsed_dispatch_without_mutating_it() {
+    use personal_ai_storage::learning_operations::LearningOperationsStore;
+    let (f, _, request, _) = authorized().await;
+    f.store
+        .claim_model_review(&f.owner, &request)
+        .await
+        .unwrap()
+        .unwrap();
+    let owner = Uuid::parse_str(f.owner.as_str()).unwrap();
+    sqlx::query("UPDATE learning_model_authorizations SET created_ms=0,expires_ms=300000,approved_ms=1,dispatch_deadline_ms=2 WHERE user_id=$1").bind(owner).execute(&f.pool).await.unwrap();
+    let report = f.store.audit_learning_models(&f.owner, None).await.unwrap();
+    assert!(report.consistent, "{:?}", report.issues);
+    assert_eq!(report.warnings, ["dispatch_deadline_elapsed"]);
+    let status: String =
+        sqlx::query_scalar("SELECT status FROM learning_model_authorizations WHERE user_id=$1")
+            .bind(owner)
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(status, "running");
+    // The ordinary business read performs cleanup, unlike the operations read.
+    assert_eq!(
+        f.store
+            .get_model_authorization(&f.owner, &request)
+            .await
+            .unwrap()
+            .status,
+        "unknown"
+    );
+    assert!(
+        f.store
+            .claim_model_review(&f.owner, &request)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    f.cleanup().await;
+}
