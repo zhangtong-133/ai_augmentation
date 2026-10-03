@@ -1,11 +1,13 @@
 "use client";
 import { useState } from "react";
+import { LearningEvidenceReview } from "./learning-evidence-review";
 import { type Operation, type SavedPlan, type Task, statuses, states, date } from "./learning-types";
 function ResultForm({ task, path, locked, submit }: { task: Task; path: string; locked: boolean; submit: (o: Operation) => void }) {
   const [note, setNote] = useState("");
   const [minutes, setMinutes] = useState(String(task.target_minutes));
   const [confirm, setConfirm] = useState<"completed" | "cancelled" | null>(null);
   return <div>
+    <p>建议记录具体练习产物、独立完成的部分、验证步骤与结果，以及尚未掌握的问题。记录本身不证明能力提升。</p>
     <label>训练记录<textarea rows={2} maxLength={2000} value={note} disabled={locked} onChange={e => { setNote(e.target.value); setConfirm(null); }} /></label>
     <label>实际练习分钟<input type="number" min={1} max={180} step={1} value={minutes} disabled={locked} onChange={e => { setMinutes(e.target.value); setConfirm(null); }} /></label>
     <button disabled={locked || !/^\d+$/.test(minutes) || Number(minutes) < 1 || Number(minutes) > 180} onClick={() => setConfirm("completed")}>记录完成</button>
@@ -27,8 +29,11 @@ export function LearningPlanView({ saved, locked, inspect, submit }: { saved: Sa
       {!saved.plan.tasks.length && <p>当前没有可安排的训练。请查看前置技能、自评或调整时间预算。</p>}
       <ol className="feedList" aria-label="训练任务">{saved.plan.tasks.map(task => {
         const result = saved.results.find(r => r.task_id === task.task_id);
+        const review = saved.evidence_reviews?.find(r => r.task_id === task.task_id && r.skill_id === task.skill_id && r.skill_revision === task.skill_revision && r.result_request_id === (result?.request_id ?? null));
+        const noteId = `training-note-${task.task_id}`;
         return <li key={task.task_id}><h4>{task.title}</h4><p>{task.instructions}</p><p>{task.kind === "self_assessment" ? "自评准备" : "练习"} · 建议 {task.target_minutes} 分钟 · 自评参考目标 {task.target_score} 分</p>
-          {result ? <div><p>{result.outcome === "completed" ? "已记录完成" : "已取消训练"} · {result.actual_minutes} 分钟 · {date(result.recorded_at_unix_ms)}</p><p className="feedText">{result.note || "未填写记录"}</p></div> : <ResultForm task={task} path={path} locked={locked} submit={submit} />}
+          {result ? <div id={noteId} tabIndex={-1}><p>{result.outcome === "completed" ? "已记录完成" : "已取消训练"} · {result.actual_minutes} 分钟 · {date(result.recorded_at_unix_ms)}</p><p className="feedText">{result.note || "未填写记录"}</p></div> : <ResultForm task={task} path={path} locked={locked} submit={submit} />}
+          {review && <LearningEvidenceReview review={review} noteId={noteId} />}
         </li>;
       })}</ol>
     </> : <p>正文及训练结果已清除，不能恢复。</p>}

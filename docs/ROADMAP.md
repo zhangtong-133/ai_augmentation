@@ -6,7 +6,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 自动 RSS 采集已交付：已实现[有期限授权与时段纯规划](design/rss-schedule-planning.md)，已实现[持久化授权](design/rss-schedule-store.md)，已实现[单次时段领取与内部执行器](design/rss-schedule-execution.md)，已接入[默认关闭的后台运行](design/rss-schedule-runner.md)，已提供[用户授权 HTTP](design/rss-schedule-http.md)，已提供[配置与同意页面](design/rss-schedule-ui.md)。
 
-后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已定义评估边界并实现只读材料检查，持久化建议与确认评分仍待实现。
+后续多步交付及验收门槛见 [v1 完成计划](design/v1-completion-plan.md)。本轮已完成可重复验收入口、评分阅读接口和阅读交互，三步均已验证；完整浏览器回归 138 项通过、8 项可选环境用例跳过。训练证据阶段已完成协议、只读材料检查和任务内回看；10 项学习页面双入口验收通过。持久化建议与确认评分仍待实现。
 
 ## 原始 v1 尚未补齐
 
@@ -17,6 +17,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [训练材料检查与回看](design/learning-evidence.md)：区分未记录、取消、缺少备注与待核验，关联任务和技能版本；四项核验提示不输出能力分数，删除来源同步清除。
 
 - [x] [评分阅读视图](design/rss-value-reading.md)：冻结摘要、安全原文链接、模型/规则顺序切换，关联修改与会话失效时清除旧内容。
 

@@ -34,7 +34,9 @@ test("learning skills, self assessments, plans and explicit results survive relo
   const detail = await generate(panel, "Rust 异步");
   await expect(metric("待记录训练")).toHaveText("1");
   await expect(detail).toContainText("前置技能未满足");
-  const task = detail.getByRole("list", { name: "训练任务", exact: true }).locator("li"); await expect(task).toHaveCount(1);
+  const task = detail.getByRole("list", { name: "训练任务", exact: true }).locator(":scope > li"); await expect(task).toHaveCount(1);
+  await task.getByText("查看证据检查", { exact: true }).click();
+  await expect(task).toContainText("尚未记录训练结果");
   await task.getByLabel("训练记录", { exact: true }).fill("练习完成 <img src=x onerror=alert(1)>");
   await task.getByLabel("实际练习分钟", { exact: true }).fill("20");
   await task.getByRole("button", { name: "记录完成", exact: true }).click();
@@ -42,6 +44,10 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await task.getByRole("button", { name: "记录完成", exact: true }).click();
   await task.getByRole("button", { name: "确认训练结果", exact: true }).click();
   await expect(detail).toContainText("已记录完成 · 20 分钟");
+  await detail.getByText("查看证据检查", { exact: true }).click();
+  await expect(detail).toContainText("已有文字记录，内容尚待核验");
+  await detail.getByRole("link", { name: "回看原始训练记录", exact: true }).click();
+  await expect(detail.locator("[id^=training-note-]")).toBeFocused();
   await expect(metric("今日完成")).toHaveText("1");
   await expect(metric("今日记录用时（分钟）")).toHaveText("20");
   await expect(metric("待记录训练")).toHaveText("0");
@@ -68,6 +74,7 @@ test("learning skills, self assessments, plans and explicit results survive relo
   await expect(metric("今日记录用时（分钟）")).toHaveText("0");
   await panel.getByRole("button", { name: "查看学习计划", exact: true }).click();
   await expect(detail).toContainText("正文及训练结果已清除"); await expect(detail).not.toContainText("练习完成");
+  await expect(detail.getByText("查看证据检查", { exact: true })).toHaveCount(0);
   await detail.getByRole("button", { name: "删除学习计划", exact: true }).click();
   await detail.getByRole("button", { name: "确认删除学习计划", exact: true }).click();
   await expect(panel.getByRole("list", { name: "学习计划历史", exact: true })).toContainText("已删除");
@@ -98,6 +105,8 @@ test("lost learning generation and cancellation reuse original requests", async 
   await detail.getByRole("button", { name: "确认训练结果", exact: true }).click();
   await panel.getByRole("button", { name: "重试原学习操作", exact: true }).click();
   await expect(detail).toContainText("已取消训练 · 0 分钟");
+  await detail.getByText("查看证据检查", { exact: true }).click();
+  await expect(detail).toContainText("训练已取消，不作为完成证据");
   expect(results).toHaveLength(2); expect(results[0]).toEqual(results[1]);
   await expect(panel.getByRole("list", { name: "学习计划历史", exact: true }).locator("li")).toHaveCount(1);
   await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("尚未自评");
@@ -140,4 +149,15 @@ test("late learning plan response cannot enter a new account", async ({ page }) 
   await panel.getByRole("button", { name: "生成学习计划", exact: true }).click(); await arrived;
   await page.getByRole("button", { name: "退出登录", exact: true }).click(); await login(page, other); release();
   await expect(panel).toContainText("暂无学习计划"); await expect(panel).not.toContainText("私有晚到技能"); await expect(panel.getByLabel("学习计划详情", { exact: true })).toHaveCount(0);
+});
+
+test("completed training without a note remains missing evidence and does not assess a skill", async ({ page }) => {
+  const panel = await start(page); await skill(panel, "证据空白练习");
+  const detail = await generate(panel, "证据空白练习");
+  await detail.getByRole("button", { name: "记录完成", exact: true }).click();
+  await detail.getByRole("button", { name: "确认训练结果", exact: true }).click();
+  await expect(detail).toContainText("已记录完成");
+  await detail.getByText("查看证据检查", { exact: true }).click();
+  await expect(detail).toContainText("已记录完成，但缺少文字材料");
+  await expect(panel.getByRole("list", { name: "技能列表", exact: true })).toContainText("当前版本尚未自评");
 });
