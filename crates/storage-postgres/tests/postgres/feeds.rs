@@ -783,3 +783,6 @@ mod scheduled_execution;
 
 #[path = "feeds/scanning.rs"]
 mod scanning;
+
+#[path = "feeds/value.rs"]
+mod value;

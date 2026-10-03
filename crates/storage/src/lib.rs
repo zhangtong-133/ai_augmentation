@@ -6,6 +6,7 @@ pub mod conversations;
 pub mod dates;
 pub mod documents;
 pub mod feed_operations;
+pub mod feed_value;
 pub mod feeds;
 pub mod index_jobs;
 pub mod learning;

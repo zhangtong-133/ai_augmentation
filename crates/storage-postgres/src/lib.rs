@@ -5,6 +5,7 @@ mod briefs;
 mod conversations;
 mod documents;
 mod feed_operations;
+mod feed_value;
 mod feeds;
 mod index_jobs;
 mod learning;

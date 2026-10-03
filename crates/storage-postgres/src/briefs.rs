@@ -106,7 +106,7 @@ async fn read(tx: &mut PgConnection, owner: Uuid, request: Uuid) -> StorageResul
     .map_err(map_error)?;
     record(&row)
 }
-async fn candidates(
+pub(super) async fn candidates(
     tx: &mut PgConnection,
     owner: Uuid,
     start: i64,
