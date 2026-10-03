@@ -4,6 +4,8 @@ mod binding;
 #[cfg(unix)]
 mod callback;
 #[cfg(unix)]
+mod learning;
+#[cfg(unix)]
 mod store;
 #[cfg(unix)]
 mod value;
@@ -49,12 +51,18 @@ async fn run() -> Result<()> {
       chatgpt-connect DIRECTORY value-run LABEL USER_UUID REQUEST_UUID --use-subscription\n\
       chatgpt-connect DIRECTORY value-show USER_UUID REQUEST_UUID\n\
       chatgpt-connect DIRECTORY value-cancel USER_UUID REQUEST_UUID\n\
+      chatgpt-connect DIRECTORY learning-run LABEL USER_UUID REQUEST_UUID --use-subscription\n\
+      chatgpt-connect DIRECTORY learning-show USER_UUID REQUEST_UUID\n\
+learning-run 只执行页面已明确批准的核验，不自动创建或批准；需要 DATABASE_URL。\n\
 value-* 是本机管理员操作，需要 DATABASE_URL；先预览并审阅分享内容，再精确批准，最后单独运行。\n\
 ask 从标准输入读取提示词，并发送给 OpenAI，消耗所选账户的订阅额度或设置允许的 credits。\n\
 DIRECTORY 应使用项目外的私有目录；每个 LABEL 对应独立账户/工作区。\n\
 管理授权与用量：https://chatgpt.com/settings/usage"
         );
         return Ok(());
+    }
+    if args.get(1).is_some_and(|a| a.starts_with("learning-")) {
+        return learning::run(&args).await;
     }
     if value::is_command(&args) {
         return value::run(&args).await;

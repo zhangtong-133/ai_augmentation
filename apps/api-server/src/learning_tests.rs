@@ -573,3 +573,5 @@ mod reviews;
 
 #[path = "learning_tests/model_authorizations.rs"]
 mod model_authorizations;
+#[path = "learning_tests/model_execution.rs"]
+mod model_execution;
