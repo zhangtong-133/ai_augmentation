@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { compareReports, validateReport } from "./local-value-compare-lib.mjs";
 
 // expected is generated offline by the current Rust evaluator, never by an input report.
-export function qualityGate(inputs, expected) {
+export function qualityGate(inputs, expected, profile = "local-rss-v2") {
+  assert.ok(["local-rss-v2", "local-rss-v3"].includes(profile));
   assert.ok(Array.isArray(inputs) && inputs.length >= 1 && inputs.length <= 10);
   assert.deepEqual(Object.keys(expected).sort(), ["baseline", "challenge"]);
   const reports = inputs.map(validateReport), runtime = reports[0].runtime;
@@ -12,7 +13,7 @@ export function qualityGate(inputs, expected) {
     assert.deepEqual(report.runtime, runtime, "different runtime or model");
     const suite = report.manifests[0].quality_version === "rss-quality-v1" ? "baseline" : "challenge";
     assert.deepEqual(report.manifests, expected[suite], "not the current frozen suite/profile/request");
-    assert.equal(report.manifests[0].execution_profile, "local-rss-v2");
+    assert.equal(report.manifests[0].execution_profile, profile);
     groups[suite].push(report);
   }
   // A copied report or overlapping run cannot count as another sequential benchmark.
@@ -29,7 +30,7 @@ export function qualityGate(inputs, expected) {
     comparison: runs.length >= 2 ? compareReports(runs) : null,
   }));
   return { schema: "rss-synthetic-quality-gate-v1", synthetic_only: true,
-    execution_profile: "local-rss-v2", runtime,
+    execution_profile: profile, candidate_only: profile === "local-rss-v3", runtime,
     synthetic_gate_passed: suites.every(s => s.passed),
     suites, configuration_changed: false, real_material_quality_verified: false,
     gaming_reserve_verified: false };

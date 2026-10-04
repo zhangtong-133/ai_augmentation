@@ -46,3 +46,17 @@ test("tampered or obsolete manifests and different runtimes cannot pass as froze
     assert.throws(() => qualityGate(reports, expected));
   }
 });
+
+test("v3 requires explicit selection and its exact manifests; it stays candidate-only", () => {
+  const { reports, expected } = fixtures();
+  reports.forEach(r => r.manifests.forEach(m => m.execution_profile = "local-rss-v3"));
+  Object.values(expected).forEach(ms => ms.forEach(m => m.execution_profile = "local-rss-v3"));
+  assert.throws(() => qualityGate(reports, expected));
+  const gate = qualityGate(reports, expected, "local-rss-v3");
+  assert.equal(gate.synthetic_gate_passed, true);
+  assert.equal(gate.candidate_only, true);
+  assert.equal(gate.execution_profile, "local-rss-v3");
+  reports[0].manifests.forEach(m => m.execution_profile = "local-rss-v2");
+  assert.throws(() => qualityGate(reports, expected, "local-rss-v3"));
+  assert.throws(() => qualityGate(reports, expected, "local-rss-v1"));
+});
