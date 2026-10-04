@@ -154,7 +154,7 @@ local-value: ## 显式执行已批准的本地 RSS 评分（OWNER/REQUEST），�
 	node scripts/local-model.mjs value "$(OWNER)" "$(REQUEST)"
 
 .PHONY: local-value-benchmark local-value-benchmark-preview local-value-quality-test
-local-value-benchmark: ## 显式运行合成 RSS 质量基准（SUITE=baseline/challenge/regression）；先启动受显存保护的项目模型
+local-value-benchmark: ## 显式运行合成 RSS 质量基准（SUITE=baseline/challenge/regression/order）；先启动受显存保护的项目模型
 	node scripts/local-value-benchmark.mjs run $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(MODEL),--model "$(MODEL)",)
 
 local-value-benchmark-preview: ## 离线预览固定基准的精确分享提示及条件（CASE）
@@ -211,5 +211,12 @@ recovery-acceptance-rss-local: ## 用合成 RSS 验收真实本地评分及恢�
 	node scripts/recovery-acceptance.mjs --local-rss
 
 .PHONY: local-value-gate-test
-local-value-gate-test: ## 离线验收双套件多轮质量门槛，不调用模型
+local-value-gate-test: ## 离线验收按版本区分的多套件质量门槛，不调用模型
 	node scripts/test-local-value-gate.mjs
+
+.PHONY: local-value-order local-value-order-test
+local-value-order: ## 离线核对两轮换序报告（LEFT、RIGHT）的评分覆盖及一致性
+	node scripts/local-value-order.mjs "$(LEFT)" "$(RIGHT)"
+
+local-value-order-test: ## 验收换序差异、弃权、失败与当前语料绑定
+	node scripts/test-local-value-order.mjs

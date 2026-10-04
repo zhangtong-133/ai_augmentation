@@ -14,6 +14,8 @@ use std::collections::{BTreeMap, BTreeSet};
 const CORPUS: &str = include_str!("feed_value_quality/corpus.json");
 const REGRESSION: &str = include_str!("feed_value_quality/regression.json");
 pub const REGRESSION_VERSION: &str = "rss-regression-v1";
+const ORDER: &str = include_str!("feed_value_quality/order.json");
+pub const ORDER_VERSION: &str = "rss-order-v1";
 const CHALLENGE: &str = include_str!("feed_value_quality/challenge.json");
 pub const CHALLENGE_VERSION: &str = "rss-challenge-v1";
 pub const QUALITY_VERSION: &str = "rss-quality-v1";
@@ -162,6 +164,7 @@ pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, V
         "baseline" => (CORPUS, QUALITY_VERSION),
         "challenge" => (CHALLENGE, CHALLENGE_VERSION),
         "regression" => (REGRESSION, REGRESSION_VERSION),
+        "order" => (ORDER, ORDER_VERSION),
         _ => return Err(ValueError::InvalidSnapshot),
     };
     let profile = match profile {

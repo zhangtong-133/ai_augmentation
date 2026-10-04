@@ -106,7 +106,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
     cases_for_suite(suite, profile).map_err(|_| "unknown benchmark suite/profile")?;
     if args == ["--help"] {
         println!(
-            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在命令末尾加 --suite baseline|challenge|regression 和 --profile local-rss-v1|local-rss-v2|local-rss-v3|local-rss-v4。仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
+            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在命令末尾加 --suite baseline|challenge|regression|order 和 --profile local-rss-v1|local-rss-v2|local-rss-v3|local-rss-v4。仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
         );
         return Ok(());
     }

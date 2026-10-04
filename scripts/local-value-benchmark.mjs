@@ -22,7 +22,7 @@ async function hashFile(path) {
 async function run() {
   const { args, flags, model } = benchmarkOptions(process.argv.slice(2));
   if (args.length === 1 && args[0] === "--help") {
-    console.log("用法：make local-value-benchmark-preview CASE=rust_preference | make local-value-benchmark\n先显式启动本项目模型；MODEL=qwen3-8b 显式选择候选。SUITE=baseline 四组、challenge 六组或 regression 一组固定合成语料各发送一次。退出 0 全通过，2 质量失败，1 执行/协议未确认；报告存项目私有目录，不自动重试。"); return;
+    console.log("用法：make local-value-benchmark-preview CASE=rust_preference | make local-value-benchmark\n先显式启动本项目模型；MODEL=qwen3-8b 显式选择候选。SUITE=baseline 四组、challenge 六组、regression 一组或 order 六组换序固定合成语料各发送一次。退出 0 全通过，2 质量失败，1 执行/协议未确认；报告存项目私有目录，不自动重试。"); return;
   }
   if (!(args.length === 1 && args[0] === "run") && !(args.length === 2 && args[0] === "preview" && /^[a-z0-9_]{1,40}$/.test(args[1]))) throw new Error("invalid benchmark command");
   const abort = new AbortController();

@@ -1,0 +1,269 @@
+{
+  "version": "rss-order-v1",
+  "cases": [
+    {
+      "id": "order_1",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        },
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        },
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    },
+    {
+      "id": "order_2",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        },
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        },
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    },
+    {
+      "id": "order_3",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        },
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        },
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    },
+    {
+      "id": "order_4",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        },
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        },
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    },
+    {
+      "id": "order_5",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        },
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        },
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    },
+    {
+      "id": "order_6",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        },
+        {
+          "key": "weather",
+          "title": "Rust 之外的周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        },
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "weather",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    }
+  ]
+}

@@ -305,3 +305,79 @@ fn changing_classification_version_does_not_rewrite_keywords_matching_protocol_t
             .contains(&serde_json::to_string(&vec![keyword]).unwrap())
     );
 }
+
+#[test]
+fn order_suite_changes_actual_request_order_without_changing_material_or_checks() {
+    let all = cases_for_suite("order", "local-rss-v4").unwrap();
+    assert_eq!(all.len(), 6);
+    let materials = |case: &QualityCase| {
+        case.labels
+            .iter()
+            .map(|(id, label)| {
+                let entry = &case.plan.brief().items[id - 1].entry;
+                (label.clone(), (entry.title.clone(), entry.summary.clone()))
+            })
+            .collect::<BTreeMap<_, _>>()
+    };
+    let original = materials(&all[0]);
+    let checks = serde_json::to_value(&all[0].checks).unwrap();
+    let mut permutations = BTreeSet::new();
+    let mut requests = BTreeSet::new();
+    for case in &all {
+        let manifest = case.manifest().unwrap();
+        assert_eq!(manifest.quality_version, ORDER_VERSION);
+        assert_eq!(materials(case), original);
+        assert_eq!(serde_json::to_value(&manifest.checks).unwrap(), checks);
+        assert_eq!(case.plan.brief().keywords, vec!["rust"]);
+        assert_eq!(
+            case.plan
+                .brief()
+                .items
+                .iter()
+                .map(|i| i.score)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            1
+        );
+        assert!(manifest.prompt_bytes <= 5632);
+        assert!(permutations.insert(manifest.items));
+        assert!(requests.insert(manifest.request_sha256));
+        // Inspect the actual serialized model input, not just fixture array order.
+        let request = case.request().unwrap();
+        let payload: serde_json::Value =
+            serde_json::from_str(&request.messages[1].content).unwrap();
+        for (i, item) in payload["items"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(item["id"], i + 1);
+            assert_eq!(item["title"], original[&case.labels[&(i + 1)]].0);
+        }
+        let category = |label: &str| match label {
+            "ownership" => "high",
+            "weather" => "unrelated",
+            _ => "insufficient",
+        };
+        let valid = json!({"items":case.labels.iter().map(|(id,key)|json!({"id":id,"category":category(key)})).collect::<Vec<_>>()});
+        assert!(
+            case.evaluate(&serde_json::to_vec(&valid).unwrap())
+                .unwrap()
+                .quality_pass
+        );
+        let all_abstain = json!({"items":case.labels.keys().map(|id|json!({"id":id,"category":"insufficient"})).collect::<Vec<_>>()});
+        let result = case
+            .evaluate(&serde_json::to_vec(&all_abstain).unwrap())
+            .unwrap();
+        assert!(!result.quality_pass);
+        assert!(!result.checks[1].passed); // A ceiling alone would wrongly accept abstention.
+    }
+    assert_eq!(permutations.len(), 6);
+    for label in original.keys() {
+        for position in 0..3 {
+            assert_eq!(
+                permutations
+                    .iter()
+                    .filter(|p| &p[position] == label)
+                    .count(),
+                2
+            );
+        }
+    }
+}

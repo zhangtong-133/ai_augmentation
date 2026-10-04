@@ -341,6 +341,11 @@ try {
   assert.equal(regressionManifest[0].execution_profile, "local-rss-v4");
   assert.equal(regressionManifest[0].quality_version, "rss-regression-v1");
   console.log("PASS: packaged nonempty insufficient-content regression; no model call");
+  const orderManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "order"], true));
+  assert.deepEqual(orderManifest.map(c => c.id), ["order_1", "order_2", "order_3", "order_4", "order_5", "order_6"]);
+  assert.ok(orderManifest.every(c => c.quality_version === "rss-order-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));
+  assert.equal(new Set(orderManifest.map(c => JSON.stringify(c.items))).size, 6);
+  console.log("PASS: packaged six actual RSS permutations; no model call");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
   assert.equal(mcpAudit.consistent, true);
   assert.equal(mcpAudit.counts.total, 0);

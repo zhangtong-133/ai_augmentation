@@ -33,3 +33,24 @@
 上一批中间提交 `fabc722` 的 CI 在 `feed_operations` 两个测试并行 GRANT 时出现 PostgreSQL `XX000: tuple concurrently updated`。不同角色仍会修改相同系统目录行；DROP OWNED 同样可能与另一个测试的 GRANT 冲突。测试二进制内以 Tokio 互斥锁覆盖两个测试各自的完整角色创建、授权、读取验证和清理流程，业务查询与权限不变。
 
 验收：使用仅绑定回环地址的一次性 PostgreSQL，保持 `--test-threads=2` 连续五轮运行两个权限测试，共 10 次全部通过；仍验证元数据可读、私有字段不可读及写入拒绝。Rust 格式检查通过；本阶段只有测试隔离修改，前端沿用阶段一结果。临时容器和卷已删除。
+
+## 阶段二：冻结的六排列套件与独立门槛
+
+新增 `SUITE=order`（`rss-order-v1`），三条合成材料的全排列共六个场景，每条材料恰好在首/中/尾位置各出现两次。这是三个独立条目、六种顺序，不能当作 18 条独立新闻。
+
+所有标题都命中同一个 Rust 关键词、时间相同，以相同规则分数让订阅编号决定位置；通过正式业务规划器生成实际请求，不在发送时任意改排。测试核对模型实际收到的 JSON 顺序、六个不同请求指纹、相同正文与检查条件。材料取自恢复回归场景，但天气标题明确改为“Rust 之外的周末天气”，用于控制规则排序；原恢复回归文件未改。
+
+相关条目 minimum 60；天气 minimum 0 与 ceiling 20 同时成立才通过，因此 null 不再满足该条条件；不足内容仍须 abstain。v4 对应 80/0/null，其他 profile 仍按原数值范围判断。六场景指纹在真实运行前冻结，不改业务提示、默认模型或原三套门槛。
+
+新增 `local-value-order` 离线验收入口：至少两份完整套件报告、当前 Rust 生成的同 profile manifest、相同模型/运行指纹、独立不重叠时间段。按语义标签对齐评分，分别检查每轮换序是否一致及各轮是否重复一致。所有质量条件、轮内一致性、跨轮一致性均通过才退出 0；有效报告但条件未通过退出 2；输入无效退出 1。部分协议失败未观察到差异时，一致性为 null，不能说通过；已观察到差异则 false。报告只保存计数、标签、分数和指纹，不保存正文或模型原始输出。
+
+```sh
+make local-value-benchmark-preview SUITE=order CASE=order_1
+make local-model-start
+make local-value-benchmark SUITE=order
+make local-value-benchmark SUITE=order
+make local-model-stop
+make local-value-order LEFT=第一轮报告.json RIGHT=第二轮报告.json
+```
+
+新门槛独立于原三套合成门槛；不得用旧门槛通过代替新门槛，也不自动启用业务。自动化加入 CI 与生产镜像 smoke 的离线 manifest 检查。阶段二工程验收包括 12 项领域质量测试、5 类换序报告测试，以及原基准/比较器/门槛回归。全仓 Rust fmt/Clippy/tests 通过；5 类基准、8 类比较器、6 类原门槛及 6 类显存/模型选择测试通过。原三套当前 manifest 与上一批真实报告逐字段一致，六个换序请求均为 1558 字节。前端沿用阶段一 lint/typecheck/build，本阶段无页面变更，不重跑浏览器专项；生产镜像和隔离 core smoke 通过，包含 170 项 PostgreSQL、41 项学习 HTTP、6 项评分 HTTP、6 项 Redis 及两种代理入口的核心验收；新套件已在打包后的 CLI 中验证，测试栈已清理。
