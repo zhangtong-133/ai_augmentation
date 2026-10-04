@@ -17,3 +17,11 @@
 SHA-256 覆盖完整协议对象，目标地址、模型、传输参数及所有者授权必须另行绑定。远程聊天适配器从同一对象构造 messages/schema，保留原有 HTTP、拒答、截断、重定向、超时和不重试约束。统一 decode 拒绝额外字段、旧整数引用、缺失 quote、重复 JSON 字段以及超过 128 KiB 的内容，不回显原输出。领域层仍负责上一批的逐字唯一摘录和范围校验；解码成功不等于引用或质量通过。
 
 第一阶段验收：3 项共享协议测试覆盖精确消息/指纹、Unicode 与编号边界、严格 JSON 及固定错误；现有聊天 HTTP、引用领域、私有问答 HTTP 回归和全仓 fmt/Clippy/tests 通过。前端 lint/typecheck/build 通过；未改页面或存储，此阶段不重复浏览器/数据库专项，生产镜像与核心链路安排在第三阶段。无真实模型调用。
+
+## 第二阶段：独立本地适配与精确预览
+
+`llm-local::answer::LocalAnswers` 实现已有 `AnswerProvider`；只接受已验证的 loopback `LocalTarget`，使用独立客户端，不读取 API/订阅凭据。预览冻结 `local-knowledge-answer-v1`、完整请求 URL、共享协议指纹和实际 JSON 请求体，整体指纹绑定这些字段。发送与预览复用同一个 `wire_payload`，包括模型、system/user、temperature=0、max_tokens=2048、stream=true、n=1、json_object 和关闭 thinking 的模板参数。
+
+共享协议的 Unicode 字数边界与本地 5632 字节提示预算同时生效；较长的中文/emoji 证据可能满足字数却超出字节预算，此时预览与执行均在联网前失败，不截断材料。SSE 仍要求模型身份、stop、DONE 和干净 EOF，晚到错误、截断、重定向/限流、取消均不重试。临时 token 送到 IgnoreTextDeltas，只有最终严格 JSON 会交给引用领域校验。此模块未连入私有 HTTP 自动执行，也不构成持久化一次授权。
+
+第二阶段验收：新增 2 类测试覆盖目标/模型/问题绑定、字节预算和实际请求逐字段等于预览；六种成功/不足/旧格式/非法 JSON/截断/晚到错误夹具均验收，并检查无 Authorization 头、失败仅发送一次、超限不联网。原本地传输取消/超时/重定向等测试与全仓 Rust 检查通过。前端沿用第一阶段结果，本阶段未修改页面；无真实模型调用。
