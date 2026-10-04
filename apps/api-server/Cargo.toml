@@ -7,6 +7,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+personal-ai-llm-local = { path = "../../crates/llm-local" }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 personal-ai-web-search = { path = "../../crates/web-search" }
 personal-ai-git-local = { path = "../../crates/git-local" }

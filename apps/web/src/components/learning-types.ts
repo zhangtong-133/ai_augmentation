@@ -22,7 +22,7 @@ export function date(value: string) { const d = new Date(Number(value)); return 
 
 export type ModelReviewPreview = { protocol_version: string; system_prompt: string; input: { input_digest: string; skill_name: string; task_instructions: string; evidence: EvidenceBody } };
 export type ModelPreviewLoader = { expireSession: () => void } & (<T>(path: string, accept: (value: T) => void, operation?: Pick<Operation, "method" | "body">) => void);
-export type ModelAuthorization = { request_id: string; plan_id: string; task_id: string; connection_id: string; connection_revision: string; model: string; status: "draft" | "authorized" | "running" | "succeeded" | "unknown" | "cancelled" | "expired" | "invalidated"; digest: string; created_at_unix_ms: string; expires_at_unix_ms: string; approved_at_unix_ms: string | null; preview: ModelReviewPreview | null; advice?: ModelAdvice | null };
+export type ModelAuthorization = { local_endpoint?: string; request_id: string; plan_id: string; task_id: string; connection_id: string; connection_revision: string; model: string; status: "draft" | "authorized" | "running" | "succeeded" | "unknown" | "cancelled" | "expired" | "invalidated"; digest: string; created_at_unix_ms: string; expires_at_unix_ms: string; approved_at_unix_ms: string | null; preview: ModelReviewPreview | null; advice?: ModelAdvice | null };
 export type ModelAuthorizationPage = { items: ModelAuthorization[]; next_cursor: string | null };
 
 export type ModelAdvice = { protocol_version: string; input_digest: string } & Record<keyof EvidenceBody, { verdict: "missing" | "unverified" | "supported"; reason: string; citations: { field: keyof EvidenceBody; quote: string }[] }>;

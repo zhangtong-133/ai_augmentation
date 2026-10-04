@@ -6,8 +6,9 @@ use std::sync::{
 };
 fn line(content: &str, done: bool) -> String {
     format!(
-        "{}\n",
-        json!({"model":"qwen3:4b", "done":done, "done_reason":if done {Some("stop")} else {None}, "message":{"role":"assistant", "content":content}})
+        "data: {}\n\n{}",
+        json!({"model":"qwen3:4b", "choices":[{"index":0,"delta":{"role":"assistant","content":content},"finish_reason":if done {Some("stop")} else {None}}]}),
+        if done { "data: [DONE]\n\n" } else { "" }
     )
 }
 fn request() -> ChatRequest {
@@ -80,19 +81,19 @@ async fn server(
     )
     .unwrap();
     let app = axum::Router::new().route(
-        "/api/chat",
+        "/v1/chat/completions",
         axum::routing::post(move |axum::Json(input): axum::Json<serde_json::Value>| {
             let body = body.clone();
             let calls = calls.clone();
             async move {
                 calls.fetch_add(1, Ordering::SeqCst);
-                assert_eq!(input["keep_alive"], 0);
-                assert_eq!(input["think"], false);
-                assert_eq!(input["format"], "json");
-                assert_eq!(input["options"]["num_ctx"], CONTEXT_TOKENS);
+                assert_eq!(input["n"], 1);
+                assert_eq!(input["chat_template_kwargs"]["enable_thinking"], false);
+                assert_eq!(input["response_format"]["type"], "json_object");
+                assert_eq!(input["max_tokens"], OUTPUT_TOKENS);
                 assert!(input.get("tools").is_none());
                 tokio::time::sleep(delay).await;
-                ([("content-type", "application/x-ndjson")], body)
+                ([("content-type", "text/event-stream")], body)
             }
         }),
     );
@@ -111,7 +112,7 @@ async fn http_sends_once_and_does_not_retry_invalid_output() {
     )
     .await;
     assert!(
-        Ollama::new()
+        LocalChatClient::new()
             .unwrap()
             .infer(&target, &request(), &IgnoreTextDeltas)
             .await
@@ -129,7 +130,7 @@ async fn http_returns_only_complete_output_and_rejects_oversize_before_send() {
         calls.clone(),
     )
     .await;
-    let client = Ollama::new().unwrap();
+    let client = LocalChatClient::new().unwrap();
     assert_eq!(
         client
             .infer(&target, &request(), &IgnoreTextDeltas)
@@ -152,7 +153,7 @@ async fn http_returns_only_complete_output_and_rejects_oversize_before_send() {
 async fn caller_timeout_or_cancel_never_resends() {
     let calls = Arc::new(AtomicUsize::new(0));
     let (target, task) = server(line("{}", true), Duration::from_secs(2), calls.clone()).await;
-    let client = Ollama::new().unwrap();
+    let client = LocalChatClient::new().unwrap();
     assert!(
         tokio::time::timeout(
             Duration::from_millis(50),

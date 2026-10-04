@@ -114,6 +114,31 @@ async fn ratings(tx: &mut PgConnection, owner: Uuid) -> StorageResult<Vec<SelfAs
     rows.iter().map(rating).collect()
 }
 impl LearningStore for PostgresStore {
+    fn create_local_model_authorization(
+        &self,
+        owner: &UserId,
+        plan: &str,
+        task: &str,
+        input: &personal_ai_storage::learning::model_authorization::LocalModelAuthorizationInput,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(plan), id(task));
+        let input = input.clone();
+        Box::pin(async move {
+            model_authorization::create_local(self, keys.0?, keys.1?, keys.2?, input).await
+        })
+    }
+    fn approve_local_model_authorization(
+        &self,
+        owner: &UserId,
+        request: &str,
+        input: &personal_ai_storage::learning::model_authorization::LocalModelApproval,
+    ) -> BoxFuture<'_, StorageResult<ModelAuthorization>> {
+        let keys = (id(owner.as_str()), id(request));
+        let input = input.clone();
+        Box::pin(
+            async move { model_authorization::approve_local(self, keys.0?, keys.1?, input).await },
+        )
+    }
     fn create_model_authorization(
         &self,
         owner: &UserId,

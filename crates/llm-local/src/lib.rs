@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
-//! Ollama native NDJSON adapter. No credentials, redirects, proxy, or inference retry.
+//! Explicit local chat-completions SSE profile. Verified backends are recorded separately.
 use personal_ai_llm::{
     BoxFuture, ChatRequest, LlmError, LlmResult, Role,
-    local::{CONTEXT_TOKENS, LocalInference, LocalTarget, MAX_PROMPT_BYTES, OUTPUT_TOKENS},
+    local::{LocalInference, LocalTarget, MAX_PROMPT_BYTES, OUTPUT_TOKENS},
     stream::{TextAssembly, TextDeltaSink, TextEvent},
 };
 use serde::Deserialize;
@@ -18,10 +18,10 @@ fn unavailable() -> LlmError {
     LlmError::ProviderUnavailable("local inference unavailable".into())
 }
 
-pub struct Ollama {
+pub struct LocalChatClient {
     client: reqwest::Client,
 }
-impl Ollama {
+impl LocalChatClient {
     /// # Errors
     /// Rejects unavailable HTTP client initialization.
     pub fn new() -> LlmResult<Self> {
@@ -59,11 +59,11 @@ impl Ollama {
         let messages: Vec<_> = request.messages.iter().map(|m| json!({"role": match m.role {
             Role::System => "system", Role::User => "user", Role::Assistant => "assistant", Role::Tool => "tool"
         }, "content": m.content})).collect();
-        let mut response = self.client.post(format!("{}/api/chat", target.endpoint())).json(&json!({
-            "model": target.model(), "messages": messages, "stream": true, "think": false,
-            "format": "json", "keep_alive": 0,
-            "options": {"num_ctx": CONTEXT_TOKENS, "num_predict": request.max_output_tokens.unwrap_or(OUTPUT_TOKENS),
-                "temperature": request.temperature.unwrap_or(0.0)}
+        let mut response = self.client.post(format!("{}/v1/chat/completions", target.endpoint())).json(&json!({
+            "model": target.model(), "messages": messages, "stream": true,
+            "response_format": {"type":"json_object"}, "max_tokens": request.max_output_tokens.unwrap_or(OUTPUT_TOKENS),
+            "temperature": request.temperature.unwrap_or(0.0), "n": 1,
+            "chat_template_kwargs": {"enable_thinking": false}
         })).send().await.map_err(|_| unavailable())?;
         if !response.status().is_success() {
             return Err(unavailable());
@@ -72,7 +72,7 @@ impl Ollama {
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
-            .is_none_or(|v| v.split(';').next() != Some("application/x-ndjson"))
+            .is_none_or(|v| v.split(';').next() != Some("text/event-stream"))
         {
             return Err(invalid());
         }
@@ -83,7 +83,7 @@ impl Ollama {
         parser.finish()
     }
 }
-impl LocalInference for Ollama {
+impl LocalInference for LocalChatClient {
     fn infer<'a>(
         &'a self,
         target: &'a LocalTarget,
@@ -96,35 +96,44 @@ impl LocalInference for Ollama {
 #[derive(Deserialize)]
 struct Record {
     model: String,
-    done: bool,
-    message: Message,
-    done_reason: Option<String>,
+    choices: Vec<Choice>,
     error: Option<serde_json::Value>,
 }
 #[derive(Deserialize)]
-struct Message {
-    role: String,
-    content: String,
-    thinking: Option<String>,
+struct Choice {
+    index: u32,
+    delta: Delta,
+    finish_reason: Option<String>,
+}
+#[derive(Deserialize)]
+struct Delta {
+    role: Option<String>,
+    content: Option<String>,
+    reasoning_content: Option<String>,
+    refusal: Option<String>,
     tool_calls: Option<Vec<serde_json::Value>>,
-    images: Option<Vec<serde_json::Value>>,
+    function_call: Option<serde_json::Value>,
 }
 struct Parser<'a> {
     model: &'a str,
-    pending: Vec<u8>,
+    line: Vec<u8>,
+    data: Option<Vec<u8>>,
     bytes: usize,
     sequence: u64,
     terminal: bool,
+    done: bool,
     text: TextAssembly,
 }
 impl<'a> Parser<'a> {
     fn new(model: &'a str) -> Self {
         Self {
             model,
-            pending: Vec::new(),
+            line: Vec::new(),
+            data: None,
             bytes: 0,
             sequence: 0,
             terminal: false,
+            done: false,
             text: TextAssembly::default(),
         }
     }
@@ -135,61 +144,82 @@ impl<'a> Parser<'a> {
         }
         for &byte in data {
             if byte == b'\n' {
-                self.record(sink)?;
-                self.pending.clear();
+                self.line(sink)?;
+                self.line.clear();
             } else {
-                if self.pending.len() >= MAX_LINE {
+                if self.line.len() >= MAX_LINE {
                     return Err(invalid());
                 }
-                self.pending.push(byte);
+                self.line.push(byte);
             }
         }
         Ok(())
     }
-    fn record(&mut self, sink: &dyn TextDeltaSink) -> LlmResult<()> {
-        if self.terminal {
+    fn line(&mut self, sink: &dyn TextDeltaSink) -> LlmResult<()> {
+        let line = self.line.strip_suffix(b"\r").unwrap_or(&self.line);
+        if line.is_empty() {
+            if let Some(data) = self.data.take() {
+                self.record(&data, sink)?;
+            }
+            return Ok(());
+        }
+        if line.starts_with(b":") && !self.done {
+            std::str::from_utf8(line).map_err(|_| invalid())?;
+            return Ok(());
+        }
+        if self.data.is_some() || self.done {
             return Err(invalid());
         }
-        let record: Record = serde_json::from_slice(&self.pending).map_err(|_| invalid())?;
-        if record.model != self.model
-            || record.message.role != "assistant"
-            || record.error.is_some()
-            || record
-                .message
-                .thinking
+        let data = line.strip_prefix(b"data:").ok_or_else(invalid)?;
+        self.data = Some(data.strip_prefix(b" ").unwrap_or(data).to_vec());
+        Ok(())
+    }
+    fn record(&mut self, data: &[u8], sink: &dyn TextDeltaSink) -> LlmResult<()> {
+        if data == b"[DONE]" {
+            if !self.terminal || self.done {
+                return Err(invalid());
+            }
+            self.done = true;
+            return Ok(());
+        }
+        if self.terminal || self.done {
+            return Err(invalid());
+        }
+        let record: Record = serde_json::from_slice(data).map_err(|_| invalid())?;
+        if record.model != self.model || record.error.is_some() || record.choices.len() != 1 {
+            return Err(invalid());
+        }
+        let choice = &record.choices[0];
+        let delta = &choice.delta;
+        if choice.index != 0
+            || delta.role.as_deref().is_some_and(|r| r != "assistant")
+            || delta
+                .reasoning_content
                 .as_ref()
                 .is_some_and(|s| !s.is_empty())
-            || record
-                .message
-                .tool_calls
-                .as_ref()
-                .is_some_and(|v| !v.is_empty())
-            || record
-                .message
-                .images
-                .as_ref()
-                .is_some_and(|v| !v.is_empty())
-            || (record.done && record.done_reason.as_deref() != Some("stop"))
-            || (!record.done && record.done_reason.is_some())
+            || delta.refusal.as_ref().is_some_and(|s| !s.is_empty())
+            || delta.tool_calls.as_ref().is_some_and(|v| !v.is_empty())
+            || delta.function_call.is_some()
+            || choice.finish_reason.as_deref().is_some_and(|r| r != "stop")
         {
             return Err(invalid());
         }
-        if self.text.partial_text().map_or(0, str::len) + record.message.content.len() > MAX_OUTPUT
-        {
+        let content = delta.content.as_deref().unwrap_or_default();
+        if self.text.partial_text().map_or(0, str::len) + content.len() > MAX_OUTPUT {
             return Err(invalid());
         }
         self.text
-            .apply(self.sequence, TextEvent::Delta(&record.message.content))
+            .apply(self.sequence, TextEvent::Delta(content))
             .map_err(|_| invalid())?;
         self.sequence += 1;
-        if !record.message.content.is_empty() {
-            sink.delta(&record.message.content);
+        if !content.is_empty() {
+            sink.delta(content);
         }
-        self.terminal = record.done;
+        self.terminal = choice.finish_reason.is_some();
         Ok(())
     }
     fn finish(mut self) -> LlmResult<String> {
-        if !self.terminal || !self.pending.is_empty() {
+        if !self.terminal || !self.done || !self.line.is_empty() || self.data.is_some() {
             return Err(invalid());
         }
         self.text

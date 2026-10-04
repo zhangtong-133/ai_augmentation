@@ -3,9 +3,19 @@ use super::{
     QueryRejection, Response, Router, State, auth, error, get, id, invalid, output, payload, post,
     revision, runtime,
 };
-use personal_ai_storage::learning::model_authorization::{ModelApproval, ModelAuthorizationInput};
+use personal_ai_storage::learning::model_authorization::{
+    LocalModelApproval, LocalModelAuthorizationInput, ModelApproval, ModelAuthorizationInput,
+};
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
+        .route(
+            "/api/learning/plans/{plan}/tasks/{task}/evidence/local-model-authorizations",
+            post(create_local),
+        )
+        .route(
+            "/api/learning/model-authorizations/{request}/approve-local",
+            post(approve_local),
+        )
         .route(
             "/api/learning/plans/{plan}/tasks/{task}/evidence/model-authorizations",
             post(create),
@@ -133,6 +143,82 @@ async fn cancel(
     output(
         &runtime(&state)?
             .cancel_model_authorization(&user.id, &id(&request)?)
+            .await
+            .map_err(error)?,
+    )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalCreate {
+    request_id: String,
+    endpoint: String,
+    model: String,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalApproval {
+    digest: String,
+    acknowledge_sharing: bool,
+    acknowledge_local_compute: bool,
+}
+fn local_enabled() -> Result<(), ApiError> {
+    if std::env::var("LEARNING_LOCAL_ENABLED").ok().as_deref() == Some("true") {
+        Ok(())
+    } else {
+        Err(error(personal_ai_storage::StorageError::Unavailable(
+            "local review disabled".into(),
+        )))
+    }
+}
+async fn create_local(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((plan, task)): Path<(String, String)>,
+    body: Result<Json<LocalCreate>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    local_enabled()?;
+    let input = payload(body)?;
+    let target = personal_ai_llm::local::LocalTarget::new(&input.endpoint, &input.model)
+        .map_err(|_| invalid())?;
+    output(
+        &runtime(&state)?
+            .create_local_model_authorization(
+                &user.id,
+                &id(&plan)?,
+                &id(&task)?,
+                &LocalModelAuthorizationInput {
+                    request_id: id(&input.request_id)?,
+                    target,
+                },
+            )
+            .await
+            .map_err(error)?,
+    )
+}
+async fn approve_local(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request): Path<String>,
+    body: Result<Json<LocalApproval>, JsonRejection>,
+) -> Result<Response, ApiError> {
+    let user = auth::current_user(&state, &headers).await?;
+    auth::mutation_guard(&headers)?;
+    local_enabled()?;
+    let input = payload(body)?;
+    output(
+        &runtime(&state)?
+            .approve_local_model_authorization(
+                &user.id,
+                &id(&request)?,
+                &LocalModelApproval {
+                    digest: input.digest,
+                    acknowledge_sharing: input.acknowledge_sharing,
+                    acknowledge_local_compute: input.acknowledge_local_compute,
+                },
+            )
             .await
             .map_err(error)?,
     )

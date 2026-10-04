@@ -1,5 +1,5 @@
 WITH evidence AS (
- SELECT a.request_id,a.plan_id,a.task_id,a.connection_id,a.connection_revision,a.status,
+ SELECT a.request_id,a.plan_id,a.task_id,a.connection_id,a.connection_revision,a.status, a.connection_id IS NULL AS local,
         a.created_ms,a.expires_ms,a.approved_ms,a.dispatch_deadline_ms,a.sent_ms,
         a.status IN ('draft','authorized','running','succeeded') AS live,
         p.status AS plan_status,t.status AS task_status,t.request_id AS task_plan,
@@ -31,7 +31,7 @@ WITH evidence AS (
    CASE WHEN status='succeeded' AND sent_ms IS NULL THEN 'success_without_send' END,
    CASE WHEN task_plan IS NOT NULL AND task_plan<>plan_id THEN 'task_plan_mismatch' END,
    CASE WHEN live AND (plan_status IS DISTINCT FROM 'ready' OR task_status IS DISTINCT FROM 'planned' OR outcome IS DISTINCT FROM 'completed' OR evidence_deleted IS DISTINCT FROM FALSE) THEN 'active_source_unavailable' END,
-   CASE WHEN live AND (connection_status IS DISTINCT FROM 'active' OR current_connection_revision IS DISTINCT FROM connection_revision) THEN 'active_connection_unavailable' END,
+   CASE WHEN live AND NOT local AND (connection_status IS DISTINCT FROM 'active' OR current_connection_revision IS DISTINCT FROM connection_revision) THEN 'active_connection_unavailable' END,
    CASE WHEN NOT ('draft'=ANY(events)) OR NOT (status=ANY(events)) OR (approved_ms IS NOT NULL AND NOT ('authorized'=ANY(events))) OR (dispatch_deadline_ms IS NOT NULL AND NOT ('running'=ANY(events))) THEN 'missing_state_audit' END,
    CASE WHEN sending_ms IS DISTINCT FROM sent_ms THEN 'sending_audit_mismatch' END,
    CASE WHEN bad_audit_time THEN 'invalid_audit_time' END,

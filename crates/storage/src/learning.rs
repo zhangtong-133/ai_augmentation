@@ -83,6 +83,31 @@ pub struct LearningProgress {
     pub recorded_minutes_today: u64,
 }
 pub trait LearningStore: Send + Sync {
+    fn create_local_model_authorization(
+        &self,
+        _owner: &UserId,
+        _plan: &str,
+        _task: &str,
+        _input: &model_authorization::LocalModelAuthorizationInput,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>> {
+        Box::pin(async {
+            Err(crate::StorageError::Unavailable(
+                "local review unavailable".into(),
+            ))
+        })
+    }
+    fn approve_local_model_authorization(
+        &self,
+        _owner: &UserId,
+        _request: &str,
+        _input: &model_authorization::LocalModelApproval,
+    ) -> BoxFuture<'_, StorageResult<model_authorization::ModelAuthorization>> {
+        Box::pin(async {
+            Err(crate::StorageError::Unavailable(
+                "local review unavailable".into(),
+            ))
+        })
+    }
     fn save_training_review(
         &self,
         owner: &UserId,

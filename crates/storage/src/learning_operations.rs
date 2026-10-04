@@ -49,6 +49,7 @@ pub trait LearningOperationsStore: Send + Sync {
 /// 模型核验元数据诊断；不包含模型名、正文、摘要或派发 token。
 #[derive(Debug, serde::Serialize)]
 pub struct LearningModelAuditItem {
+    pub execution_kind: String,
     pub request_id: String,
     pub plan_id: String,
     pub task_id: String,

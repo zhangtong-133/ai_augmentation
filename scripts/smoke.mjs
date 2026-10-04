@@ -247,6 +247,7 @@ try {
   });
   const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-learning"], {
+    LEARNING_LOCAL_ENABLED: "true",
     TEST_REDIS_URL: `redis://${redisAddress}/0`,
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });

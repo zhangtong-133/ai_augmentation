@@ -1,4 +1,5 @@
 "use client";
+import { LearningLocalModel } from "./learning-local-model";
 import { LearningModelConnection } from "./learning-model-connection";
 import { useState } from "react";
 import { type ModelReviewPreview, type ModelPreviewLoader } from "./learning-types";
@@ -12,6 +13,7 @@ export function LearningModelPreview({ path, locked, load }: { path: string; loc
       <p>模型建议仍需你逐项核验，不会自动修改自评分数。以下为完整分享内容，关闭或刷新后清除本次预览。</p>
       {showSharing && <pre className="feedText" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(preview, null, 2)}</pre>}
       <LearningModelConnection path={path.replace(/model-preview$/, "model-authorizations")} locked={locked} load={load} hideSharing={() => setShowSharing(false)} />
+      <LearningLocalModel path={path.replace(/model-preview$/, "local-model-authorizations")} locked={locked} load={load} hideSharing={() => setShowSharing(false)} />
       <button disabled={locked} onClick={() => setPreview(null)}>关闭分享预览</button>
     </div>}
   </section>;

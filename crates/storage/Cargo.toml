@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+personal-ai-llm.workspace = true
 personal-ai-learning.workspace = true
 personal-ai-feeds.workspace = true
 serde.workspace = true

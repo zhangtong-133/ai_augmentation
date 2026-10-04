@@ -16,6 +16,9 @@ pub struct ModelApproval {
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct ModelAuthorization {
+    /// Some means independent local inference; subscription connection fields are empty/zero.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub local_endpoint: Option<String>,
     pub request_id: String,
     pub plan_id: String,
     pub task_id: String,
@@ -30,6 +33,31 @@ pub struct ModelAuthorization {
     /// 仅从当前有效来源重建，取消/到期/失效时为空。
     pub preview: Option<ModelReviewPreview>,
     pub advice: Option<ModelReviewResponse>,
+}
+
+#[derive(Clone)]
+pub struct LocalModelAuthorizationInput {
+    pub request_id: String,
+    pub target: personal_ai_llm::local::LocalTarget,
+}
+#[derive(Clone)]
+pub struct LocalModelApproval {
+    pub digest: String,
+    pub acknowledge_sharing: bool,
+    pub acknowledge_local_compute: bool,
+}
+/// Local dispatch is deliberately separate from subscription proof and claiming.
+pub trait LocalReviewExecutionStore: ModelReviewExecutionStore {
+    fn claim_local_review(
+        &self,
+        owner: &personal_ai_domain::UserId,
+        request: &str,
+    ) -> crate::BoxFuture<'_, crate::StorageResult<Option<ModelReviewClaim>>>;
+    fn begin_local_review(
+        &self,
+        claim: &ModelReviewClaim,
+        target: &personal_ai_llm::local::LocalTarget,
+    ) -> crate::BoxFuture<'_, crate::StorageResult<bool>>;
 }
 #[derive(Serialize)]
 pub struct ModelAuthorizationPage {

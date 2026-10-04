@@ -3,11 +3,28 @@ use super::{
     invalid, locked, map_error, model_review, now, number,
 };
 use personal_ai_storage::learning::model_authorization::{
-    ModelApproval, ModelAuthorization, ModelAuthorizationInput, ModelAuthorizationPage,
+    LocalModelApproval, LocalModelAuthorizationInput, ModelApproval, ModelAuthorization,
+    ModelAuthorizationInput, ModelAuthorizationPage,
 };
 use sha2::{Digest, Sha256};
 
 fn digest(owner: Uuid, item: &ModelAuthorization, input: &str) -> StorageResult<String> {
+    if let Some(endpoint) = &item.local_endpoint {
+        let data = serde_json::to_vec(&(
+            "learning-local-consent-v1",
+            owner.to_string(),
+            &item.request_id,
+            &item.plan_id,
+            &item.task_id,
+            endpoint,
+            &item.model,
+            input,
+            item.created_at_unix_ms,
+            item.expires_at_unix_ms,
+        ))
+        .map_err(|_| invalid())?;
+        return Ok(format!("{:x}", Sha256::digest(data)));
+    }
     let data = serde_json::to_vec(&(
         "learning-subscription-consent-v1",
         owner.to_string(),
@@ -53,6 +70,7 @@ async fn state(
     .map_err(map_error)?;
     Ok(())
 }
+#[allow(clippy::too_many_lines)]
 pub(super) async fn read(
     tx: &mut PgConnection,
     owner: Uuid,
@@ -69,11 +87,19 @@ pub(super) async fn read(
     .map_err(map_error)?
     .ok_or(StorageError::NotFound)?;
     let mut item = ModelAuthorization {
+        local_endpoint: r.get("local_endpoint"),
         request_id: request.to_string(),
         plan_id: r.get::<Uuid, _>("plan_id").to_string(),
         task_id: r.get::<Uuid, _>("task_id").to_string(),
-        connection_id: r.get::<Uuid, _>("connection_id").to_string(),
-        connection_revision: number(r.get("connection_revision"))?,
+        connection_id: r
+            .get::<Option<Uuid>, _>("connection_id")
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        connection_revision: r
+            .get::<Option<i64>, _>("connection_revision")
+            .map(number)
+            .transpose()?
+            .unwrap_or(0),
         model: r.get("model"),
         status: r.get("status"),
         digest: r.get("digest"),
@@ -103,15 +129,20 @@ pub(super) async fn read(
         item.status = "expired".into();
     } else {
         let current = async {
-            connection(
-                tx,
-                owner,
-                id(&item.connection_id)?,
-                item.connection_revision,
-                &item.model,
-                time,
-            )
-            .await?;
+            if let Some(endpoint) = &item.local_endpoint {
+                personal_ai_llm::local::LocalTarget::new(endpoint, &item.model)
+                    .map_err(|_| conflict())?;
+            } else {
+                connection(
+                    tx,
+                    owner,
+                    id(&item.connection_id)?,
+                    item.connection_revision,
+                    &item.model,
+                    time,
+                )
+                .await?;
+            }
             let preview =
                 model_review::read(tx, owner, id(&item.plan_id)?, id(&item.task_id)?).await?;
             if preview.input().input_digest != r.get::<String, _>("input_digest")
@@ -162,9 +193,45 @@ pub(super) async fn create(
     task: Uuid,
     input: ModelAuthorizationInput,
 ) -> StorageResult<ModelAuthorization> {
+    create_bound(store, owner, plan, task, input, None).await
+}
+pub(super) async fn create_local(
+    store: &PostgresStore,
+    owner: Uuid,
+    plan: Uuid,
+    task: Uuid,
+    input: LocalModelAuthorizationInput,
+) -> StorageResult<ModelAuthorization> {
+    create_bound(
+        store,
+        owner,
+        plan,
+        task,
+        ModelAuthorizationInput {
+            request_id: input.request_id,
+            connection_id: String::new(),
+            connection_revision: 0,
+            model: input.target.model().into(),
+        },
+        Some(input.target.endpoint().into()),
+    )
+    .await
+}
+async fn create_bound(
+    store: &PostgresStore,
+    owner: Uuid,
+    plan: Uuid,
+    task: Uuid,
+    input: ModelAuthorizationInput,
+    endpoint: Option<String>,
+) -> StorageResult<ModelAuthorization> {
     let request = id(&input.request_id)?;
-    let key = id(&input.connection_id)?;
-    if input.connection_revision == 0
+    let key = if endpoint.is_some() {
+        None
+    } else {
+        Some(id(&input.connection_id)?)
+    };
+    if (endpoint.is_none() && input.connection_revision == 0)
         || input.model.trim().is_empty()
         || input.model.len() > 128
         || input.model.chars().any(char::is_control)
@@ -178,7 +245,8 @@ pub(super) async fn create(
         let old = read(&mut tx, owner, request, time).await?;
         if old.plan_id != plan.to_string()
             || old.task_id != task.to_string()
-            || old.connection_id != key.to_string()
+            || old.connection_id != input.connection_id
+            || old.local_endpoint != endpoint
             || old.connection_revision != input.connection_revision
             || old.model != input.model
         {
@@ -191,22 +259,36 @@ pub(super) async fn create(
     if counts.0 >= 1000 || counts.1 >= 20 {
         return Err(conflict());
     }
-    let expires = connection(
-        &mut tx,
-        owner,
-        key,
-        input.connection_revision,
-        &input.model,
-        time,
-    )
-    .await?
-    .min(time + 300_000);
+    let expires = if let Some(key) = key {
+        connection(
+            &mut tx,
+            owner,
+            key,
+            input.connection_revision,
+            &input.model,
+            time,
+        )
+        .await?
+        .min(time + 300_000)
+    } else {
+        time + 300_000
+    };
     let preview = model_review::read(&mut tx, owner, plan, task).await?;
+    if endpoint.is_some()
+        && preview.system_prompt().len()
+            + serde_json::to_vec(preview.input())
+                .map_err(|_| invalid())?
+                .len()
+            > personal_ai_llm::local::MAX_PROMPT_BYTES
+    {
+        return Err(invalid());
+    }
     let mut item = ModelAuthorization {
+        local_endpoint: endpoint,
         request_id: request.to_string(),
         plan_id: plan.to_string(),
         task_id: task.to_string(),
-        connection_id: key.to_string(),
+        connection_id: input.connection_id,
         connection_revision: input.connection_revision,
         model: input.model,
         status: "draft".into(),
@@ -218,8 +300,8 @@ pub(super) async fn create(
         advice: None,
     };
     item.digest = digest(owner, &item, &preview.input().input_digest)?;
-    sqlx::query("INSERT INTO learning_model_authorizations(user_id,request_id,plan_id,task_id,connection_id,connection_revision,model,input_digest,digest,status,created_ms,expires_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11)")
-        .bind(owner).bind(request).bind(plan).bind(task).bind(key).bind(integer(item.connection_revision)?).bind(&item.model).bind(&preview.input().input_digest).bind(&item.digest).bind(time).bind(expires).execute(&mut *tx).await.map_err(map_error)?;
+    sqlx::query("INSERT INTO learning_model_authorizations(user_id,request_id,plan_id,task_id,connection_id,connection_revision,model,input_digest,digest,status,created_ms,expires_ms,local_endpoint) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,'draft',$10,$11,$12)")
+        .bind(owner).bind(request).bind(plan).bind(task).bind(key).bind(if key.is_some() { Some(integer(item.connection_revision)?) } else {None}).bind(&item.model).bind(&preview.input().input_digest).bind(&item.digest).bind(time).bind(expires).bind(&item.local_endpoint).execute(&mut *tx).await.map_err(map_error)?;
     item.preview = Some(preview);
     tx.commit().await.map_err(map_error)?;
     Ok(item)
@@ -261,6 +343,34 @@ pub(super) async fn approve(
     request: Uuid,
     input: ModelApproval,
 ) -> StorageResult<ModelAuthorization> {
+    approve_bound(store, owner, request, input, false).await
+}
+pub(super) async fn approve_local(
+    store: &PostgresStore,
+    owner: Uuid,
+    request: Uuid,
+    input: LocalModelApproval,
+) -> StorageResult<ModelAuthorization> {
+    approve_bound(
+        store,
+        owner,
+        request,
+        ModelApproval {
+            digest: input.digest,
+            acknowledge_sharing: input.acknowledge_sharing,
+            acknowledge_subscription_usage: input.acknowledge_local_compute,
+        },
+        true,
+    )
+    .await
+}
+async fn approve_bound(
+    store: &PostgresStore,
+    owner: Uuid,
+    request: Uuid,
+    input: ModelApproval,
+    local: bool,
+) -> StorageResult<ModelAuthorization> {
     if !input.acknowledge_sharing
         || !input.acknowledge_subscription_usage
         || input.digest.len() != 64
@@ -278,6 +388,7 @@ pub(super) async fn approve(
         item.status.as_str(),
         "draft" | "authorized" | "running" | "succeeded"
     ) || item.digest != input.digest
+        || item.local_endpoint.is_some() != local
     {
         tx.commit().await.map_err(map_error)?;
         return Err(conflict());

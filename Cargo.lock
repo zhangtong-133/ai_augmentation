@@ -47,6 +47,7 @@ dependencies = [
  "personal-ai-git-local",
  "personal-ai-knowledge",
  "personal-ai-llm",
+ "personal-ai-llm-local",
  "personal-ai-llm-openai",
  "personal-ai-pdf-poppler",
  "personal-ai-storage",
@@ -1701,7 +1702,7 @@ name = "personal-ai-llm"
 version = "0.1.0"
 
 [[package]]
-name = "personal-ai-llm-ollama"
+name = "personal-ai-llm-local"
 version = "0.1.0"
 dependencies = [
  "axum",
@@ -1763,6 +1764,7 @@ dependencies = [
  "personal-ai-domain",
  "personal-ai-feeds",
  "personal-ai-learning",
+ "personal-ai-llm",
  "serde",
  "serde_json",
 ]

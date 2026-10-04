@@ -571,6 +571,8 @@ async fn learning_evidence_rejects_cancelled_results_and_changed_skill_versions(
 #[path = "learning_tests/reviews.rs"]
 mod reviews;
 
+#[path = "learning_tests/local_models.rs"]
+mod local_models;
 #[path = "learning_tests/model_authorizations.rs"]
 mod model_authorizations;
 #[path = "learning_tests/model_execution.rs"]

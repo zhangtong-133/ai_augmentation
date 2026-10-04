@@ -8,6 +8,7 @@ use personal_ai_storage::{
     subscription_connections::VerifiedSubscriptionConnection,
 };
 use std::time::Duration;
+pub mod local;
 pub mod progress;
 pub mod text_bridge;
 use progress::{Publisher, ReviewProgressEvent, ReviewProgressKind};

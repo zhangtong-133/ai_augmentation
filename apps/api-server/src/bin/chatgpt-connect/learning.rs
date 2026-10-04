@@ -224,6 +224,7 @@ mod tests {
             label: "fixture",
         };
         let item = ModelAuthorization {
+            local_endpoint: None,
             request_id: uuid::Uuid::new_v4().to_string(),
             plan_id: uuid::Uuid::new_v4().to_string(),
             task_id: uuid::Uuid::new_v4().to_string(),

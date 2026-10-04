@@ -474,3 +474,60 @@ test("running and unknown learning reviews never offer automatic resend", async 
 
 // Private status observation uses the same dual-gateway acceptance entry point.
 import "./learning-events.mjs";
+
+test("local model consent binds endpoint and model with independent double confirmation", async ({ page }, testInfo) => {
+  const { panel, detail } = await prepareEvidenceReview(page);
+  const preview = detail.getByRole("region", { name: "模型分享预览", exact: true });
+  await preview.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  const local = preview.getByRole("region", { name: "本地模型授权", exact: true });
+  await expect(local.getByLabel("本地推理地址", { exact: true })).toHaveValue("http://127.0.0.1:11435");
+  await expect(local.getByLabel("本地核验模型", { exact: true })).toHaveValue("qwen3:4b-q4_K_M");
+  let posts = 0, approval;
+  await page.route("**/api/learning/plans/*/tasks/*/evidence/local-model-authorizations", async route => {
+    posts++; const response = await route.fetch(); expect(response.status()).toBe(200);
+    if (posts === 1) return route.abort("failed"); return route.fulfill({ response });
+  });
+  await local.getByRole("button", { name: "创建本地模型授权草稿", exact: true }).click();
+  await expect(local).toContainText("本地草稿结果尚未核对");
+  await local.getByRole("button", { name: "查询原本地授权草稿", exact: true }).click();
+  const auth = local.getByRole("region", { name: "模型核验授权详情", exact: true });
+  await expect(auth).toContainText("本地地址 http://127.0.0.1:11435");
+  await expect(auth).toContainText("6 GiB");
+  await expect(auth.getByText("同意一次调用消耗所选连接的订阅额度", { exact: true })).toHaveCount(0);
+  const save = auth.getByRole("button", { name: "确认保存本次模型授权", exact: true });
+  await expect(save).toBeDisabled();
+  await auth.getByLabel("同意将本次预览中的证据分享给所选模型", { exact: true }).check();
+  await expect(save).toBeDisabled();
+  await auth.getByLabel("同意一次调用使用本机计算资源", { exact: true }).check();
+  await page.route("**/api/learning/model-authorizations/*/approve-local", async route => {
+    approval = route.request().postDataJSON(); return route.continue();
+  });
+  await save.click(); await expect(auth).toContainText("已保存授权，尚未执行");
+  expect(approval.acknowledge_local_compute).toBe(true); expect(approval.acknowledge_subscription_usage).toBeUndefined(); expect(posts).toBe(1);
+  const screenshot = testInfo.outputPath("learning-local-consent.png");
+  await local.screenshot({ path: screenshot }); await testInfo.attach("learning-local-consent", { path: screenshot, contentType: "image/png" });
+  await auth.getByRole("button", { name: "取消本次模型授权", exact: true }).click();
+  await expect(auth).toContainText("已取消");
+  await page.reload();
+  const history = panel.getByRole("region", { name: "模型核验授权历史", exact: true });
+  await history.getByRole("button", { name: "读取模型授权历史", exact: true }).click();
+  await expect(history).toContainText("qwen3:4b-q4_K_M · 已取消");
+});
+
+test("local consent loses its sharing material when evidence is deleted", async ({ page }) => {
+  const { detail } = await prepareEvidenceReview(page);
+  const preview = detail.getByRole("region", { name: "模型分享预览", exact: true });
+  await preview.getByRole("button", { name: "预览模型分享材料", exact: true }).click();
+  const local = preview.getByRole("region", { name: "本地模型授权", exact: true });
+  let item;
+  await page.route("**/api/learning/plans/*/tasks/*/evidence/local-model-authorizations", async route => {
+    const response = await route.fetch(); item = await response.json(); return route.fulfill({ response });
+  });
+  await local.getByRole("button", { name: "创建本地模型授权草稿", exact: true }).click();
+  await expect(local).toContainText("待确认");
+  await detail.getByRole("button", { name: "删除结构化证据", exact: true }).click();
+  await detail.getByRole("button", { name: "确认删除证据", exact: true }).click();
+  await expect(local).toHaveCount(0);
+  const current = await page.request.get(`/api/learning/model-authorizations/${item.request_id}`);
+  expect(current.status()).toBe(200); const value = await current.json(); expect(value.status).toBe("invalidated"); expect(value.preview).toBeNull();
+});

@@ -18,17 +18,17 @@ export function LearningAuthorizationDetail({ item, locked, load, accept, openPl
   function send(operation: { path: string; body: object }) { setPending(operation); setSharing(false); setUsage(false); load<ModelAuthorization>(operation.path, receive, { method: "POST", body: operation.body }); }
   return <section aria-label="模型核验授权详情">
     <p>{expired && ["draft", "authorized"].includes(item.status) ? "已到期，请核对服务器状态" : labels[observed ?? item.status]}</p>
-    <p>连接 {item.connection_id}（版本 {item.connection_revision}），模型 {item.model}。有效至 {date(item.expires_at_unix_ms)}。</p>
-    <p>保存授权后，可在已登录的本机显式执行一次，届时会消耗订阅额度或账户允许的 credits。批准不保证额度或模型可用，不会自动生成自评。</p>
+    <p>{item.local_endpoint ? `本地地址 ${item.local_endpoint}` : `连接 ${item.connection_id}（版本 ${item.connection_revision}）`}，模型 {item.model}。有效至 {date(item.expires_at_unix_ms)}。</p>
+    <p>{item.local_endpoint ? "保存授权后，在本机显式执行一次本地推理，会占用本机计算资源。请保持至少 6 GiB 游戏显存余量；页面不会启动模型，不会自动生成自评。" : "保存授权后，可在已登录的本机显式执行一次，届时会消耗订阅额度或账户允许的 credits。批准不保证额度或模型可用，不会自动生成自评。"}</p>
     {(active || item.status === "running" || item.status === "succeeded") && item.preview && !pending && !hidden && <details><summary>核对本次完整分享内容</summary><pre className="feedText" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(item.preview, null, 2)}</pre></details>}
     {active && item.status === "draft" && !pending && !hidden && <div>
       <label><input type="checkbox" checked={sharing} disabled={locked} onChange={e => setSharing(e.target.checked)} />同意将本次预览中的证据分享给所选模型</label>
-      <label><input type="checkbox" checked={usage} disabled={locked} onChange={e => setUsage(e.target.checked)} />同意一次调用消耗所选连接的订阅额度</label>
-      <button disabled={locked || !sharing || !usage} onClick={() => send({ path: `${root}/${item.request_id}/approve`, body: { digest: item.digest, acknowledge_sharing: sharing, acknowledge_subscription_usage: usage } })}>确认保存本次模型授权</button>
+      <label><input type="checkbox" checked={usage} disabled={locked} onChange={e => setUsage(e.target.checked)} />{item.local_endpoint ? "同意一次调用使用本机计算资源" : "同意一次调用消耗所选连接的订阅额度"}</label>
+      <button disabled={locked || !sharing || !usage} onClick={() => send({ path: `${root}/${item.request_id}/${item.local_endpoint ? "approve-local" : "approve"}`, body: { digest: item.digest, acknowledge_sharing: sharing, ...(item.local_endpoint ? { acknowledge_local_compute: usage } : { acknowledge_subscription_usage: usage }) } })}>确认保存本次模型授权</button>
     </div>}
     <button disabled={locked} onClick={() => { setSharing(false); setUsage(false); load<ModelAuthorization>(`${root}/${item.request_id}`, receive); }}>核对模型授权状态</button>
     {(active || item.status === "running" || item.status === "succeeded") && !pending && <button disabled={locked} onClick={() => send({ path: `${root}/${item.request_id}/cancel`, body: {} })}>取消本次模型授权</button>}
-    {item.status === "running" && <p>取消会阻止保存晚到建议；已经发出的请求仍可能消耗额度。请手动核对状态，页面不会重新发送模型请求。</p>}
+    {item.status === "running" && <p>取消会阻止保存晚到建议；已经发出的请求仍可能占用资源。请手动核对状态，页面不会重新发送模型请求。</p>}
     {item.status === "unknown" && <p>可能已经发送，无法确认结果。原授权不会再次执行；若要重新尝试，请重新预览并明确授权。</p>}
     {item.status === "succeeded" && item.advice && !pending && !hidden && <><LearningModelAdvice advice={item.advice} />{openPlan && <button disabled={locked} onClick={() => openPlan(`/api/learning/plans/${item.plan_id}`)}>回到原训练证据</button>}</>}
     {!locked && !pending && <LearningStatusObserver key={item.request_id} request={item.request_id} enabled={["authorized", "running"].includes(observed ?? item.status) && (item.status === "running" || !expired)}

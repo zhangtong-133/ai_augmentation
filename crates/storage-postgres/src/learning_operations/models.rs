@@ -57,7 +57,7 @@ pub(super) async fn audit(
             warnings.push(row.get::<String, _>("code"));
         }
     }
-    let rows=sqlx::query(&format!("{SQL} SELECT request_id,plan_id,task_id,connection_id,connection_revision,status,created_ms,expires_ms,approved_ms,dispatch_deadline_ms,sent_ms,issues,warnings FROM audit WHERE ($3::uuid IS NULL OR request_id>$3) ORDER BY request_id LIMIT 101")).bind(owner).bind(time).bind(after).fetch_all(&mut *tx).await.map_err(map_error)?;
+    let rows=sqlx::query(&format!("{SQL} SELECT request_id,plan_id,task_id,connection_id,connection_revision,local,status,created_ms,expires_ms,approved_ms,dispatch_deadline_ms,sent_ms,issues,warnings FROM audit WHERE ($3::uuid IS NULL OR request_id>$3) ORDER BY request_id LIMIT 101")).bind(owner).bind(time).bind(after).fetch_all(&mut *tx).await.map_err(map_error)?;
     let items: Vec<_> = rows.iter().take(100).map(audit_item).collect();
     let next_cursor =
         (rows.len() > 100).then(|| items.last().expect("full audit page").request_id.clone());
@@ -98,8 +98,20 @@ fn audit_item(r: &sqlx::postgres::PgRow) -> LearningModelAuditItem {
         request_id: r.get::<Uuid, _>("request_id").to_string(),
         plan_id: r.get::<Uuid, _>("plan_id").to_string(),
         task_id: r.get::<Uuid, _>("task_id").to_string(),
-        connection_id: r.get::<Uuid, _>("connection_id").to_string(),
-        connection_revision: r.get::<i64, _>("connection_revision").to_string(),
+        execution_kind: if r.get::<bool, _>("local") {
+            "local"
+        } else {
+            "subscription"
+        }
+        .into(),
+        connection_id: r
+            .get::<Option<Uuid>, _>("connection_id")
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+        connection_revision: r
+            .get::<Option<i64>, _>("connection_revision")
+            .unwrap_or(0)
+            .to_string(),
         status: r.get("status"),
         created_at_unix_ms: r.get::<i64, _>("created_ms").to_string(),
         expires_at_unix_ms: r.get::<i64, _>("expires_ms").to_string(),
