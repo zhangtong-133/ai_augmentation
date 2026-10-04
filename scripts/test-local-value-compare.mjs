@@ -63,3 +63,13 @@ test("CLI refuses duplicate, symlinked, invalid UTF-8 and oversized reports with
     for (const path of [valid, link]) await assert.rejects(execute(process.execPath, [cli, valid, path], { timeout: 5000 }), e => e.code === 1 && e.stdout === "");
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("challenge reports compare separately and cannot mix suites within or across runs", () => {
+  const a = report(), b = report("2026-10-04T12:10:00.000Z");
+  a.manifests.forEach(m => m.quality_version = "rss-challenge-v1");
+  b.manifests.forEach(m => m.quality_version = "rss-challenge-v1");
+  assert.equal(compareReports([a, b]).all_passed, true);
+  assert.throws(() => compareReports([a, report()]));
+  b.manifests[0].quality_version = "rss-quality-v1";
+  assert.throws(() => validateReport(b));
+});

@@ -48,3 +48,13 @@ test("each report is private, fresh, bounded and cannot replace a previous resul
     await assert.rejects(newReportDirectory(join(temporary, "link"), "quality"));
   } finally { await rm(temporary, { recursive: true, force: true }); }
 });
+
+test("suite/profile options are explicit, bounded and reject duplicates", async () => {
+  const { benchmarkOptions } = await import("./local-benchmark-options.mjs");
+  assert.equal(benchmarkOptions(["run"]).suite, "baseline");
+  assert.equal(benchmarkOptions(["run", "--suite", "challenge", "--profile", "local-rss-v1"]).profile, "local-rss-v1");
+  assert.equal(benchmarkOptions(["run", "--profile", "local-rss-v2", "--suite", "challenge"]).suite, "challenge");
+  for (const flags of [["--suite", "private.json"], ["--profile", "unknown"], ["--suite", "baseline", "--suite", "challenge"]]) {
+    assert.throws(() => benchmarkOptions(["run", ...flags]));
+  }
+});

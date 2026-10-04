@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 const CORPUS: &str = include_str!("feed_value_quality/corpus.json");
+const CHALLENGE: &str = include_str!("feed_value_quality/challenge.json");
+pub const CHALLENGE_VERSION: &str = "rss-challenge-v1";
 pub const QUALITY_VERSION: &str = "rss-quality-v1";
 const OWNER: &str = "11111111-1111-4111-8111-111111111111";
 const START: u64 = 20_000 * DAY_MS;
@@ -64,6 +66,7 @@ pub struct QualityCase {
     id: String,
     corpus_sha256: String,
     profile: &'static str,
+    quality_version: &'static str,
     plan: ValueScoringPlan,
     labels: BTreeMap<usize, String>,
     checks: Vec<Check>,
@@ -147,12 +150,23 @@ pub fn cases() -> Result<Vec<QualityCase>, ValueError> {
 /// # Errors
 /// 未知 profile 或不合法语料时拒绝。
 pub fn cases_for_profile(profile: &str) -> Result<Vec<QualityCase>, ValueError> {
+    cases_for_suite("baseline", profile)
+}
+/// 独立挑战集不替换或修改原始基线。
+/// # Errors
+/// 未知套件/profile、不合法语料或预算超限时拒绝。
+pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, ValueError> {
+    let (input, version) = match suite {
+        "baseline" => (CORPUS, QUALITY_VERSION),
+        "challenge" => (CHALLENGE, CHALLENGE_VERSION),
+        _ => return Err(ValueError::InvalidSnapshot),
+    };
     let profile = match profile {
         "local-rss-v1" => "local-rss-v1",
         "local-rss-v2" => "local-rss-v2",
         _ => return Err(ValueError::InvalidSnapshot),
     };
-    let mut all = parse(CORPUS)?;
+    let mut all = parse_version(input, version)?;
     for case in &mut all {
         case.profile = profile;
         case.request()?;
@@ -160,9 +174,12 @@ pub fn cases_for_profile(profile: &str) -> Result<Vec<QualityCase>, ValueError> 
     Ok(all)
 }
 fn parse(input: &str) -> Result<Vec<QualityCase>, ValueError> {
+    parse_version(input, QUALITY_VERSION)
+}
+fn parse_version(input: &str, version: &'static str) -> Result<Vec<QualityCase>, ValueError> {
     let corpus_sha256 = format!("{:x}", Sha256::digest(input));
     let corpus: Corpus = serde_json::from_str(input).map_err(|_| ValueError::InvalidSnapshot)?;
-    if corpus.version != QUALITY_VERSION || corpus.cases.is_empty() || corpus.cases.len() > 8 {
+    if corpus.version != version || corpus.cases.is_empty() || corpus.cases.len() > 8 {
         return Err(ValueError::InvalidSnapshot);
     }
     let mut ids = BTreeSet::new();
@@ -236,6 +253,7 @@ fn parse(input: &str) -> Result<Vec<QualityCase>, ValueError> {
                 id: c.id,
                 corpus_sha256: corpus_sha256.clone(),
                 profile: LOCAL_VALUE_PROFILE,
+                quality_version: version,
                 plan,
                 labels,
                 checks: c.checks,
@@ -263,7 +281,7 @@ impl QualityCase {
             input_digest: self.plan.digest().into(),
             request_sha256: request_digest(&self.plan, self.profile)?,
             execution_profile: self.profile,
-            quality_version: QUALITY_VERSION,
+            quality_version: self.quality_version,
             prompt_bytes: request.messages.iter().map(|m| m.content.len()).sum(),
             checks: self.checks.clone(),
             items: self.labels.values().cloned().collect(),

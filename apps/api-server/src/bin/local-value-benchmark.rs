@@ -1,5 +1,5 @@
 //! 显式固定合成基准；没有数据库、用户来源或授权状态。
-use personal_ai_agent_core::feed_value_quality::{QualityCase, cases_for_profile};
+use personal_ai_agent_core::feed_value_quality::{QualityCase, cases_for_suite};
 use personal_ai_llm::{
     local::{LocalInference, LocalTarget},
     stream::IgnoreTextDeltas,
@@ -71,31 +71,44 @@ fn target(args: &[String]) -> Result<LocalTarget, &'static str> {
     }
     LocalTarget::new(&args[2], &args[3]).map_err(|_| "invalid local benchmark target")
 }
-fn select(id: &str, profile: &str) -> Result<QualityCase, &'static str> {
-    cases_for_profile(profile)
+fn select(id: &str, suite: &str, profile: &str) -> Result<QualityCase, &'static str> {
+    cases_for_suite(suite, profile)
         .map_err(|_| "invalid benchmark corpus")?
         .into_iter()
         .find(|c| c.id() == id)
         .ok_or("unknown fixed benchmark case")
 }
+fn options(mut args: &[String]) -> Result<(&[String], &str, &str), &'static str> {
+    let mut suite = None;
+    let mut profile = None;
+    while args.len() >= 2 {
+        let slot = match args[args.len() - 2].as_str() {
+            "--suite" => &mut suite,
+            "--profile" => &mut profile,
+            _ => break,
+        };
+        if slot.replace(args[args.len() - 1].as_str()).is_some() {
+            return Err("duplicate benchmark option");
+        }
+        args = &args[..args.len() - 2];
+    }
+    Ok((
+        args,
+        suite.unwrap_or("baseline"),
+        profile.unwrap_or(personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE),
+    ))
+}
 async fn run(args: &[String]) -> Result<(), &'static str> {
-    let (args, profile) = if args.len() >= 2 && args[args.len() - 2] == "--profile" {
-        (&args[..args.len() - 2], args[args.len() - 1].as_str())
-    } else {
-        (
-            args,
-            personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE,
-        )
-    };
-    cases_for_profile(profile).map_err(|_| "unknown benchmark profile")?;
+    let (args, suite, profile) = options(args)?;
+    cases_for_suite(suite, profile).map_err(|_| "unknown benchmark suite/profile")?;
     if args == ["--help"] {
         println!(
-            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在命令末尾加 --profile local-rss-v1|local-rss-v2。仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
+            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在命令末尾加 --suite baseline|challenge 和 --profile local-rss-v1|local-rss-v2。仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
         );
         return Ok(());
     }
     if args == ["manifest"] {
-        let all = cases_for_profile(profile)
+        let all = cases_for_suite(suite, profile)
             .map_err(|_| "invalid benchmark corpus")?
             .iter()
             .map(QualityCase::manifest)
@@ -108,7 +121,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         return Ok(());
     }
     if args.len() == 2 && args[0] == "preview" {
-        let case = select(&args[1], profile)?;
+        let case = select(&args[1], suite, profile)?;
         let request = case.request().map_err(|_| "invalid benchmark request")?;
         println!(
             "{}",
@@ -119,7 +132,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         return Ok(());
     }
     let target = target(args)?;
-    let case = select(&args[1], profile)?;
+    let case = select(&args[1], suite, profile)?;
     let request = case.request().map_err(|_| "invalid benchmark request")?;
     let client =
         personal_ai_llm_local::LocalChatClient::new().map_err(|_| "local client unavailable")?;
@@ -193,12 +206,12 @@ mod tests {
             "--use-local-benchmark".into(),
         ];
         assert!(target(&args).is_ok());
-        assert!(select(&args[1], "local-rss-v1").is_ok());
+        assert!(select(&args[1], "baseline", "local-rss-v1").is_ok());
         args[4] = "--use-local".into();
         assert!(target(&args).is_err());
         args[4] = "--use-local-benchmark".into();
         args[2] = "https://remote.example".into();
         assert!(target(&args).is_err());
-        assert!(select("user-request", "local-rss-v1").is_err());
+        assert!(select("user-request", "baseline", "local-rss-v1").is_err());
     }
 }

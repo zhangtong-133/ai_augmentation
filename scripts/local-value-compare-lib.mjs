@@ -9,7 +9,7 @@ function validateManifest(m) {
   keys(m, ["id", "corpus_sha256", "input_digest", "request_sha256", "execution_profile", "quality_version", "prompt_bytes", "checks", "items"]);
   assert.ok(key(m.id) && hash(m.corpus_sha256) && hash(m.input_digest) && hash(m.request_sha256));
   assert.ok(["local-rss-v1", "local-rss-v2"].includes(m.execution_profile));
-  assert.equal(m.quality_version, "rss-quality-v1");
+  assert.ok(["rss-quality-v1", "rss-challenge-v1"].includes(m.quality_version));
   assert.ok(Number.isSafeInteger(m.prompt_bytes) && m.prompt_bytes > 0 && m.prompt_bytes <= 5632);
   assert.ok(Array.isArray(m.items) && m.items.length > 0 && m.items.length <= 8 && m.items.every(key));
   assert.equal(new Set(m.items).size, m.items.length);
@@ -47,6 +47,7 @@ export function validateReport(r) {
   for (const m of r.manifests) {
     assert.equal(m.corpus_sha256, r.manifests[0].corpus_sha256);
     assert.equal(m.execution_profile, r.manifests[0].execution_profile);
+    assert.equal(m.quality_version, r.manifests[0].quality_version);
   }
   assert.equal(r.total_cases, r.manifests.length);
   assert.ok(Array.isArray(r.results) && r.results.length <= r.manifests.length);

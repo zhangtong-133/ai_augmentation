@@ -123,3 +123,63 @@ fn corpus_rejects_unknown_checks_duplicates_and_missing_targets_before_execution
         assert!(parse(&corpus.to_string()).is_err());
     }
 }
+
+#[test]
+fn independent_challenge_covers_semantics_injection_and_mixed_abstention() {
+    let baseline = cases().unwrap();
+    for profile in ["local-rss-v1", "local-rss-v2"] {
+        let challenge = cases_for_suite("challenge", profile).unwrap();
+        assert_eq!(challenge.len(), 6);
+        for case in challenge {
+            let manifest = case.manifest().unwrap();
+            assert_eq!(manifest.quality_version, CHALLENGE_VERSION);
+            assert_ne!(
+                manifest.corpus_sha256,
+                baseline[0].manifest().unwrap().corpus_sha256
+            );
+            assert!(manifest.prompt_bytes <= 5632);
+            let ideal: Vec<_> = case
+                .labels
+                .iter()
+                .map(|(id, label)| {
+                    let empty = case.plan.brief().items[*id - 1]
+                        .entry
+                        .summary
+                        .trim()
+                        .is_empty();
+                    let relevant = case
+                        .checks
+                        .iter()
+                        .any(|c| matches!(c, Check::Minimum { item, .. } if item == label));
+                    let score = if empty {
+                        None
+                    } else {
+                        Some(if relevant { 90 } else { 0 })
+                    };
+                    let reason = if empty {
+                        "摘要为空，无法评分。"
+                    } else if relevant {
+                        "摘要主题与偏好相关。"
+                    } else {
+                        "摘要主题与偏好无关。"
+                    };
+                    json!({"id":id,"score":score,"reason":reason})
+                })
+                .collect();
+            assert!(
+                case.evaluate(&serde_json::to_vec(&json!({"items":ideal})).unwrap())
+                    .unwrap()
+                    .quality_pass
+            );
+        }
+    }
+    assert!(cases_for_suite("unknown", "local-rss-v2").is_err());
+    assert!(parse(CHALLENGE).is_err());
+    let selected = cases_for_suite("baseline", "local-rss-v2").unwrap();
+    for (old, new) in baseline.iter().zip(selected) {
+        assert_eq!(
+            serde_json::to_value(old.manifest().unwrap()).unwrap(),
+            serde_json::to_value(new.manifest().unwrap()).unwrap()
+        );
+    }
+}
