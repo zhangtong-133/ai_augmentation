@@ -291,7 +291,7 @@ test("late reading responses cannot enter a different signed-in account", async 
 });
 
 function localFixture(id = connectionId) {
-  return { ...fixture(id), pricing: { kind: "local", endpoint: "http://127.0.0.1:11435", model: "qwen3:4b-q4_K_M", valid_until_unix_ms: String(Date.now() + 300000) } };
+  return { ...fixture(id), pricing: { kind: "local", profile: "local-rss-v4", endpoint: "http://127.0.0.1:11435", model: "qwen3:4b-q4_K_M", valid_until_unix_ms: String(Date.now() + 300000) } };
 }
 async function selectLocal(panel) {
   await panel.getByRole("combobox", { name: "评分方式", exact: true }).selectOption("local");
@@ -341,6 +341,7 @@ test("local lost preview preserves original target and approval needs separate s
   await panel.getByRole("button", { name: "重试原预览", exact: true }).click();
   const review = panel.getByRole("region", { name: "评分详情", exact: true });
   const approve = review.getByRole("button", { name: "批准此次评分", exact: true });
+  await expect(review).toContainText("本地分类采用固定档位：相关 80、部分相关 40、无关 0");
   await expect(review).toContainText(item.shared_content.input); await expect(review.locator("script,img")).toHaveCount(0);
   expect(previews).toHaveLength(2); expect(previews[0]).toEqual(previews[1]);
   await expect(approve).toBeDisabled();
@@ -393,4 +394,27 @@ test("real private local configuration and empty preview traverse both applicati
     await response.body?.cancel(); return response.status;
   });
   expect(status).toBe(404);
+});
+
+test("historical local scoring remains readable but cannot approve or dispatch a new profile", async ({ page }) => {
+  let item = localFixture(); item.pricing.profile = "local-rss-v2";
+  await page.route(endpoint, route => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/config")) return route.fulfill({ json: { local_enabled: true, execution_mode: "local_only" } });
+    if (path === "/api/feed-values") return route.fulfill({ json: { items: [item], next_cursor: null } });
+    return route.fulfill({ json: item });
+  });
+  const panel = await setup(page); await selectLocal(panel);
+  await panel.getByRole("button", { name: "刷新评分记录", exact: true }).click();
+  await panel.getByRole("button", { name: `查看评分 ${item.id}`, exact: true }).click();
+  const review = panel.getByRole("region", { name: "评分详情", exact: true });
+  await expect(review).toContainText("此记录使用旧评分版本");
+  await expect(review.getByRole("button", { name: "批准此次评分", exact: true })).toBeDisabled();
+  item = { ...item, status: "authorized", approved_at_unix_ms: String(Date.now()) };
+  await review.getByRole("button", { name: "核对评分状态", exact: true }).click();
+  await expect(review).not.toContainText("make local-value");
+  item = { ...completedFixture(), id: item.id, pricing: item.pricing };
+  await review.getByRole("button", { name: "核对评分状态", exact: true }).click();
+  await expect(review).toContainText("模型参考评分");
+  await expect(review).not.toContainText("本地分类采用固定档位");
 });

@@ -148,7 +148,7 @@ export function FeedValuePanel({ ownerId }: { ownerId: string }) {
       setReview(saved); setUncertain(null); setItems(previous => previous.map(i => i.id === saved.id ? saved : i));
     });
   }
-  const canApprove = review?.status === "draft" && review.pricing.kind !== "api" && (review.pricing.kind !== "local" || localEnabled === true) && Number(review.expires_at_unix_ms) > now && Number(review.pricing.valid_until_unix_ms) > now;
+  const canApprove = review?.status === "draft" && review.pricing.kind !== "api" && (review.pricing.kind !== "local" || (localEnabled === true && review.pricing.profile === "local-rss-v4")) && Number(review.expires_at_unix_ms) > now && Number(review.pricing.valid_until_unix_ms) > now;
   return <section className="feedPanel feedValuePanel" aria-label="RSS 价值评分">
     <p className="kicker">RSS / VALUE</p><h3>RSS 价值评分</h3>
     <p>分享当前候选和日报关键词，获取模型的参考评分。选择订阅模型或本地模型，再预览并分别确认分享内容和资源用量。</p>
@@ -185,9 +185,12 @@ export function FeedValuePanel({ ownerId }: { ownerId: string }) {
     {review && <div className="feedReview" role="region" aria-label="评分详情">
       <h4>{statuses[review.status]}</h4><p>请求：<code>{review.id}</code></p><p>摘要：<code>{review.digest}</code></p><p>授权期限：{date(review.expires_at_unix_ms)}</p>
       {review.pricing.kind === "subscription" ? <p>订阅模型：{review.pricing.model}<br />连接：<code>{review.pricing.connection_id}</code><br />连接版本：{review.pricing.configuration_version}</p> : review.pricing.kind === "local" ? <p>本地模型：{review.pricing.model}<br />地址：<code>{review.pricing.endpoint}</code></p> : <p>历史 API 模式仅可查询，网页不能批准金额用量。</p>}
+      {review.pricing.kind === "local" && (review.pricing.profile === "local-rss-v4"
+        ? <p>本地分类采用固定档位：相关 80、部分相关 40、无关 0；材料不足时无法评分。这是分类建议，不是概率或事实核验。</p>
+        : <p>此记录使用旧评分版本，仍可读取原结果；未发送的授权需重新预览批准。</p>)}
       {review.shared_content ? <><h4>将分享给模型的完整内容</h4><p>以下为冻结的指令、关键词及候选标题/摘要，请先审阅。</p><h5>系统指令</h5><pre>{review.shared_content.instructions}</pre><h5>候选与关键词</h5><pre>{review.shared_content.input}</pre></> : <p>分享正文已清除。</p>}
       {review.status === "draft" && review.pricing.kind !== "api" && <><p>{review.pricing.kind === "local" ? "执行会使用本机 GPU 资源，请先核对游戏显存余量和本地服务。" : "执行会消耗订阅额度，或账户设置允许的 credits。这里不表示免费、额度充足或调用已经验证。"}</p><label className="agentConsent"><input type="checkbox" checked={share} disabled={locked || !canApprove} onChange={e => setShare(e.target.checked)} />我同意分享以上冻结内容。</label><label className="agentConsent"><input type="checkbox" checked={usage} disabled={locked || !canApprove} onChange={e => setUsage(e.target.checked)} />{review.pricing.kind === "local" ? "我同意使用本机计算资源，并已核对游戏显存预算。" : "我同意使用所选账户的订阅额度或允许的 credits。"}</label><button disabled={locked || !canApprove || !share || !usage} onClick={() => mutate("approve")}>批准此次评分</button>{!canApprove && <p>当前预览不能批准，请核对状态或重新预览。</p>}</>}
-      {review.status === "authorized" && (review.pricing.kind === "local" ? <p>已保存授权。请在本机运行 <code>make local-value OWNER={ownerId} REQUEST={review.id}</code>；完成后点击“核对评分状态”。</p> : <p>已保存授权。请用本机已绑定的连接执行 <code>chatgpt-connect</code> 的 <code>value-run</code> 命令，使用上面的请求标识；完成后点击“核对评分状态”。</p>)}
+      {review.status === "authorized" && (review.pricing.kind !== "local" || review.pricing.profile === "local-rss-v4") && (review.pricing.kind === "local" ? <p>已保存授权。请在本机运行 <code>make local-value OWNER={ownerId} REQUEST={review.id}</code>；完成后点击“核对评分状态”。</p> : <p>已保存授权。请用本机已绑定的连接执行 <code>chatgpt-connect</code> 的 <code>value-run</code> 命令，使用上面的请求标识；完成后点击“核对评分状态”。</p>)}
       {review.status === "unknown" && <p>结果未知，可能已消耗用量。请核对本机记录；不要自动重派或重复创建。</p>}
       {review.scores && !readingView && <><h4>模型参考评分</h4><p>评分仅为建议，不代表事实真伪；无法评分保留为空。</p><ul className="feedList">{review.scores.map(s => <li key={s.id}><h5>{review.candidates?.find(c => c.id === s.id)?.title}</h5><p>{s.score === null ? "无法评分" : `${s.score} / 100`}</p><p>{s.reason}</p></li>)}</ul></>}
       {review.pricing.kind !== "api" && ["draft", "authorized", "running"].includes(review.status) && <><p>取消会清除分享内容；已发出的模型请求可能仍消耗用量，晚到结果会丢弃。</p><button disabled={locked} onClick={() => mutate("cancel")}>取消此次评分</button></>}

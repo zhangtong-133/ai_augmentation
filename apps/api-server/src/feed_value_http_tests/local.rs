@@ -5,7 +5,10 @@ use personal_ai_llm::{
     stream::TextDeltaSink,
 };
 use std::sync::atomic::{AtomicUsize, Ordering};
-struct Runtime(AtomicUsize);
+struct Runtime {
+    calls: AtomicUsize,
+    shared: serde_json::Value,
+}
 impl LocalInference for Runtime {
     fn infer<'a>(
         &'a self,
@@ -14,10 +17,12 @@ impl LocalInference for Runtime {
         _: &'a dyn TextDeltaSink,
     ) -> BoxFuture<'a, LlmResult<String>> {
         Box::pin(async move {
-            self.0.fetch_add(1, Ordering::SeqCst);
+            self.calls.fetch_add(1, Ordering::SeqCst);
             assert_eq!(request.max_output_tokens, Some(2048));
+            assert_eq!(self.shared["instructions"], request.messages[0].content);
+            assert_eq!(self.shared["input"], request.messages[1].content);
             assert!(!request.messages[1].content.contains("private=secret"));
-            Ok(r#"{"items":[{"id":1,"score":null,"reason":"现有内容不足，无法评分。"}]}"#.into())
+            Ok(r#"{"items":[{"id":1,"category":"high"}]}"#.into())
         })
     }
 }
@@ -37,6 +42,7 @@ async fn local_value_http_checks_exact_compute_consent_reading_and_source_erasur
         .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(saved["pricing"]["kind"], "local");
+    assert_eq!(saved["pricing"]["profile"], "local-rss-v4");
     for private in [
         "dispatch_token",
         "connection_id",
@@ -104,7 +110,10 @@ async fn local_value_http_checks_exact_compute_consent_reading_and_source_erasur
             .1["status"],
         "authorized"
     );
-    let runtime = Runtime(AtomicUsize::new(0));
+    let runtime = Runtime {
+        calls: AtomicUsize::new(0),
+        shared: saved["shared_content"].clone(),
+    };
     let target = LocalTarget::new("http://127.0.0.1:11435", "qwen3:4b-q4_K_M").unwrap();
     let result = personal_ai_agent_core::feed_value_local::execute_local_value(
         f.store.as_ref(),
@@ -117,6 +126,7 @@ async fn local_value_http_checks_exact_compute_consent_reading_and_source_erasur
     .unwrap()
     .unwrap();
     assert_eq!(result.status, "succeeded");
+    assert_eq!(result.scores.as_ref().unwrap()[0].score, Some(80));
     assert!(
         personal_ai_agent_core::feed_value_local::execute_local_value(
             f.store.as_ref(),
@@ -129,7 +139,7 @@ async fn local_value_http_checks_exact_compute_consent_reading_and_source_erasur
         .unwrap()
         .is_none()
     );
-    assert_eq!(runtime.0.load(Ordering::SeqCst), 1);
+    assert_eq!(runtime.calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         f.call("GET", &format!("{path}/reading"), json!({})).await.0,
         StatusCode::OK

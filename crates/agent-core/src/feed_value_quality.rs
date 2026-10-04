@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 const CORPUS: &str = include_str!("feed_value_quality/corpus.json");
+const REGRESSION: &str = include_str!("feed_value_quality/regression.json");
+pub const REGRESSION_VERSION: &str = "rss-regression-v1";
 const CHALLENGE: &str = include_str!("feed_value_quality/challenge.json");
 pub const CHALLENGE_VERSION: &str = "rss-challenge-v1";
 pub const QUALITY_VERSION: &str = "rss-quality-v1";
@@ -159,12 +161,14 @@ pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, V
     let (input, version) = match suite {
         "baseline" => (CORPUS, QUALITY_VERSION),
         "challenge" => (CHALLENGE, CHALLENGE_VERSION),
+        "regression" => (REGRESSION, REGRESSION_VERSION),
         _ => return Err(ValueError::InvalidSnapshot),
     };
     let profile = match profile {
         "local-rss-v1" => "local-rss-v1",
         "local-rss-v2" => "local-rss-v2",
         "local-rss-v3" => "local-rss-v3",
+        "local-rss-v4" => "local-rss-v4",
         _ => return Err(ValueError::InvalidSnapshot),
     };
     let mut all = parse_version(input, version)?;

@@ -124,7 +124,7 @@ async function runReview(probe = false, scoring = false) {
 }
 async function benchmarkCase() {
   const { args, flags, model: selected } = benchmarkOptions(process.argv.slice(3));
-  if (args.length !== 1 || !/^[a-z0-9_]{1,40}$/.test(args[0])) throw new Error("用法：benchmark-case 固定语料键 [--suite baseline|challenge] [--profile local-rss-v1|local-rss-v2|local-rss-v3]");
+  if (args.length !== 1 || !/^[a-z0-9_]{1,40}$/.test(args[0])) throw new Error("用法：benchmark-case 固定语料键 [--suite baseline|challenge|regression] [--profile local-rss-v1|local-rss-v2|local-rss-v3|local-rss-v4]");
   const state = await owner(); if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
   const choice = await activeChoice(state), model = choice.config.model_alias;
   if (choice.key !== selected) throw new Error("运行中的模型与请求候选不一致，拒绝发送");

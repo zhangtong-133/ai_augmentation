@@ -114,9 +114,9 @@ fn output(saved: &ValueReview) -> Value {
             endpoint,
             model,
             valid_until_unix_ms,
-            ..
+            profile,
         } => {
-            json!({"kind":"local","endpoint":endpoint,"model":model,"valid_until_unix_ms":valid_until_unix_ms.to_string()})
+            json!({"kind":"local","endpoint":endpoint,"model":model,"profile":profile,"valid_until_unix_ms":valid_until_unix_ms.to_string()})
         }
     };
     json!({"id":saved.request_id,"status":saved.status,"digest":saved.digest,"pricing":pricing,"created_at_unix_ms":saved.created_at_unix_ms.to_string(),"expires_at_unix_ms":saved.expires_at_unix_ms.to_string(),"approved_at_unix_ms":saved.approved_at_unix_ms.map(|v|v.to_string()),"execution_mode":"local_only"})
@@ -139,10 +139,23 @@ fn full(owner: &UserId, saved: &ValueReview) -> Result<Value, ApiError> {
         .map_err(|_| error(StorageError::Unavailable("invalid saved plan".into())))?
         .flatten();
     let mut result = output(saved);
-    result["shared_content"] = plan.as_ref().map_or(Value::Null, |p| {
-        let request = p.request();
+    result["shared_content"] = if let Some(p) = &plan {
+        let request = match &saved.pricing {
+            ValuePricing::Local { profile, .. } => {
+                personal_ai_agent_core::feed_value_local::request_for_profile(p, profile).map_err(
+                    |_| {
+                        error(StorageError::Unavailable(
+                            "invalid saved local request".into(),
+                        ))
+                    },
+                )?
+            }
+            _ => p.request(),
+        };
         json!({"instructions":request.messages[0].content,"input":request.messages[1].content})
-    });
+    } else {
+        Value::Null
+    };
     result["candidates"]=plan.as_ref().map_or(Value::Null,|p|json!(p.brief().items.iter().enumerate().map(|(i,item)|json!({"id":i+1,"title":item.entry.title,"subscription_id":item.entry.subscription_id,"entry_key":item.entry.entry_key})).collect::<Vec<_>>()));
     result["scores"] = json!(saved.scores.as_ref().map(|scores| {
         scores

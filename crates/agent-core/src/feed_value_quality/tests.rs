@@ -126,7 +126,7 @@ fn corpus_rejects_unknown_checks_duplicates_and_missing_targets_before_execution
 
 #[test]
 fn independent_challenge_covers_semantics_injection_and_mixed_abstention() {
-    let baseline = cases().unwrap();
+    let baseline = cases_for_profile("local-rss-v2").unwrap();
     for profile in ["local-rss-v1", "local-rss-v2"] {
         let challenge = cases_for_suite("challenge", profile).unwrap();
         assert_eq!(challenge.len(), 6);
@@ -249,5 +249,59 @@ fn classification_rejects_forged_scores_missing_duplicate_unknown_fields_and_ids
                 br#"{"items":[{"id":1,"category":"insufficient"},{"id":2,"category":"empty"}]}"#
             )
             .is_err()
+    );
+}
+
+#[test]
+fn v4_unifies_abstention_without_accepting_empty_as_a_model_category() {
+    for suite in ["baseline", "challenge", "regression"] {
+        for case in cases_for_suite(suite, "local-rss-v4").unwrap() {
+            let items: Vec<_> = case.labels.iter().map(|(id, label)| {
+                let high = case.checks.iter().any(|c| matches!(c, Check::Minimum {item,..} if item == label));
+                let abstain = case.checks.iter().any(|c| matches!(c, Check::Abstain {item} if item == label));
+                json!({"id":id,"category":if abstain {"insufficient"} else if high {"high"} else {"unrelated"}})
+            }).collect();
+            let bytes = serde_json::to_vec(&json!({"items":items})).unwrap();
+            assert!(case.evaluate(&bytes).unwrap().quality_pass);
+            let scores = decode_for_profile(&case.plan, "local-rss-v4", &bytes).unwrap();
+            for score in scores.iter().filter(|s| s.score.is_none()) {
+                let empty = case.plan.brief().items[score.id - 1]
+                    .entry
+                    .summary
+                    .trim()
+                    .is_empty();
+                assert_eq!(
+                    score.reason,
+                    if empty {
+                        "摘要为空，无法评分。"
+                    } else {
+                        "现有内容不足，无法评分。"
+                    }
+                );
+            }
+            let wrong = String::from_utf8(bytes)
+                .unwrap()
+                .replace("insufficient", "empty");
+            if wrong.contains("empty") {
+                assert!(case.evaluate(wrong.as_bytes()).is_err());
+            }
+        }
+    }
+}
+
+#[test]
+fn changing_classification_version_does_not_rewrite_keywords_matching_protocol_text() {
+    let mut corpus: serde_json::Value = serde_json::from_str(CORPUS).unwrap();
+    let keyword = "high、partial、unrelated、empty、insufficient";
+    corpus["cases"][0]["keywords"] = json!([keyword]);
+    let mut case = parse(&corpus.to_string()).unwrap().remove(0);
+    case.profile = "local-rss-v4";
+    let request = case.request().unwrap();
+    let data: serde_json::Value = serde_json::from_str(&request.messages[1].content).unwrap();
+    assert_eq!(data["keywords"], json!([keyword]));
+    assert!(
+        request.messages[0]
+            .content
+            .contains(&serde_json::to_string(&vec![keyword]).unwrap())
     );
 }

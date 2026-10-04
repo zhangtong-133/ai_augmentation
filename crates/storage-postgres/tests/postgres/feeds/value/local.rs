@@ -220,7 +220,7 @@ impl LocalInference for Runtime<'_> {
                     .await
                     .unwrap();
             }
-            Ok(r#"{"items":[{"id":1,"score":null,"reason":"摘要为空，无法评分。"}]}"#.into())
+            Ok(r#"{"items":[{"id":1,"category":"insufficient"}]}"#.into())
         })
     }
 }
@@ -433,12 +433,12 @@ async fn local_value_operations_pages_metadata_with_global_counts_and_no_cleanup
 }
 
 // Reconstruct an already-issued v1 consent without allowing new v1 previews.
-async fn legacy(f: &Fixture, saved: &ValueReview) -> ValueReview {
+async fn legacy(f: &Fixture, saved: &ValueReview, old_profile: &str) -> ValueReview {
     use sha2::{Digest, Sha256};
     let snapshot = saved.snapshot.as_ref().unwrap();
     let mut pricing = saved.pricing.clone();
     if let ValuePricing::Local { profile, .. } = &mut pricing {
-        *profile = "local-rss-v1".into();
+        *profile = old_profile.into();
     }
     let plan = personal_ai_agent_core::feed_value::plan_value_scoring(
         &f.owner,
@@ -450,14 +450,32 @@ async fn legacy(f: &Fixture, saved: &ValueReview) -> ValueReview {
     )
     .unwrap()
     .unwrap();
-    let encoded = serde_json::to_vec(&(
-        "rss-value-review-v1",
-        plan.digest(),
-        snapshot.preference_revision,
-        &pricing,
-        saved.expires_at_unix_ms,
-    ))
-    .unwrap();
+    let encoded = if old_profile == "local-rss-v1" {
+        serde_json::to_vec(&(
+            "rss-value-review-v1",
+            plan.digest(),
+            snapshot.preference_revision,
+            &pricing,
+            saved.expires_at_unix_ms,
+        ))
+        .unwrap()
+    } else {
+        let exact =
+            personal_ai_agent_core::feed_value_local::request_digest(&plan, old_profile).unwrap();
+        serde_json::to_vec(&(
+            if old_profile == "local-rss-v3" {
+                "rss-value-local-review-v3"
+            } else {
+                "rss-value-local-review-v2"
+            },
+            plan.digest(),
+            snapshot.preference_revision,
+            &pricing,
+            saved.expires_at_unix_ms,
+            exact,
+        ))
+        .unwrap()
+    };
     let digest = format!("{:x}", Sha256::digest(encoded));
     assert_ne!(digest, saved.digest);
     sqlx::query("UPDATE feed_value_reviews SET pricing=$3,digest=$4 WHERE user_id=$1 AND id=$2")
@@ -477,66 +495,76 @@ async fn legacy(f: &Fixture, saved: &ValueReview) -> ValueReview {
 #[ignore = "需要一次性 TEST_DATABASE_URL"]
 async fn local_profile_upgrade_keeps_legacy_readable_but_blocks_old_approval_claim_and_send() {
     let f = fixture().await;
-    let current = draft(&f).await;
-    assert!(
-        matches!(&current.pricing, ValuePricing::Local {profile,..} if profile == "local-rss-v2")
-    );
-    let old_draft = legacy(&f, &current).await;
-    is_conflict(
-        f.store
-            .approve_feed_value(&f.owner, &old_draft.request_id, &consent(&old_draft))
-            .await,
-    );
-    let old_authorized = legacy(&f, &authorize(&f).await).await;
-    assert!(
-        f.store
-            .claim_local_value(&f.owner, &old_authorized.request_id)
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(sent(&f, &old_authorized.request_id).await, 0);
-    for already_sent in [false, true] {
-        let saved = authorize(&f).await;
-        let mut claim = f
-            .store
-            .claim_local_value(&f.owner, &saved.request_id)
-            .await
-            .unwrap()
-            .unwrap();
-        if already_sent {
-            assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
-        }
-        claim.review = legacy(&f, &claim.review).await;
-        assert!(!f.store.begin_local_value(&claim, &target()).await.unwrap());
-        let output = already_sent.then(|| {
-            br#"{"items":[{"id":1,"score":75,"reason":"legacy freeform reason"}]}"#.to_vec()
-        });
-        let finished = f.store.finish_local_value(&claim, output).await.unwrap();
-        assert_eq!(
-            finished.status,
-            if already_sent { "succeeded" } else { "unknown" }
+    for old_profile in ["local-rss-v1", "local-rss-v2", "local-rss-v3"] {
+        let current = draft(&f).await;
+        assert!(
+            matches!(&current.pricing, ValuePricing::Local {profile,..} if profile == "local-rss-v4")
         );
-        let read = f
-            .store
-            .get_feed_value(&f.owner, &saved.request_id)
-            .await
-            .unwrap();
-        assert_eq!(read.scores.is_some(), already_sent);
+        let old_draft = legacy(&f, &current, old_profile).await;
+        is_conflict(
+            f.store
+                .approve_feed_value(&f.owner, &old_draft.request_id, &consent(&old_draft))
+                .await,
+        );
+        let old_authorized = legacy(&f, &authorize(&f).await, old_profile).await;
         assert!(
             f.store
-                .claim_local_value(&f.owner, &saved.request_id)
+                .claim_local_value(&f.owner, &old_authorized.request_id)
                 .await
                 .unwrap()
                 .is_none()
         );
-        assert_eq!(sent(&f, &saved.request_id).await, i64::from(already_sent));
+        assert_eq!(sent(&f, &old_authorized.request_id).await, 0);
+        for already_sent in [false, true] {
+            let saved = authorize(&f).await;
+            let mut claim = f
+                .store
+                .claim_local_value(&f.owner, &saved.request_id)
+                .await
+                .unwrap()
+                .unwrap();
+            if already_sent {
+                assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
+            }
+            claim.review = legacy(&f, &claim.review, old_profile).await;
+            assert!(!f.store.begin_local_value(&claim, &target()).await.unwrap());
+            let output = already_sent.then(|| {
+                if old_profile == "local-rss-v1" {
+                    br#"{"items":[{"id":1,"score":75,"reason":"legacy freeform reason"}]}"#.to_vec()
+                } else if old_profile == "local-rss-v3" {
+                    br#"{"items":[{"id":1,"category":"empty"}]}"#.to_vec()
+                } else {
+                    r#"{"items":[{"id":1,"score":null,"reason":"摘要为空，无法评分。"}]}"#
+                        .as_bytes()
+                        .to_vec()
+                }
+            });
+            let finished = f.store.finish_local_value(&claim, output).await.unwrap();
+            assert_eq!(
+                finished.status,
+                if already_sent { "succeeded" } else { "unknown" }
+            );
+            let read = f
+                .store
+                .get_feed_value(&f.owner, &saved.request_id)
+                .await
+                .unwrap();
+            assert_eq!(read.scores.is_some(), already_sent);
+            assert!(
+                f.store
+                    .claim_local_value(&f.owner, &saved.request_id)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(sent(&f, &saved.request_id).await, i64::from(already_sent));
+        }
     }
     f.cleanup().await;
 }
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]
-async fn local_v2_rejects_freeform_reasons_and_non_abstention_without_persisting_or_resending() {
+async fn local_v4_rejects_extra_fields_and_non_abstention_without_persisting_or_resending() {
     let f = fixture().await;
     sqlx::query("UPDATE feed_entries SET summary='Rust ownership tutorial' WHERE user_id=$1")
         .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
@@ -559,15 +587,11 @@ async fn local_v2_rejects_freeform_reasons_and_non_abstention_without_persisting
             .unwrap()
             .unwrap();
         assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
-        let reason = if empty {
-            "摘要为空，无法评分。"
+        let output = if empty {
+            br#"{"items":[{"id":1,"category":"high"}]}"#.to_vec()
         } else {
-            "copied instruction"
+            br#"{"items":[{"id":1,"category":"high","score":100}]}"#.to_vec()
         };
-        let output = serde_json::to_vec(
-            &serde_json::json!({"items":[{"id":1,"score":100,"reason":reason}]}),
-        )
-        .unwrap();
         let result = f
             .store
             .finish_local_value(&claim, Some(output))

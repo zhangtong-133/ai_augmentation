@@ -1,6 +1,6 @@
 export const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const statuses: Record<string, string> = { draft: "待批准", authorized: "已批准，等待本机执行", running: "执行中", succeeded: "已完成", unknown: "执行结果未知", cancelled: "已取消", expired: "已到期", invalidated: "已失效" };
-type Pricing = { kind: "local"; endpoint: string; model: string; valid_until_unix_ms: string } | { kind: "api"; available: false } | { kind: "subscription"; provider: string; model: string; configuration_version: string; connection_id: string; valid_until_unix_ms: string };
+type Pricing = { kind: "local"; profile: "local-rss-v1" | "local-rss-v2" | "local-rss-v3" | "local-rss-v4"; endpoint: string; model: string; valid_until_unix_ms: string } | { kind: "api"; available: false } | { kind: "subscription"; provider: string; model: string; configuration_version: string; connection_id: string; valid_until_unix_ms: string };
 export type ValueSummary = { id: string; status: string; digest: string; pricing: Pricing; created_at_unix_ms: string; expires_at_unix_ms: string; approved_at_unix_ms: string | null; execution_mode: "local_only" };
 export type ValueDetail = ValueSummary & { shared_content: { instructions: string; input: string } | null; candidates: { id: number; title: string; subscription_id: string; entry_key: string }[] | null; scores: { id: number; score: number | null; reason: string }[] | null };
 export type Audit = { event: string; at_unix_ms: string };
@@ -18,7 +18,7 @@ export function summary(value: unknown): ValueSummary {
   const p = v.pricing;
   if (!p || (p.kind !== "api" && p.kind !== "subscription" && p.kind !== "local")) fail();
   if (p.kind === "api") { if (p.available !== false) fail(); }
-  else if (p.kind === "local") { if (!localTarget(p.endpoint, p.model) || !timestamp(p.valid_until_unix_ms)) fail(); }
+  else if (p.kind === "local") { if (!localTarget(p.endpoint, p.model) || !["local-rss-v1", "local-rss-v2", "local-rss-v3", "local-rss-v4"].includes(p.profile) || !timestamp(p.valid_until_unix_ms)) fail(); }
   else if (p.provider !== "chatgpt-plan" || typeof p.model !== "string" || !p.model || typeof p.configuration_version !== "string" || !p.configuration_version || typeof p.connection_id !== "string" || !uuid.test(p.connection_id) || !timestamp(p.valid_until_unix_ms)) fail();
   return v;
 }

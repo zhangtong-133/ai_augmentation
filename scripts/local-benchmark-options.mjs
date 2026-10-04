@@ -7,8 +7,8 @@ export function benchmarkOptions(input) {
     if (values[name] !== undefined) throw new Error("duplicate benchmark option");
     values[name] = value;
   }
-  const profile = values["--profile"] ?? "local-rss-v2";
+  const profile = values["--profile"] ?? "local-rss-v4";
   const suite = values["--suite"] ?? "baseline";
-  if (!["local-rss-v1", "local-rss-v2", "local-rss-v3"].includes(profile) || !["baseline", "challenge"].includes(suite)) throw new Error("invalid benchmark option");
+  if (!["local-rss-v1", "local-rss-v2", "local-rss-v3", "local-rss-v4"].includes(profile) || !["baseline", "challenge", "regression"].includes(suite)) throw new Error("invalid benchmark option");
   return { args, profile, suite, model: modelKey(values["--model"]), flags: ["--profile", profile, "--suite", suite] };
 }

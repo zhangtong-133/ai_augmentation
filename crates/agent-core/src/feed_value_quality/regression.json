@@ -1,0 +1,44 @@
+{
+  "version": "rss-regression-v1",
+  "cases": [
+    {
+      "id": "recovery_insufficient",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        {
+          "key": "ownership",
+          "title": "Rust 所有权",
+          "summary": "解释 String 移动后旧绑定不可再用，给出可运行示例。"
+        },
+        {
+          "key": "weather",
+          "title": "周末天气",
+          "summary": "天气预报，与 Rust 技能目标无关。"
+        },
+        {
+          "key": "insufficient",
+          "title": "Rust 新闻",
+          "summary": "只有标题，没有可核验的技术内容。"
+        }
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "ownership",
+          "value": 60
+        },
+        {
+          "kind": "ceiling",
+          "item": "weather",
+          "value": 20
+        },
+        {
+          "kind": "abstain",
+          "item": "insufficient"
+        }
+      ]
+    }
+  ]
+}

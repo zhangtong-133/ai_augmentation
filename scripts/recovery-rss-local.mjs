@@ -16,6 +16,8 @@ function cli(app, owner, id, target = endpoint) {
 async function approve(app, cookie) {
   const id = randomUUID();
   const draft = (await request(app, "/api/feed-values/local", 200, { method: "POST", cookie, body: { id, endpoint, model } })).data;
+  assert.equal(draft.pricing.profile, "local-rss-v4");
+  assert.ok(draft.shared_content.instructions.includes("category"));
   assert.equal(draft.pricing.kind, "local"); assert.equal(draft.pricing.endpoint, endpoint); assert.equal(draft.pricing.model, model);
   assert.equal(JSON.stringify(draft.shared_content).includes("https://example.com"), false);
   await request(app, `/api/feed-values/${id}/approve-local`, 200, { method: "POST", cookie,
@@ -44,8 +46,18 @@ export async function exerciseLocalRss(app, fixture, database) {
   const args = ["scripts/local-model.mjs", "value", fixture.owner.id, id];
   let first;
   try { first = JSON.parse((await execute("node", args, options)).stdout); }
-  catch { throw new Error("真实本地 RSS 评分未确认成功；核对原请求，验收不会自动重发"); }
+  catch (error) {
+    let status = "unconfirmed";
+    try {
+      const value = JSON.parse(error.stdout);
+      if (["unknown", "expired", "invalidated", "authorized", "running", "cancelled"].includes(value.status)) status = value.status;
+    } catch { /* Never echo child output, model text or credentials. */ }
+    console.log(JSON.stringify({ local_rss_acceptance: status, process_killed: error.killed === true,
+      exit_code: Number.isInteger(error.code) ? error.code : null }));
+    throw new Error("真实本地 RSS 评分未确认成功；核对原请求，验收不会自动重发");
+  }
   assert.equal(first.status, "succeeded"); assert.equal(first.scores.length, 3);
+  assert.ok(first.scores.every(s => [null, 0, 40, 80].includes(s.score)), "v4 fixed classification mapping");
   const replay = JSON.parse((await execute("node", args, options)).stdout);
   assert.equal(replay.status, "succeeded"); assert.ok(same(replay.scores, first.scores), "terminal score replay");
   assert.equal(await sends(database, id), "1");

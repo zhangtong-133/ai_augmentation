@@ -154,7 +154,7 @@ local-value: ## 显式执行已批准的本地 RSS 评分（OWNER/REQUEST），�
 	node scripts/local-model.mjs value "$(OWNER)" "$(REQUEST)"
 
 .PHONY: local-value-benchmark local-value-benchmark-preview local-value-quality-test
-local-value-benchmark: ## 显式运行合成 RSS 质量基准（SUITE=baseline/challenge）；先启动受显存保护的项目模型
+local-value-benchmark: ## 显式运行合成 RSS 质量基准（SUITE=baseline/challenge/regression）；先启动受显存保护的项目模型
 	node scripts/local-value-benchmark.mjs run $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(MODEL),--model "$(MODEL)",)
 
 local-value-benchmark-preview: ## 离线预览固定基准的精确分享提示及条件（CASE）

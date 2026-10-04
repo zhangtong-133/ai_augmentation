@@ -11,7 +11,7 @@ export function verifyCase(raw, manifest, target) {
   assert.deepEqual(r.manifest, manifest); assert.equal(r.protocol_valid, true);
   assert.deepEqual(Object.keys(r.scores).sort(), [...manifest.items].sort());
   for (const score of Object.values(r.scores)) assert.ok(score === null || (Number.isInteger(score) && score >= 0 && score <= 100));
-  if (manifest.execution_profile === "local-rss-v3") {
+  if (["local-rss-v3", "local-rss-v4"].includes(manifest.execution_profile)) {
     for (const score of Object.values(r.scores)) assert.ok([null, 0, 40, 80].includes(score));
   }
   assert.equal(r.checks.length, manifest.checks.length);

@@ -4,18 +4,19 @@ import { qualityGate } from "./local-value-gate-lib.mjs";
 import { report } from "./quality-test-fixture.mjs";
 function fixtures() {
   const reports = [0, 1, 2, 3].map(i => report(`2026-10-04T12:0${i}:00.000Z`));
+  reports.forEach(r => r.manifests.forEach(m => m.execution_profile = "local-rss-v3"));
   reports.slice(2).forEach(r => r.manifests.forEach(m => { m.quality_version = "rss-challenge-v1"; m.corpus_sha256 = "9".repeat(64); }));
   return { reports, expected: { baseline: structuredClone(reports[0].manifests), challenge: structuredClone(reports[2].manifests) } };
 }
 test("both frozen suites require two passing rounds without enabling production", () => {
   const { reports, expected } = fixtures();
-  const gate = qualityGate(reports, expected);
+  const gate = qualityGate(reports, expected, "local-rss-v3");
   assert.equal(gate.synthetic_gate_passed, true);
   assert.equal(gate.configuration_changed, false);
   assert.equal(gate.real_material_quality_verified, false);
   assert.equal(gate.gaming_reserve_verified, false);
-  assert.equal(qualityGate(reports.slice(0, 2), expected).synthetic_gate_passed, false);
-  assert.equal(qualityGate(reports.slice(1), expected).synthetic_gate_passed, false);
+  assert.equal(qualityGate(reports.slice(0, 2), expected, "local-rss-v3").synthetic_gate_passed, false);
+  assert.equal(qualityGate(reports.slice(1), expected, "local-rss-v3").synthetic_gate_passed, false);
 });
 test("protocol and quality failures block the gate even with additional passing rounds", () => {
   for (const protocol of [true, false]) {
@@ -28,13 +29,13 @@ test("protocol and quality failures block the gate even with additional passing 
       failed.results[0].scores.article = 0; failed.results[0].checks[0].passed = false;
       failed.results[0].quality_pass = false; failed.passed_cases = 2; failed.exit_code = 2;
     }
-    assert.equal(qualityGate(reports, expected).synthetic_gate_passed, false);
+    assert.equal(qualityGate(reports, expected, "local-rss-v3").synthetic_gate_passed, false);
   }
 });
 test("copied or overlapping rounds cannot supply repeat evidence", () => {
   for (const mutate of [r => r[1] = structuredClone(r[0]), r => r[0].ended_at = r[2].started_at]) {
     const { reports, expected } = fixtures(); mutate(reports);
-    assert.throws(() => qualityGate(reports, expected));
+    assert.throws(() => qualityGate(reports, expected, "local-rss-v3"));
   }
 });
 test("tampered or obsolete manifests and different runtimes cannot pass as frozen conditions", () => {
@@ -43,20 +44,36 @@ test("tampered or obsolete manifests and different runtimes cannot pass as froze
     r => r.forEach(x => x.manifests.forEach(m => m.execution_profile = "local-rss-v1")),
     r => { delete r[0].run_scope; }, r => r.forEach(x => { x.manifests.pop(); x.results.pop(); x.total_cases--; x.passed_cases--; })]) {
     const { reports, expected } = fixtures(); mutate(reports);
-    assert.throws(() => qualityGate(reports, expected));
+    assert.throws(() => qualityGate(reports, expected, "local-rss-v3"));
   }
 });
 
-test("v3 requires explicit selection and its exact manifests; it stays candidate-only", () => {
+test("historical v2 requires explicit selection and cannot be mistaken for the current profile", () => {
   const { reports, expected } = fixtures();
-  reports.forEach(r => r.manifests.forEach(m => m.execution_profile = "local-rss-v3"));
-  Object.values(expected).forEach(ms => ms.forEach(m => m.execution_profile = "local-rss-v3"));
-  assert.throws(() => qualityGate(reports, expected));
-  const gate = qualityGate(reports, expected, "local-rss-v3");
+  reports.forEach(r => r.manifests.forEach(m => m.execution_profile = "local-rss-v2"));
+  Object.values(expected).forEach(ms => ms.forEach(m => m.execution_profile = "local-rss-v2"));
+  assert.throws(() => qualityGate(reports, expected, "local-rss-v3"));
+  const gate = qualityGate(reports, expected, "local-rss-v2");
   assert.equal(gate.synthetic_gate_passed, true);
   assert.equal(gate.candidate_only, true);
-  assert.equal(gate.execution_profile, "local-rss-v3");
-  reports[0].manifests.forEach(m => m.execution_profile = "local-rss-v2");
-  assert.throws(() => qualityGate(reports, expected, "local-rss-v3"));
+  assert.equal(gate.execution_profile, "local-rss-v2");
+  reports[0].manifests.forEach(m => m.execution_profile = "local-rss-v3");
+  assert.throws(() => qualityGate(reports, expected, "local-rss-v2"));
   assert.throws(() => qualityGate(reports, expected, "local-rss-v1"));
+});
+
+test("v4 requires the independent recovery regression twice in addition to the frozen suites", () => {
+  const { reports, expected } = fixtures();
+  reports.forEach(r => r.manifests.forEach(m => m.execution_profile = "local-rss-v4"));
+  Object.values(expected).forEach(ms => ms.forEach(m => m.execution_profile = "local-rss-v4"));
+  assert.throws(() => qualityGate(reports, expected));
+  const regression = structuredClone(reports[0]);
+  regression.manifests.forEach(m => { m.quality_version = "rss-regression-v1"; m.corpus_sha256 = "8".repeat(64); });
+  expected.regression = structuredClone(regression.manifests);
+  assert.equal(qualityGate(reports, expected).synthetic_gate_passed, false);
+  for (const i of [4, 5]) {
+    const r = structuredClone(regression); r.started_at = r.ended_at = `2026-10-04T12:0${i}:00.000Z`; reports.push(r);
+  }
+  assert.equal(qualityGate(reports, expected).synthetic_gate_passed, true);
+  assert.equal(qualityGate(reports, expected).candidate_only, false);
 });

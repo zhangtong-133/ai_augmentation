@@ -83,7 +83,13 @@ fn quote(pricing: &ValuePricing, time: i64) -> StorageResult<(Option<i64>, i64)>
             valid_until_unix_ms,
         } => {
             personal_ai_llm::local::LocalTarget::new(endpoint, model).map_err(|_| invalid())?;
-            if !["local-rss-v1", "local-rss-v2"].contains(&profile.as_str())
+            if ![
+                "local-rss-v1",
+                "local-rss-v2",
+                "local-rss-v3",
+                "local-rss-v4",
+            ]
+            .contains(&profile.as_str())
                 || *valid_until_unix_ms <= time
             {
                 return Err(invalid());
@@ -110,13 +116,19 @@ fn digest(
     .map_err(|_| invalid())?
     .ok_or_else(invalid)?;
     if let ValuePricing::Local { profile, .. } = pricing
-        && profile == "local-rss-v2"
+        && ["local-rss-v2", "local-rss-v3", "local-rss-v4"].contains(&profile.as_str())
     {
         let request_digest =
             personal_ai_agent_core::feed_value_local::request_digest(&plan, profile)
                 .map_err(|_| invalid())?;
         let bytes = serde_json::to_vec(&(
-            "rss-value-local-review-v2",
+            if profile == "local-rss-v4" {
+                "rss-value-local-review-v4"
+            } else if profile == "local-rss-v3" {
+                "rss-value-local-review-v3"
+            } else {
+                "rss-value-local-review-v2"
+            },
             plan.digest(),
             snapshot.preference_revision,
             pricing,
