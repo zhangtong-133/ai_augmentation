@@ -21,14 +21,15 @@ pub const CHALLENGE_VERSION: &str = "rss-challenge-v1";
 pub const QUALITY_VERSION: &str = "rss-quality-v1";
 const OWNER: &str = "11111111-1111-4111-8111-111111111111";
 const START: u64 = 20_000 * DAY_MS;
+mod public;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Corpus {
     version: String,
     cases: Vec<CaseInput>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CaseInput {
     id: String,
@@ -36,7 +37,7 @@ struct CaseInput {
     entries: Vec<Entry>,
     checks: Vec<Check>,
 }
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Entry {
     key: String,
@@ -86,6 +87,8 @@ pub struct CaseManifest {
     pub prompt_bytes: usize,
     pub checks: Vec<Check>,
     pub items: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub material_origin: Option<&'static str>,
 }
 #[derive(Serialize)]
 pub struct QualityResult {
@@ -160,11 +163,12 @@ pub fn cases_for_profile(profile: &str) -> Result<Vec<QualityCase>, ValueError> 
 /// # Errors
 /// 未知套件/profile、不合法语料或预算超限时拒绝。
 pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, ValueError> {
-    let (input, version) = match suite {
-        "baseline" => (CORPUS, QUALITY_VERSION),
-        "challenge" => (CHALLENGE, CHALLENGE_VERSION),
-        "regression" => (REGRESSION, REGRESSION_VERSION),
-        "order" => (ORDER, ORDER_VERSION),
+    let mut all = match suite {
+        "baseline" => parse_version(CORPUS, QUALITY_VERSION)?,
+        "challenge" => parse_version(CHALLENGE, CHALLENGE_VERSION)?,
+        "regression" => parse_version(REGRESSION, REGRESSION_VERSION)?,
+        "order" => parse_version(ORDER, ORDER_VERSION)?,
+        "public_calibration" | "public_holdout" => public::cases(suite)?,
         _ => return Err(ValueError::InvalidSnapshot),
     };
     let profile = match profile {
@@ -174,7 +178,6 @@ pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, V
         "local-rss-v4" => "local-rss-v4",
         _ => return Err(ValueError::InvalidSnapshot),
     };
-    let mut all = parse_version(input, version)?;
     for case in &mut all {
         case.profile = profile;
         case.request()?;
@@ -293,6 +296,10 @@ impl QualityCase {
             prompt_bytes: request.messages.iter().map(|m| m.content.len()).sum(),
             checks: self.checks.clone(),
             items: self.labels.values().cloned().collect(),
+            material_origin: self
+                .quality_version
+                .starts_with("rss-public-")
+                .then_some("public_document_paraphrase"),
         })
     }
     /// 先执行业务完整评分校验，再分别记录质量条件；不输出理由或正文。

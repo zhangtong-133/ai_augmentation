@@ -1,0 +1,188 @@
+{
+  "version": "rss-public-holdout-v1",
+  "material_origin": "public_document_paraphrase",
+  "annotation_method": "agent_prelabelled_unreviewed",
+  "reviewed_on": "2026-10-04",
+  "sources": [
+    {
+      "key": "rust",
+      "url": "https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html",
+      "section": "References and Borrowing; Mutable References; Dangling References",
+      "title": "Rust 引用与借用规则",
+      "summary": "函数可以借用 String 的引用读取内容，而不取得它的所有权，调用后原变量仍然可用。共享引用允许只读访问，可变引用用于修改。对同一数据，在相应引用有效的范围内，可变借用不能与其他借用并存；多个只读借用可以共存。编译器还检查引用的生命周期，阻止返回指向已销毁局部值的悬垂引用。这些限制让所有者与借用者之间的访问关系在编译时得到检查。"
+    },
+    {
+      "key": "python",
+      "url": "https://docs.python.org/3/library/asyncio-task.html",
+      "section": "Coroutines; Awaitables; Task groups",
+      "title": "Python asyncio 协程与任务",
+      "summary": "async def 创建协程，单纯调用协程函数不会调度执行。await 可以等待协程；create_task 可将协程调度为并发任务，TaskGroup 在上下文退出时等待组内任务完成。"
+    },
+    {
+      "key": "linux",
+      "url": "https://docs.kernel.org/filesystems/ext4/overview.html",
+      "section": "High Level Design",
+      "title": "Linux ext4 的块组布局",
+      "summary": "ext4 将文件系统分为块组，分配器尽量把同一文件的数据块放在同组，减少碎片导致的寻道。常见的 4 KiB 块对应每组 32768 块；ext4 与日志 jbd2 的磁盘字段字节序不同。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "rust_topic",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 20
+        }
+      ],
+      "rationale": "以 rust 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "python_topic",
+      "keywords": [
+        "python"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "rust",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 20
+        }
+      ],
+      "rationale": "以 python 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "linux_topic",
+      "keywords": [
+        "linux"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "rust",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 60
+        }
+      ],
+      "rationale": "以 linux 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "borrowing_paraphrase",
+      "keywords": [
+        "共享引用",
+        "可变借用"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 20
+        }
+      ],
+      "rationale": "用借用概念替代语言名称；较长 Rust 摘要直接解释两类引用，任务调度与磁盘布局不讨论该概念。"
+    }
+  ]
+}

@@ -1,0 +1,187 @@
+{
+  "version": "rss-public-calibration-v1",
+  "material_origin": "public_document_paraphrase",
+  "annotation_method": "agent_prelabelled_unreviewed",
+  "reviewed_on": "2026-10-04",
+  "sources": [
+    {
+      "key": "rust",
+      "url": "https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html",
+      "section": "Ownership Rules; Memory and Allocation",
+      "title": "Rust 的所有权与内存释放",
+      "summary": "Rust 编译器检查所有权规则，每个值有一个所有者。所有者离开作用域时释放值；String 的移动会使原绑定失效，避免重复释放堆内存。"
+    },
+    {
+      "key": "python",
+      "url": "https://docs.python.org/3/library/venv.html",
+      "section": "Creating virtual environments; How venvs work",
+      "title": "Python 项目的虚拟环境",
+      "summary": "venv 为 Python 项目创建独立的解释器环境和包安装目录。不同项目可使用不同依赖版本；激活脚本调整 PATH，环境也可通过解释器完整路径直接使用。"
+    },
+    {
+      "key": "linux",
+      "url": "https://docs.kernel.org/admin-guide/cgroup-v2.html",
+      "section": "What is cgroup?; CPU; Memory",
+      "title": "Linux cgroup v2 的资源控制",
+      "summary": "Linux cgroup v2 按树状层级组织进程。控制器限制和分配 CPU、内存等系统资源；父级约束继续约束子级，内存控制包含用量统计、限制与保护。"
+    }
+  ],
+  "cases": [
+    {
+      "id": "rust_topic",
+      "keywords": [
+        "rust"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 20
+        }
+      ],
+      "rationale": "以 rust 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "python_topic",
+      "keywords": [
+        "python"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "rust",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 20
+        }
+      ],
+      "rationale": "以 python 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "linux_topic",
+      "keywords": [
+        "linux"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "rust",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 60
+        }
+      ],
+      "rationale": "以 linux 技术主题为目标；对应文档直接相关，其余材料涉及不同语言或操作系统机制，须给低分而非弃权。"
+    },
+    {
+      "id": "memory_partial",
+      "keywords": [
+        "编程语言内存管理"
+      ],
+      "entries": [
+        "rust",
+        "python",
+        "linux"
+      ],
+      "checks": [
+        {
+          "kind": "minimum",
+          "item": "rust",
+          "value": 60
+        },
+        {
+          "kind": "minimum",
+          "item": "linux",
+          "value": 40
+        },
+        {
+          "kind": "ceiling",
+          "item": "linux",
+          "value": 40
+        },
+        {
+          "kind": "minimum",
+          "item": "python",
+          "value": 0
+        },
+        {
+          "kind": "ceiling",
+          "item": "python",
+          "value": 20
+        }
+      ],
+      "rationale": "所有权直接管理语言中的值和堆内存。cgroup 从操作系统层限制进程内存，作为间接关联预标 partial；venv 管理依赖而非内存。partial 是待人工复核的代理判断，不是文档事实。"
+    }
+  ]
+}

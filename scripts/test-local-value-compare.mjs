@@ -105,3 +105,18 @@ test("coverage counts items once even with repeated criteria and includes numeri
   assert.equal(coverage.groups.required_score.expected, 6);
   assert.equal(coverage.groups.optional_score.abstention_rate, null);
 });
+
+test("public-document paraphrases require an explicit origin and never pool different splits", () => {
+  const a = report(), b = report("2026-10-04T12:10:00.000Z");
+  for (const r of [a, b]) r.manifests.forEach(m => { m.quality_version = "rss-public-calibration-v1"; m.material_origin = "public_document_paraphrase"; });
+  assert.equal(compareReports([a, b]).all_passed, true);
+  delete b.manifests[0].material_origin;
+  assert.throws(() => validateReport(b));
+  b.manifests[0].material_origin = "human_verified";
+  assert.throws(() => validateReport(b));
+  b.manifests[0].material_origin = "public_document_paraphrase";
+  b.manifests.forEach(m => m.quality_version = "rss-public-holdout-v1");
+  assert.throws(() => compareReports([a, b]));
+  const old = report(); old.manifests[0].material_origin = "public_document_paraphrase";
+  assert.throws(() => validateReport(old));
+});
