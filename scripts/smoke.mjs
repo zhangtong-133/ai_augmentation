@@ -811,6 +811,9 @@ try {
       assert.equal(citation.id, 1);
       assert.equal(citation.document_id, document.id);
       assert.equal(citation.text, searchable.chunks[citation.ordinal]);
+      assert.equal(citation.quote, Array.from(citation.text).slice(0, 80).join(""));
+      assert.equal(citation.quote_start, 0);
+      assert.equal(citation.quote_end, Array.from(citation.quote).length);
       assert.equal(answered.response.headers.get("cache-control"), "no-store");
       const unanswered = await request(base, answerPath, 200, { method: "POST", cookie: otherCookie, body: question });
       assert.deepEqual(unanswered.data, { status: "insufficient_evidence", answer: null, citations: [] });

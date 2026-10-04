@@ -43,7 +43,7 @@ Content-Type: application/json
 {"query":"我的资料中如何描述这个问题？"}
 ```
 
-成功响应为 `{"status":"answered","answer":"…","citations":[{"id":1,"document_id":"…","ordinal":0,"title":"…","source":"…","text":"…","score":0.9}]}`。引用由服务端从本次命中分配 1 起始 ID；模型只返回答案、ID 列表及证据不足标志，不能提供自己的来源对象。只有校验过且实际引用的条目才出现在响应里。重复、零值、越界或缺失引用、空答案、超过 4000 字符的答案均返回 502 `invalid_answer`。
+成功响应为 `{"status":"answered","answer":"…","citations":[{"id":1,"quote":"…","quote_start":0,"quote_end":1,"document_id":"…","ordinal":0,"title":"…","source":"…","text":"…","score":0.9}]}`。引用由服务端从本次命中分配 1 起始 ID；模型只返回答案、含 ID/逐字摘录的引用列表及证据不足标志，不能提供自己的来源对象或位置。应用按 Unicode 标量计算半开范围，并要求摘录在该片段中唯一出现，详见[精确摘录与生成复核](knowledge-answer-evidence.md)。只有校验过且实际引用的条目才出现在响应里。重复、零值、越界或缺失引用、空答案、超过 4000 字符的答案均返回 502 `invalid_answer`。
 
 无命中或模型明确判定证据不足时响应为 `{"status":"insufficient_evidence","answer":null,"citations":[]}`。没有命中时聊天调用次数为零，但仍需要执行查询向量化；该状态不是对整个知识库内容的不存在证明。模型报告证据不足时必须同时返回空答案与空引用，矛盾输出视为错误。429 限流、502 模型错误与 503 检索存储故障均不伪装成证据不足。
 

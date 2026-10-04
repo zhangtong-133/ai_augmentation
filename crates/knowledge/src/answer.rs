@@ -1,11 +1,15 @@
 use crate::retrieval::SearchHit;
-use personal_ai_llm::{AnswerProvider, AnswerSource, LlmError};
+use personal_ai_llm::{AnswerProvider, AnswerSource, LlmError, ModelAnswer};
 use serde::Serialize;
 use std::collections::HashSet;
 
 #[derive(Debug, Serialize)]
 pub struct Citation {
     pub id: usize,
+    pub quote: String,
+    /// Unicode scalar offsets in hit.text, half-open [start, end).
+    pub quote_start: usize,
+    pub quote_end: usize,
     #[serde(flatten)]
     pub hit: SearchHit,
 }
@@ -43,6 +47,10 @@ pub async fn answer(
         })
         .collect();
     let output = provider.answer(question, &sources).await?;
+    validate(output, hits)
+}
+
+fn validate(output: ModelAnswer, hits: &[SearchHit]) -> Result<KnowledgeAnswer, LlmError> {
     let invalid = || LlmError::InvalidResponse("invalid answer evidence".into());
     if output.insufficient_evidence {
         if !output.answer.is_empty() || !output.citations.is_empty() {
@@ -59,12 +67,18 @@ pub async fn answer(
     }
     let mut seen = HashSet::new();
     let mut citations = Vec::new();
-    for id in output.citations {
+    for citation in output.citations {
+        let id = citation.id;
         if id == 0 || id > hits.len() || !seen.insert(id) {
             return Err(invalid());
         }
+        let (quote_start, quote_end) =
+            locate_quote(&hits[id - 1].text, &citation.quote).ok_or_else(invalid)?;
         citations.push(Citation {
             id,
+            quote: citation.quote,
+            quote_start,
+            quote_end,
             hit: hits[id - 1].clone(),
         });
     }
@@ -74,3 +88,24 @@ pub async fn answer(
         citations,
     })
 }
+
+// Enumerate character boundaries so overlapping occurrences are also ambiguous.
+fn locate_quote(text: &str, quote: &str) -> Option<(usize, usize)> {
+    let length = quote.chars().count();
+    if quote.trim().is_empty() || length > 400 {
+        return None;
+    }
+    let mut matches = text
+        .char_indices()
+        .enumerate()
+        .filter(|(_, (byte, _))| text[*byte..].starts_with(quote));
+    let (start, _) = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some((start, start + length))
+}
+
+#[cfg(test)]
+#[path = "answer_tests.rs"]
+mod tests;

@@ -1,5 +1,5 @@
 use super::*;
-use personal_ai_llm::{AnswerProvider, AnswerSource, ModelAnswer};
+use personal_ai_llm::{AnswerCitation, AnswerProvider, AnswerSource, ModelAnswer};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Default)]
@@ -30,7 +30,14 @@ impl AnswerProvider for PausedAnswer {
                 } else {
                     "private generated answer".into()
                 },
-                citations: if self.insufficient { vec![] } else { vec![id] },
+                citations: if self.insufficient {
+                    vec![]
+                } else {
+                    vec![AnswerCitation {
+                        id,
+                        quote: "verified evidence".into(),
+                    }]
+                },
                 insufficient_evidence: self.insufficient,
             })
         })

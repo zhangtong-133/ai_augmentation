@@ -2122,8 +2122,12 @@ impl personal_ai_llm::AnswerProvider for AnswerFixture {
         sources: &[personal_ai_llm::AnswerSource],
     ) -> personal_ai_llm::BoxFuture<'_, personal_ai_llm::LlmResult<personal_ai_llm::ModelAnswer>>
     {
-        use personal_ai_llm::{LlmError, ModelAnswer};
+        use personal_ai_llm::{AnswerCitation, LlmError, ModelAnswer};
         use std::sync::atomic::Ordering;
+        let citation = |id| AnswerCitation {
+            id,
+            quote: "verified evidence".into(),
+        };
         self.calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].text, "verified evidence");
@@ -2132,7 +2136,7 @@ impl personal_ai_llm::AnswerProvider for AnswerFixture {
             2 => Err(LlmError::ProviderUnavailable("secret upstream body".into())),
             3 => Ok(ModelAnswer {
                 answer: "Forged".into(),
-                citations: vec![99],
+                citations: vec![citation(99)],
                 insufficient_evidence: false,
             }),
             4 => Ok(ModelAnswer {
@@ -2147,27 +2151,35 @@ impl personal_ai_llm::AnswerProvider for AnswerFixture {
             }),
             6 => Ok(ModelAnswer {
                 answer: "Contradiction".into(),
-                citations: vec![1],
+                citations: vec![citation(1)],
                 insufficient_evidence: true,
             }),
             7 => Ok(ModelAnswer {
                 answer: "Duplicate".into(),
-                citations: vec![1, 1],
+                citations: vec![citation(1), citation(1)],
                 insufficient_evidence: false,
             }),
             8 => Ok(ModelAnswer {
                 answer: "Zero".into(),
-                citations: vec![0],
+                citations: vec![citation(0)],
                 insufficient_evidence: false,
             }),
             9 => Ok(ModelAnswer {
                 answer: "x".repeat(4001),
-                citations: vec![1],
+                citations: vec![citation(1)],
+                insufficient_evidence: false,
+            }),
+            10 => Ok(ModelAnswer {
+                answer: "secret forged quote".into(),
+                citations: vec![AnswerCitation {
+                    id: 1,
+                    quote: "invented".into(),
+                }],
                 insufficient_evidence: false,
             }),
             _ => Ok(ModelAnswer {
                 answer: "Supported answer".into(),
-                citations: vec![1],
+                citations: vec![citation(1)],
                 insufficient_evidence: false,
             }),
         };
@@ -2268,6 +2280,9 @@ async fn answers_require_verified_evidence_and_never_call_chat_for_empty_results
     assert_eq!(body["citations"][0]["id"], 1);
     assert_eq!(body["citations"][0]["document_id"], document.summary.id);
     assert_eq!(body["citations"][0]["text"], "verified evidence");
+    assert_eq!(body["citations"][0]["quote"], "verified evidence");
+    assert_eq!(body["citations"][0]["quote_start"], 0);
+    assert_eq!(body["citations"][0]["quote_end"], 17);
     for (mode, status) in [
         (1, StatusCode::TOO_MANY_REQUESTS),
         (2, StatusCode::BAD_GATEWAY),
@@ -2277,6 +2292,7 @@ async fn answers_require_verified_evidence_and_never_call_chat_for_empty_results
         (7, StatusCode::BAD_GATEWAY),
         (8, StatusCode::BAD_GATEWAY),
         (9, StatusCode::BAD_GATEWAY),
+        (10, StatusCode::BAD_GATEWAY),
     ] {
         provider.mode.store(mode, Ordering::SeqCst);
         let response = auth_request(

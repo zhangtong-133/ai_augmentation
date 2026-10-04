@@ -21,9 +21,14 @@ createServer(async (request, response) => {
           input.max_completion_tokens !== 2048 || !input.response_format?.json_schema?.strict || input.tools) {
         response.writeHead(400).end(); return;
       }
+      const citationSchema = input.response_format.json_schema.schema?.properties?.citations?.items;
+      if (citationSchema?.type !== "object" || citationSchema.additionalProperties !== false ||
+          JSON.stringify(citationSchema.required) !== JSON.stringify(["id", "quote"])) {
+        response.writeHead(400).end(); return;
+      }
       const context = JSON.parse(input.messages[1].content);
       if (!context.evidence?.length || context.evidence.length > 5) { response.writeHead(400).end(); return; }
-      const answer = { answer: "依据资料：" + context.evidence[0].text.slice(0, 80), citations: [context.evidence[0].id], insufficient_evidence: false };
+      const answer = { answer: "依据资料：" + context.evidence[0].text.slice(0, 80), citations: [{ id: context.evidence[0].id, quote: Array.from(context.evidence[0].text).slice(0, 80).join("") }], insufficient_evidence: false };
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify(answer), refusal: null } }] }));
       return;

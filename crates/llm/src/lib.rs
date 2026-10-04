@@ -71,10 +71,16 @@ pub struct AnswerSource {
     pub id: usize,
     pub text: String,
 }
+/// 模型只提供证据编号和逐字摘录；原文位置由应用核验计算。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AnswerCitation {
+    pub id: usize,
+    pub quote: String,
+}
 #[derive(Clone, Debug)]
 pub struct ModelAnswer {
     pub answer: String,
-    pub citations: Vec<usize>,
+    pub citations: Vec<AnswerCitation>,
     pub insufficient_evidence: bool,
 }
 pub trait AnswerProvider: Send + Sync {
