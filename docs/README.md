@@ -44,6 +44,7 @@
 
 - [RSS 评分只读运维](design/rss-value-operations.md)：用户分页、全局配额、发送审计与未知结果诊断，最小列权限且不恢复/重发。
 - [本地 RSS 价值评分](design/rss-value-local-model.md)：独立本地计算同意、精确目标、单次派发、页面和私有阅读；真实模型及删除/恢复三阶段已交付。
+- [本地 RSS 合成质量基线](design/rss-value-quality.md)：固定偏好、弃权及注入语料；协议与质量分别验收，继续真实模型报告和只读 GPU 观测。
 
 - [PostgreSQL 备份恢复](design/postgres-recovery.md)：同一快照归档、迁移/SHA-256 校验、空库事务恢复与执行隔离、应用登录/用户隔离/删除墓碑演练。
 - [部署数据库只读诊断](design/deployment-check.md)：显式 current/recovery 检查、迁移校验、旧执行状态和外部原文核对。
