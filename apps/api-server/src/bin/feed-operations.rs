@@ -1,13 +1,22 @@
 use personal_ai_domain::UserId;
-use personal_ai_storage::feed_operations::FeedOperationsStore;
+use personal_ai_storage::{
+    feed_operations::FeedOperationsStore, feed_value_operations::FeedValueOperationsStore,
+};
 use personal_ai_storage_postgres::PostgresStore;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: feed-operations audit --user UUID [--after REQUEST_UUID]";
-fn parse(args: &[String]) -> Result<(String, Option<String>), &'static str> {
-    if args.first().map(String::as_str) != Some("audit") {
-        return Err(USAGE);
-    }
+const USAGE: &str = "usage: feed-operations audit --user UUID [--after REQUEST_UUID]\nfeed-operations audit-values --user UUID [--after REQUEST_UUID]";
+#[derive(Clone, Copy)]
+enum Mode {
+    Collection,
+    Value,
+}
+fn parse(args: &[String]) -> Result<(Mode, String, Option<String>), &'static str> {
+    let mode = match args.first().map(String::as_str) {
+        Some("audit") => Mode::Collection,
+        Some("audit-values") => Mode::Value,
+        _ => return Err(USAGE),
+    };
     let mut user = None;
     let mut after = None;
     let (pairs, remainder) = args[1..].as_chunks::<2>();
@@ -25,7 +34,7 @@ fn parse(args: &[String]) -> Result<(String, Option<String>), &'static str> {
             return Err(USAGE);
         }
     }
-    Ok((user.ok_or(USAGE)?, after))
+    Ok((mode, user.ok_or(USAGE)?, after))
 }
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -43,16 +52,28 @@ async fn main() -> ExitCode {
     }
 }
 async fn run(args: &[String]) -> Result<ExitCode, Box<dyn std::error::Error>> {
-    let (user, after) = parse(args)?;
+    let (mode, user, after) = parse(args)?;
     let url =
         std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required and must be UTF-8")?;
     // 不执行迁移、不读取来源内容、不联网或恢复采集。
     let store = PostgresStore::connect_existing(&url).await?;
-    let report = store
-        .audit_feeds(&UserId::new(user), after.as_deref())
-        .await?;
-    println!("{}", serde_json::to_string(&report)?);
-    Ok(if report.consistent {
+    let consistent = match mode {
+        Mode::Collection => {
+            let report = store
+                .audit_feeds(&UserId::new(user), after.as_deref())
+                .await?;
+            println!("{}", serde_json::to_string(&report)?);
+            report.consistent
+        }
+        Mode::Value => {
+            let report = store
+                .audit_feed_values(&UserId::new(user), after.as_deref())
+                .await?;
+            println!("{}", serde_json::to_string(&report)?);
+            report.consistent
+        }
+    };
+    Ok(if consistent {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(2)
@@ -66,6 +87,7 @@ mod tests {
         let id = uuid::Uuid::new_v4();
         let args = |s: &str| s.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
         assert!(parse(&args(&format!("audit --user {id} --after {id}"))).is_ok());
+        assert!(parse(&args(&format!("audit-values --user {id} --after {id}"))).is_ok());
         for input in [
             String::new(),
             "audit".into(),

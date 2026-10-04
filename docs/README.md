@@ -42,6 +42,7 @@
 
 ## 验收与架构
 
+- [RSS 评分只读运维](design/rss-value-operations.md)：用户分页、全局配额、发送审计与未知结果诊断，最小列权限且不恢复/重发。
 - [本地 RSS 价值评分](design/rss-value-local-model.md)：独立本地计算同意、精确目标、单次派发、页面和私有阅读；真实模型及删除/恢复三阶段已交付。
 
 - [PostgreSQL 备份恢复](design/postgres-recovery.md)：同一快照归档、迁移/SHA-256 校验、空库事务恢复与执行隔离、应用登录/用户隔离/删除墓碑演练。

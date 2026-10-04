@@ -310,3 +310,124 @@ async fn feed_value_local_source_revocation_and_deadline_clear_data_and_prevent_
     assert_eq!(row.get::<Option<i64>, _>("sent_ms"), None);
     f.cleanup().await;
 }
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn local_value_operations_reports_unknown_without_recovery_and_detects_missing_send_audit() {
+    use personal_ai_storage::feed_value_operations::FeedValueOperationsStore;
+    let f = fixture().await;
+    let draft = draft(&f).await;
+    let authorized = authorize(&f).await;
+    let claim = f
+        .store
+        .claim_local_value(&f.owner, &authorized.request_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
+    f.store.finish_local_value(&claim, None).await.unwrap();
+    let report = f.store.audit_feed_values(&f.owner, None).await.unwrap();
+    assert!(report.consistent);
+    assert_eq!(report.counts["records"], 2);
+    assert_eq!(report.counts["sent"], 1);
+    assert_eq!(report.counts["unknown"], 1);
+    assert_eq!(report.remaining_previews_today, 18);
+    assert_eq!(report.warnings, ["unknown"]);
+    let encoded = serde_json::to_string(&report).unwrap();
+    for field in [
+        "qwen3",
+        "127.0.0.1",
+        "keywords",
+        "\"snapshot\":",
+        "scores",
+        "digest",
+        "dispatch_token",
+    ] {
+        assert!(!encoded.contains(field));
+    }
+    let other = f.store.audit_feed_values(&f.other, None).await.unwrap();
+    assert!(other.items.is_empty());
+    assert_eq!(other.counts["records"], 0);
+    assert!(
+        f.store
+            .audit_feed_values(&f.owner, Some("bad"))
+            .await
+            .is_err()
+    );
+    sqlx::query(
+        "DELETE FROM feed_value_audit WHERE user_id=$1 AND request_id=$2 AND event='sending'",
+    )
+    .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+    .bind(Uuid::parse_str(&authorized.request_id).unwrap())
+    .execute(&f.pool)
+    .await
+    .unwrap();
+    let bad = f.store.audit_feed_values(&f.owner, None).await.unwrap();
+    assert!(!bad.consistent);
+    assert_eq!(bad.counts["inconsistent_records"], 1);
+    assert!(
+        bad.items
+            .iter()
+            .find(|i| i.request_id == authorized.request_id)
+            .unwrap()
+            .issues
+            .contains(&"sending_audit_mismatch".into())
+    );
+    assert_eq!(
+        f.store
+            .get_feed_value(&f.owner, &authorized.request_id)
+            .await
+            .unwrap()
+            .status,
+        "unknown"
+    );
+    assert_eq!(
+        f.store
+            .get_feed_value(&f.owner, &draft.request_id)
+            .await
+            .unwrap()
+            .status,
+        "draft"
+    );
+    f.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn local_value_operations_pages_metadata_with_global_counts_and_no_cleanup() {
+    use personal_ai_storage::feed_value_operations::FeedValueOperationsStore;
+    let f = fixture().await;
+    let saved = draft(&f).await;
+    let owner = Uuid::parse_str(f.owner.as_str()).unwrap();
+    // Old synthetic records deliberately retain their opaque payloads: the audit must not parse them.
+    sqlx::query("INSERT INTO feed_value_reviews(user_id,id,status,snapshot,pricing,digest,created_ms,expires_ms) SELECT user_id,gen_random_uuid(),'draft',snapshot,pricing,digest,created_ms-86400000,expires_ms-86400000 FROM feed_value_reviews CROSS JOIN generate_series(1,100) WHERE user_id=$1 AND id=$2")
+        .bind(owner).bind(Uuid::parse_str(&saved.request_id).unwrap()).execute(&f.pool).await.unwrap();
+    let first = f.store.audit_feed_values(&f.owner, None).await.unwrap();
+    assert!(first.consistent);
+    assert_eq!(first.items.len(), 100);
+    assert_eq!(first.counts["records"], 101);
+    assert_eq!(first.counts["previews_today"], 1);
+    assert_eq!(first.counts["expired_active"], 100);
+    assert_eq!(first.remaining_previews_today, 19);
+    let second = f
+        .store
+        .audit_feed_values(&f.owner, first.next_cursor.as_deref())
+        .await
+        .unwrap();
+    assert_eq!(second.items.len(), 1);
+    assert!(second.next_cursor.is_none());
+    assert_eq!(first.counts, second.counts);
+    assert!(
+        first
+            .items
+            .iter()
+            .all(|i| i.request_id != second.items[0].request_id)
+    );
+    assert_eq!(second.remaining_records, 899);
+    assert!(matches!(
+        f.store
+            .audit_feed_values(&UserId::new(Uuid::new_v4().to_string()), None)
+            .await,
+        Err(StorageError::NotFound)
+    ));
+    f.cleanup().await;
+}

@@ -84,7 +84,7 @@ npm --prefix apps/web run build
 | `make smoke` | PostgreSQL/Redis、双入口 HTTP、消息幂等、缓存故障恢复及重启持久化 |
 | `make smoke-objects` | 加测真实 MinIO、原文迁移与清理 |
 | `make smoke-index` | 加测真实 Qdrant、本地模型夹具、索引/检索/问答和 Agent 计划双入口授权/重启查重 |
-| `TEST_DATABASE_URL=… make test-feed-operations` | RSS 运维 CLI、元数据列权限与退出码（需要临时数据库建角色权限） |
+| `TEST_DATABASE_URL=… make test-feed-operations` | RSS 采集/评分只读 CLI、元数据列权限与退出码（需要临时数据库建角色权限） |
 | `TEST_DATABASE_URL=… make test-feeds` | RSS HTTP 私有订阅、精确确认、默认关闭和未知结果恢复 |
 | `TEST_DATABASE_URL=… make test-agent` | 一次性 PostgreSQL 验证计划授权、事务预算、取消和故障边界 |
 | `TEST_DATABASE_URL=… make test-model-agent` | 一次性 PostgreSQL 验证模型规划阶段事务金额/次数、领取、取消及查重 |
@@ -125,3 +125,5 @@ npm --prefix apps/web run build
 周期 RSS 已接入[默认关闭的后台运行](docs/design/rss-schedule-runner.md)：需要 `SCHEDULER_MODE=local`、`RSS_SCHEDULES_ENABLED=true` 和持久化用户授权。已提供[用户预览/授权/取消及历史 HTTP 接口](docs/design/rss-schedule-http.md)，并提供[配置与同意页面](docs/design/rss-schedule-ui.md)。
 
 学习核验可选启用[临时正文通道](docs/design/learning-text-stream.md)：API 与本机 `learning-run` 分别设置指向同一可信 Redis 的 `LEARNING_TEXT_REDIS_URL`（宿主机使用回环地址，容器使用内部地址）。默认关闭，只读观察不会执行模型；私有事件与授权详情的“观察临时文本”已接入。只显示当前观察的未校验正文，停止/退出/失效即清空，最终建议仍查询已保存结果。
+
+RSS 评分的只读查询使用 `feed-operations audit-values --user UUID [--after REQUEST_UUID]`，用户隔离、发送审计和最小列权限见[评分运维](docs/design/rss-value-operations.md)。
