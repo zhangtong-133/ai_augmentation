@@ -586,7 +586,8 @@ try {
     assert.deepEqual((await request(base, "/api/memories", 200, { cookie: otherCookie })).data, []);
     persistedMemories.push(updated.data);
   }
-  const body = { title: "验收笔记", markdown: "# 验收\n\n" + "知识积累。".repeat(500), tags: ["smoke"] };
+  // Each chunk needs distinguishable text so a <=400-character quote can be uniquely located.
+  const body = { title: "验收笔记", markdown: "# 验收\n\n" + Array.from({ length: 500 }, (_, i) => `知识积累第${i + 1}条。`).join(""), tags: ["smoke"] };
   await request(web, "/api/documents", 403, { method: "POST", cookie, body, csrf: false });
   const { data: document } = await request(web, "/api/documents", 201, { method: "POST", cookie, body });
   assert.ok(document.chunk_count > 1);

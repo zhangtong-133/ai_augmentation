@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Hit = { document_id: string; ordinal: number; title: string; source: string; text: string; score: number };
-type Citation = Hit & { id: number };
+type Citation = Hit & { id: number; quote: string; quote_start: number; quote_end: number };
 type Result = { query: string } & (
   | { kind: "search"; hits: Hit[] }
   | { kind: "answer"; answer: string; citations: Citation[] }
@@ -17,6 +17,20 @@ function isHit(value: unknown): value is Hit {
     && Number.isInteger(hit.ordinal) && hit.ordinal >= 0 && Number.isFinite(hit.score);
 }
 
+function isCitation(value: unknown): value is Citation {
+  if (!isHit(value)) return false;
+  const citation = value as Citation;
+  if (!Number.isInteger(citation.id) || citation.id < 1 || citation.id > 5
+    || typeof citation.quote !== "string" || !citation.quote.trim()
+    || Array.from(citation.quote).length > 400
+    || !Number.isSafeInteger(citation.quote_start) || !Number.isSafeInteger(citation.quote_end)) return false;
+  const text = Array.from(citation.text);
+  if (citation.quote_start < 0 || citation.quote_end <= citation.quote_start || citation.quote_end > text.length
+    || text.slice(citation.quote_start, citation.quote_end).join("") !== citation.quote) return false;
+  const first = citation.text.indexOf(citation.quote);
+  return first >= 0 && citation.text.indexOf(citation.quote, first + 1) === -1;
+}
+
 function failure(status: number, code?: string) {
   if (status === 401) return "登录已失效，请退出后重新登录。";
   if (status === 403) return "请求校验失败，请刷新页面后重试。";
@@ -25,15 +39,19 @@ function failure(status: number, code?: string) {
   if (status === 429) return "服务繁忙或模型限流，请稍后手动重试。";
   if (status === 400 || status === 422) return "请输入 1–1000 个字符的问题。";
   if (status === 504) return "处理超时，未自动重试；再次提交可能产生额外费用。";
+  if (code === "answer_evidence_changed") return "生成期间资料已变化或被删除，未展示该答案，请重新检索后再试。";
+  if (code === "answer_evidence_unavailable") return "暂时无法复核资料，未展示该答案，请稍后重试。";
   if (code === "invalid_answer") return "模型回答未通过引用校验，未展示该答案，请稍后重试。";
   return "检索或模型服务暂不可用；这不代表没有相关资料，请稍后重试。";
 }
 
-function Evidence({ hit, id }: { hit: Hit; id?: number }) {
+function Evidence({ hit, citation }: { hit: Hit; citation?: Citation }) {
+  const text = Array.from(hit.text);
   return <li>
-    <h4>{id === undefined ? "" : `[${id}] `}{hit.title}</h4>
+    <h4>{citation === undefined ? "" : `[${citation.id}] `}{hit.title}</h4>
     <p>来源：{hit.source || "未提供"} · 第 {hit.ordinal + 1} 块 · 检索得分 {hit.score.toFixed(3)}</p>
-    <details><summary>查看原文片段</summary><pre>{hit.text}</pre><small>文档 ID：{hit.document_id}</small></details>
+    {citation && <><p><strong>核验摘录</strong></p><blockquote className="citationQuote">{citation.quote}</blockquote></>}
+    <details><summary>查看原文片段</summary><pre>{citation ? <>{text.slice(0, citation.quote_start).join("")}<mark>{citation.quote}</mark>{text.slice(citation.quote_end).join("")}</> : hit.text}</pre><small>文档 ID：{hit.document_id}</small></details>
   </li>;
 }
 
@@ -75,7 +93,7 @@ export function RetrievalPanel() {
         setResult({ kind: "insufficient", query: question });
       } else if (mode === "answer" && data?.status === "answered" && typeof data.answer === "string" && data.answer.trim()
         && Array.from(data.answer).length <= 4000 && Array.isArray(data.citations) && data.citations.length > 0 && data.citations.length <= 5
-        && data.citations.every((hit: unknown) => isHit(hit) && Number.isInteger((hit as Citation).id) && (hit as Citation).id > 0)
+        && data.citations.every(isCitation)
         && new Set(data.citations.map((hit: Citation) => hit.id)).size === data.citations.length) {
         setResult({ kind: "answer", query: question, answer: data.answer, citations: data.citations });
       } else {
@@ -114,8 +132,8 @@ export function RetrievalPanel() {
       {result.kind === "insufficient" && <p>证据不足，暂时无法回答。不代表整个知识库没有相关资料，请检查索引进度或调整问题。</p>}
       {result.kind === "answer" && <>
         <h4>答案</h4><p className="answerText">{result.answer}</p>
-        <p>引用已核验归属，但不保证答案语义正确。请展开原文核对；检索得分不是置信概率。</p>
-        <ol>{result.citations.map(hit => <Evidence key={hit.id} hit={hit} id={hit.id} />)}</ol>
+        <p>摘录已与本次原文逐字核对，但不保证答案语义正确。请展开原文查看高亮位置和上下文；检索得分不是置信概率。</p>
+        <ol>{result.citations.map(hit => <Evidence key={hit.id} hit={hit} citation={hit} />)}</ol>
       </>}
     </section>}
     <small>本页不保存问答历史，刷新、退出或切换账户后清空。答案与来源仅按文本展示。</small>
