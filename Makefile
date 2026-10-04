@@ -220,3 +220,7 @@ local-value-order: ## 离线核对两轮换序报告（LEFT、RIGHT）的评分�
 
 local-value-order-test: ## 验收换序差异、弃权、失败与当前语料绑定
 	node scripts/test-local-value-order.mjs
+
+.PHONY: local-value-public-test
+local-value-public-test: ## 验收公开文档改写双套件门槛及逐主题偏差统计
+	node scripts/test-local-value-public.mjs

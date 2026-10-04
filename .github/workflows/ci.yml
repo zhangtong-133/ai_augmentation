@@ -142,6 +142,7 @@ jobs:
       - run: node ../../scripts/test-local-value-compare.mjs
       - run: node ../../scripts/test-local-value-gate.mjs
       - run: node ../../scripts/test-local-value-order.mjs
+      - run: node ../../scripts/test-local-value-public.mjs
       - run: node ../../scripts/test-local-gpu-observe.mjs
       - run: node ../../scripts/test-recovery.mjs
       - run: npm run typecheck

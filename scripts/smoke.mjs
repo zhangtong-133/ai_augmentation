@@ -346,6 +346,12 @@ try {
   assert.ok(orderManifest.every(c => c.quality_version === "rss-order-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));
   assert.equal(new Set(orderManifest.map(c => JSON.stringify(c.items))).size, 6);
   console.log("PASS: packaged six actual RSS permutations; no model call");
+  for (const suite of ["public_calibration", "public_holdout"]) {
+    const manifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", suite], true));
+    assert.deepEqual(manifest.map(c => c.id), ["rust_topic", "python_topic", "linux_topic", suite === "public_calibration" ? "memory_partial" : "borrowing_paraphrase"]);
+    assert.ok(manifest.every(c => c.quality_version === `rss-${suite.replace("_", "-")}-v1` && c.material_origin === "public_document_paraphrase" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));
+  }
+  console.log("PASS: packaged source-derived calibration and holdout fixtures; no model call");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
   assert.equal(mcpAudit.consistent, true);
   assert.equal(mcpAudit.counts.total, 0);
