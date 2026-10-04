@@ -2,6 +2,7 @@
 
 pub mod answer;
 pub mod local;
+pub mod local_answer;
 pub mod stream;
 
 use std::error::Error;

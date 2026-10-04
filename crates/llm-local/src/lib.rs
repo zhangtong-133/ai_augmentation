@@ -3,11 +3,17 @@
 pub mod answer;
 
 use personal_ai_llm::{
-    BoxFuture, ChatRequest, LlmError, LlmResult, Role,
-    local::{LocalInference, LocalTarget, MAX_PROMPT_BYTES, OUTPUT_TOKENS},
+    BoxFuture, ChatRequest, LlmError, LlmResult,
+    local::{LocalInference, LocalTarget, wire_payload},
     stream::{TextAssembly, TextDeltaSink, TextEvent},
 };
+#[cfg(test)]
+use personal_ai_llm::{
+    Role,
+    local::{MAX_PROMPT_BYTES, OUTPUT_TOKENS},
+};
 use serde::Deserialize;
+#[cfg(test)]
 use serde_json::json;
 use std::time::Duration;
 const MAX_WIRE: usize = 256 * 1024;
@@ -18,33 +24,6 @@ fn invalid() -> LlmError {
 }
 fn unavailable() -> LlmError {
     LlmError::ProviderUnavailable("local inference unavailable".into())
-}
-
-fn wire_payload(target: &LocalTarget, request: &ChatRequest) -> LlmResult<serde_json::Value> {
-    let prompt_bytes: usize = request.messages.iter().map(|m| m.content.len()).sum();
-    if request.messages.is_empty()
-        || prompt_bytes > MAX_PROMPT_BYTES
-        || request
-            .temperature
-            .is_some_and(|v| !v.is_finite() || !(0.0..=2.0).contains(&v))
-        || request
-            .max_output_tokens
-            .is_some_and(|n| n == 0 || n > OUTPUT_TOKENS)
-        || request.messages.iter().any(|m| m.role == Role::Tool)
-    {
-        return Err(LlmError::InvalidRequest(
-            "local prompt exceeds configured budget".into(),
-        ));
-    }
-    let messages: Vec<_> = request.messages.iter().map(|m| json!({"role": match m.role {
-        Role::System => "system", Role::User => "user", Role::Assistant => "assistant", Role::Tool => "tool"
-    }, "content": m.content})).collect();
-    Ok(json!({
-        "model": target.model(), "messages": messages, "stream": true,
-        "response_format": {"type":"json_object"}, "max_tokens": request.max_output_tokens.unwrap_or(OUTPUT_TOKENS),
-        "temperature": request.temperature.unwrap_or(0.0), "n": 1,
-        "chat_template_kwargs": {"enable_thinking": false}
-    }))
 }
 
 pub struct LocalChatClient {
