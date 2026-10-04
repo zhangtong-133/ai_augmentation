@@ -164,6 +164,15 @@ local-value-quality-test: ## 验收合成质量判定、报告绑定与协议故
 	cargo test -p api-server --bin local-value-benchmark
 	node scripts/test-local-value-benchmark.mjs
 
+.PHONY: local-gpu-observe local-gpu-observe-test
+DURATION ?= 30
+SCENARIO ?= unspecified
+local-gpu-observe: ## 只读采样 GPU 并保存私有报告（DURATION 秒、SCENARIO 场景标签）
+	node scripts/local-gpu-observe.mjs --seconds "$(DURATION)" --scenario "$(SCENARIO)"
+
+local-gpu-observe-test: ## 验收 GPU 观测边界、故障和取消，不使用真实 GPU
+	node scripts/test-local-gpu-observe.mjs
+
 .PHONY: recovery-test
 recovery-test: ## 验收备份清单、迁移及文件完整性边界
 	node scripts/test-recovery.mjs

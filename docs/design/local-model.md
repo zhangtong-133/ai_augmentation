@@ -54,6 +54,8 @@ cargo run --locked -p api-server --bin local-review -- show 用户_UUID 已批�
 
 ## 后续切换 vLLM
 
+补充 [只读 GPU 观测工具](gpu-observation.md)：`make local-gpu-observe DURATION=300 SCENARIO=game-model` 保存最低剩余和采样峰值。工具不会启动模型或游戏，场景标签由用户提供，实际游戏峰值和卡顿仍需对应实测。固定合成 [RSS 质量基准](rss-value-quality.md) 已发现当前 Qwen 4B 的内容不足严格协议失败及注入质量失败；保留人工核验边界，不能将学习材料协议通过推广为所有业务质量通过。
+
 应用依赖供应商无关 `LocalInference`，当前 `llm-local` 使用标准聊天路径、模型别名、JSON 输出和受限 SSE，不绑定 llama.cpp SDK。后续可在同一 loopback 地址提供符合该 profile 的 vLLM 服务，保持页面、授权、数据库和一次派发协议；若地址或模型改变，原授权不能复用，必须重新预览批准。
 
 部署监督与安装脚本当前专用于 llama.cpp，包括 `/props` 睡眠状态及私有加载器。替换时需增加 vLLM 部署入口和资源检查，独立限制上下文/并发/KV cache，并验收 JSON、关闭 thinking、返回模型别名、`stop`/`[DONE]`/EOF、取消和显存峰值。若 vLLM 实际输出不同，由独立适配器实现同一端口，不放宽业务校验。未安装或实测 vLLM，不将通用 HTTP 路径视为已经验收兼容。

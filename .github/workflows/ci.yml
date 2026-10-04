@@ -138,6 +138,7 @@ jobs:
       - run: npm test
       - run: node ../../scripts/test-local-model-budget.mjs
       - run: node ../../scripts/test-local-value-benchmark.mjs
+      - run: node ../../scripts/test-local-gpu-observe.mjs
       - run: node ../../scripts/test-recovery.mjs
       - run: npm run typecheck
       - run: npm run build
