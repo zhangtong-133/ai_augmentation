@@ -25,12 +25,12 @@ use tokio::{
 static CONNECTIONS: Semaphore = Semaphore::const_new(32);
 static OWNERS: LazyLock<Mutex<HashMap<String, usize>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
-struct Lease {
+pub(super) struct Lease {
     _permit: SemaphorePermit<'static>,
     owner: String,
 }
 impl Lease {
-    fn acquire(owner: &UserId) -> Result<Self, ApiError> {
+    pub(super) fn acquire(owner: &UserId) -> Result<Self, ApiError> {
         let limited = || ApiError(StatusCode::TOO_MANY_REQUESTS, "learning_stream_limit");
         let permit = CONNECTIONS.try_acquire().map_err(|_| limited())?;
         let mut owners = OWNERS
@@ -60,8 +60,8 @@ impl Drop for Lease {
         }
     }
 }
-const LIFETIME: Duration = Duration::from_secs(20);
-const READ_TIMEOUT: Duration = Duration::from_secs(3);
+pub(super) const LIFETIME: Duration = Duration::from_secs(20);
+pub(super) const READ_TIMEOUT: Duration = Duration::from_secs(3);
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new().route(
@@ -89,10 +89,10 @@ fn event(request: &str, sequence: u64, name: &str, detail: &serde_json::Value) -
         .to_string(),
     )
 }
-fn terminal(status: &str) -> bool {
+pub(super) fn terminal(status: &str) -> bool {
     !matches!(status, "draft" | "authorized" | "running")
 }
-async fn status(
+pub(super) async fn status(
     state: &AppState,
     headers: &HeaderMap,
     owner: &UserId,

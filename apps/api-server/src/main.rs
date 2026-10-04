@@ -61,6 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         listener,
         router(AppState {
             learning: Some(store.clone()),
+            learning_text: api_server::learning_text_from_env().map_err(std::io::Error::other)?,
             subscription_connections: Some(store.clone()),
             feed_values: Some(store.clone()),
             feeds: Some(feeds),

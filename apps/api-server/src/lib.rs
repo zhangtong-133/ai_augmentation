@@ -46,6 +46,7 @@ pub use messages::{message_cache_from_env, reconcile_message_deletions};
 pub use replies::ReplyRuntime;
 mod overview;
 pub use auth::AuthConfig;
+pub use learning::text_events::learning_text_from_env;
 
 pub struct Config {
     pub address: SocketAddr,
@@ -84,6 +85,8 @@ impl Config {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub learning_text:
+        Option<Arc<dyn personal_ai_storage::learning::review_text::ReviewTextBridge>>,
     pub feed_values: Option<Arc<dyn personal_ai_storage::feed_value::FeedValueStore>>,
     pub subscription_connections:
         Option<Arc<dyn personal_ai_storage::subscription_connections::SubscriptionConnectionStore>>,

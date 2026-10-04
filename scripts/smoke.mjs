@@ -245,7 +245,9 @@ try {
   await command("make", ["test-feeds"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-learning"], {
+    TEST_REDIS_URL: `redis://${redisAddress}/0`,
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
   await command("make", ["test-subscription-connections"], {
@@ -254,7 +256,6 @@ try {
   await command("cargo", ["test", "-p", "api-server", "--bin", "chatgpt-connect", "--", "--ignored"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
-  const redisAddress = (await endpoint("redis", 6379)).replace("http://", "");
   await command("make", ["test-redis"], { TEST_REDIS_URL: `redis://${redisAddress}/0` });
   if (process.argv.includes("--objects")) {
     await compose(["up", "-d", "minio"]);
@@ -346,7 +347,13 @@ try {
     await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
       `INSERT INTO subscription_connections(user_id,id,host_id,client_id,subject_hash,label,models,revision,status,expires_ms)
        VALUES('${owner.id}','${connection}','${randomUUID()}','oaiapp_${randomUUID()}','${"a".repeat(64)}','smoke','["fixture"]',1,'active',floor(extract(epoch FROM clock_timestamp())*1000)::bigint+3000000)`]);
-    await learningEvents({ base, cookie, otherCookie, connection, request });
+    await learningEvents({ base, cookie, otherCookie, connection, request, textFixture: async (id, packet, claim) => {
+      if (claim) await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",
+        `UPDATE learning_model_authorizations SET status='running',dispatch_token='${randomUUID()}',dispatch_deadline_ms=floor(extract(epoch FROM clock_timestamp())*1000)::bigint+60000,sent_ms=floor(extract(epoch FROM clock_timestamp())*1000)::bigint WHERE user_id='${owner.id}' AND request_id='${id}' AND status='authorized'`]);
+      const hash = value => createHash("sha256").update(value).digest("hex");
+      await compose(["exec", "-T", "redis", "redis-cli", "PUBLISH", `learning-text:v1:${hash(owner.id)}:${hash(id)}`,
+        JSON.stringify({ version: "learning-text-bridge-v1", owner: owner.id, request: id, packet })], true);
+    } });
     const valueSource = randomUUID();
     await request(base, "/api/feed-subscriptions", 201, { method: "POST", cookie, body: { id: valueSource, name: "Scoring smoke", source_url: "https://example.com/scoring", enabled: true } });
     await compose(["exec", "-T", "postgres", "psql", "-U", "smoke", "-d", "smoke", "-v", "ON_ERROR_STOP=1", "-c",

@@ -2,7 +2,7 @@ use super::*;
 use axum::body::BodyDataStream;
 use futures_util::StreamExt;
 
-async fn next(stream: &mut BodyDataStream) -> serde_json::Value {
+pub(super) async fn next(stream: &mut BodyDataStream) -> serde_json::Value {
     loop {
         let bytes = tokio::time::timeout(std::time::Duration::from_secs(4), stream.next())
             .await
@@ -15,7 +15,7 @@ async fn next(stream: &mut BodyDataStream) -> serde_json::Value {
         }
     }
 }
-async fn open(f: &Fixture, path: &str) -> BodyDataStream {
+pub(super) async fn open(f: &Fixture, path: &str) -> BodyDataStream {
     let response = f.send("GET", path, json!({}), Some(&f.cookie), false).await;
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["content-type"], "text/event-stream");

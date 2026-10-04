@@ -128,6 +128,7 @@ impl Fixture {
         });
         let state = AppState {
             learning: None,
+            learning_text: None,
             subscription_connections: None,
             feed_values: None,
             feeds: None,

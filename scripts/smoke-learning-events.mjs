@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 // Real streamed HTTP through both proxies, with trusted metadata fixtures only.
-export async function learningEvents({ base, cookie, otherCookie, connection, request }) {
+export async function learningEvents({ base, cookie, otherCookie, connection, request, textFixture }) {
   const skill = randomUUID();
   await request(base, `/api/learning/skills/${skill}`, 200, { method: "PUT", cookie,
     body: { revision: "0", name: "Event fixture", enabled: true, prerequisite_ids: [] } });
@@ -66,4 +66,53 @@ export async function learningEvents({ base, cookie, otherCookie, connection, re
     await reader.cancel();
   }
   console.log("PASS: private learning status events, proxy streaming, no replay and cancellation");
+  await textEvents({ base, cookie, otherCookie, connection, request, task, textFixture });
+}
+
+async function textEvents({ base, cookie, otherCookie, connection, request, task, textFixture }) {
+  const id = randomUUID();
+  const draft = (await request(base, `${task}/evidence/model-authorizations`, 200, { method: "POST", cookie,
+    body: { request_id: id, connection_id: connection, connection_revision: "1", model: "fixture" } })).data;
+  const path = `/api/learning/model-authorizations/${id}`;
+  await request(base, `${path}/approve`, 200, { method: "POST", cookie,
+    body: { digest: draft.digest, acknowledge_sharing: true, acknowledge_subscription_usage: true } });
+  await request(base, `${path}/text-events`, 401);
+  await request(base, `${path}/text-events`, 404, { cookie: otherCookie });
+  await request(base, `${path}/text-events?replay=1`, 400, { cookie });
+  const replay = await fetch(base + `${path}/text-events`, { headers: { cookie, "last-event-id": "0" }, signal: AbortSignal.timeout(5000) });
+  assert.equal(replay.status, 400); await replay.arrayBuffer();
+  const response = await fetch(base + `${path}/text-events`, { headers: { cookie }, signal: AbortSignal.timeout(30000) });
+  assert.equal(response.status, 200); assert.match(response.headers.get("content-type"), /^text\/event-stream/);
+  assert.equal(response.headers.get("cache-control"), "no-store");
+  const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = "", sequence = 0;
+  async function next() {
+    for (;;) {
+      const boundary = buffer.indexOf("\n\n");
+      if (boundary < 0) {
+        const { value, done } = await reader.read(); assert.equal(done, false);
+        buffer += decoder.decode(value, { stream: true }); continue;
+      }
+      const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
+      const data = frame.split("\n").find(line => line.startsWith("data: "));
+      if (!data) continue;
+      const event = JSON.parse(data.slice(6));
+      assert.equal(event.protocol_version, "learning-text-v1"); assert.equal(event.request_id, id);
+      assert.equal(event.sequence, String(sequence++)); return event.detail;
+    }
+  }
+  try {
+    assert.deepEqual(await next(), { status: "authorized", terminal: false });
+    await textFixture(id, { sequence: 0, detail: { kind: "delta", text: "中文临时正文 <script>" } }, true);
+    let received; do { received = await next(); } while (!received.text);
+    assert.deepEqual(received, { text: "中文临时正文 <script>" });
+    // Observe longer than the ordinary JSON proxy timeout; never replay text.
+    await delay(11000);
+    await textFixture(id, { sequence: 1, detail: { kind: "clear" } });
+    do { received = await next(); } while ("status" in received);
+    assert.deepEqual(received, {});
+    await request(base, `${path}/cancel`, 200, { method: "POST", cookie, body: {} });
+    assert.deepEqual(await next(), { status: "cancelled", terminal: true });
+    assert.equal((await reader.read()).done, true);
+  } finally { await reader.cancel(); }
+  console.log("PASS: private live text, real Redis forwarding, continuous proxy, clearing and revocation");
 }

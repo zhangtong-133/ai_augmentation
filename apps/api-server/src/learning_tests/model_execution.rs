@@ -511,3 +511,6 @@ mod progress;
 
 #[path = "model_execution/events.rs"]
 mod events;
+
+#[path = "model_execution/text_events.rs"]
+mod text_events;

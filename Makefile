@@ -110,7 +110,7 @@ test-feed-operations: ## 使用一次性 TEST_DATABASE_URL 验证 RSS 只读命�
 	cargo test -p api-server --test feed_operations -- --ignored
 
 .PHONY: test-learning
-test-learning: ## 使用一次性 TEST_DATABASE_URL 验证学习 HTTP 与结果隔离
+test-learning: ## 使用一次性 TEST_DATABASE_URL/TEST_REDIS_URL 验证学习 HTTP、临时正文与结果隔离
 	cargo test -p api-server --lib learning_tests -- --ignored
 
 .PHONY: test-learning-operations

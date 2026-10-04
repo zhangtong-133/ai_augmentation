@@ -30,7 +30,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     || (request.method === "DELETE" && /^learning\/plans\/[a-f0-9-]{36}$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:assessments|plans(?:\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/result)?)$/i.test(endpoint));
   const learningEvidence = ["POST", "DELETE"].includes(request.method) && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence$/i.test(endpoint);
-  const learningEvents = request.method === "GET" && /^learning\/model-authorizations\/[a-f0-9-]{36}\/events$/i.test(endpoint);
+  const learningEvents = request.method === "GET" && /^learning\/model-authorizations\/[a-f0-9-]{36}\/(?:events|text-events)$/i.test(endpoint);
   const learningAuthorization = (request.method === "GET" && /^learning\/model-authorizations(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
     || (request.method === "POST" && /^learning\/(?:model-authorizations\/[a-f0-9-]{36}\/(?:approve|cancel)|plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-authorizations)$/i.test(endpoint));
   const learningPreview = request.method === "GET" && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/model-preview$/i.test(endpoint);

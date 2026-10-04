@@ -22,11 +22,13 @@ use serde_json::{Value, json};
 
 mod model_authorization;
 mod model_events;
+pub(crate) mod text_events;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .merge(model_authorization::routes())
         .merge(model_events::routes())
+        .merge(text_events::routes())
         .route("/api/learning/snapshot", get(snapshot))
         .route("/api/learning/progress", get(progress))
         .route(
