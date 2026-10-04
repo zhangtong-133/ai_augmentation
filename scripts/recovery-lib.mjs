@@ -14,7 +14,7 @@ export function parseOptions(args, command) {
   const options = {};
   for (let i = 0; i < args.length; i += 2) {
     const key = args[i];
-    if (!["--container", "--database", "--directory"].includes(key) || !args[i + 1] || options[key]) throw new Error("参数缺失、重复或不支持");
+    if (!["--container", "--database", "--directory", ...(command === "restore" ? ["--external-originals-ready"] : [])].includes(key) || !args[i + 1] || options[key]) throw new Error("参数缺失、重复或不支持");
     options[key] = args[i + 1];
   }
   if (!options["--directory"]) throw new Error("需要 --directory");
@@ -23,7 +23,8 @@ export function parseOptions(args, command) {
     const database = options["--database"];
     if (!/^[a-z][a-z0-9_]{0,62}$/.test(database ?? "") || ["postgres", "template0", "template1"].includes(database)) throw new Error("需要明确的独立应用数据库名称");
   } else if (Object.keys(options).length !== 1) throw new Error("离线校验只接受 --directory");
-  return { container: options["--container"], database: options["--database"], directory: resolve(options["--directory"]) };
+  if (options["--external-originals-ready"] && options["--external-originals-ready"] !== "true") throw new Error("外部原文确认只接受 true");
+  return { container: options["--container"], database: options["--database"], directory: resolve(options["--directory"]), externalOriginalsReady: options["--external-originals-ready"] === "true" };
 }
 export async function localDocker() {
   let host;
@@ -80,13 +81,17 @@ export function pgProcess(target, tool, args = []) {
   if (!["psql", "pg_dump", "pg_restore"].includes(tool)) throw new Error("不支持的 PostgreSQL 工具");
   const child = spawn("docker", ["exec", "-i", "--env", `RECOVERY_DATABASE=${target.database}`, target.container,
     "sh", "-c", 'export PGPASSWORD="${POSTGRES_PASSWORD:?}" PGHOST=127.0.0.1 PGPORT=5432 PGUSER="${POSTGRES_USER:-postgres}" PGDATABASE="$RECOVERY_DATABASE"; exec "$@"',
-    "recovery", tool, ...args], { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
-  child.stderr.resume();
+    "recovery", tool, ...args, ...(tool === "psql" ? ["--set", "VERBOSITY=sqlstate"] : [])], { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
+  let diagnostic = "", sqlState;
+  child.stderr.on("data", chunk => {
+    diagnostic = (diagnostic + chunk).slice(-256);
+    sqlState = diagnostic.match(/ERROR:\s+([0-9A-Z]{5})\b/)?.[1] ?? sqlState;
+  });
   child.stdin.on("error", () => {});
   const timer = setTimeout(() => child.kill("SIGKILL"), 20 * 60 * 1000);
   const done = new Promise((resolveDone, reject) => {
     child.on("error", () => { clearTimeout(timer); reject(new Error(`${tool} 无法启动`)); });
-    child.on("close", code => { clearTimeout(timer); code === 0 ? resolveDone() : reject(new Error(`${tool} 执行失败；未输出连接凭据或数据库正文`)); });
+    child.on("close", code => { clearTimeout(timer); code === 0 ? resolveDone() : reject(new Error(`${tool} 执行失败${sqlState ? `（SQLSTATE ${sqlState}）` : ""}；未输出连接凭据或数据库正文`)); });
   });
   // A stream can fail before the caller awaits process completion.
   done.catch(() => {});
@@ -127,6 +132,7 @@ async function snapshot(target) {
   } catch (error) { child.kill("SIGKILL"); await done.catch(() => {}); throw error; }
 }
 export async function backup(target) {
+  target = parseOptions(["--container", target.container, "--database", target.database, "--directory", target.directory], "backup");
   await localDocker();
   const transaction = await snapshot(target);
   let created = false;

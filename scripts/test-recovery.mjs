@@ -11,6 +11,9 @@ test("endpoint arguments reject ambiguous containers, databases, switches and du
   assert.equal(parseOptions(good, "backup").database, "personal_ai");
   for (const args of [good.slice(0, -1), [...good, "--directory", "/tmp/second"], good.map(v => v === "personal_ai" ? "postgres" : v), good.map(v => v === "personal_ai" ? "x; SELECT 1" : v), good.map(v => v === "a".repeat(64) ? "postgres" : v), [...good, "--clean", "yes"]]) assert.throws(() => parseOptions(args, "backup"));
   assert.throws(() => parseOptions(good, "verify"));
+  assert.equal(parseOptions([...good, "--external-originals-ready", "true"], "restore").externalOriginalsReady, true);
+  assert.throws(() => parseOptions([...good, "--external-originals-ready", "false"], "restore"));
+  assert.throws(() => parseOptions([...good, "--external-originals-ready", "true"], "backup"));
 });
 test("backup checksum, exact migrations and file names fail closed on corruption", async () => {
   const directory = await mkdtemp(join(tmpdir(), "recovery-contract-"));

@@ -2,13 +2,15 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
+import { once } from "node:events";
 import { backup, expectedMigrations, localDocker, pgProcess, pgQuery, root, verify } from "./recovery-lib.mjs";
+import { restore } from "./recovery-restore.mjs";
 
 const execute = promisify(execFile);
 const directory = await mkdtemp(join(tmpdir(), "personal-ai-recovery-"));
@@ -27,7 +29,7 @@ try {
   try { pluginDirs = JSON.parse(await readFile(join(originalConfig, "config.json"), "utf8")).cliPluginsExtraDirs ?? []; }
   catch (error) { if (error.code !== "ENOENT") throw new Error("无法读取 Docker 插件配置"); }
   const config = join(directory, "docker");
-  await (await import("node:fs/promises")).mkdir(config, { mode: 0o700 });
+  await mkdir(config, { mode: 0o700 });
   await writeFile(join(config, "config.json"), JSON.stringify({ auths: {}, cliPluginsExtraDirs: pluginDirs }), { mode: 0o600 });
   process.env.DOCKER_CONFIG = config; process.env.DOCKER_HOST = socket; delete process.env.DOCKER_CONTEXT;
   process.env.RECOVERY_TEST_PASSWORD = randomBytes(32).toString("hex");
@@ -50,6 +52,7 @@ try {
   }
   await pgQuery(source, schema + "COMMIT;");
   await pgQuery(source, "INSERT INTO users(id,email,display_name) VALUES('00000000-0000-4000-8000-000000000001','synthetic@recovery.example','恢复测试');");
+  await pgQuery(source, await readFile(join(root, "tests/recovery/active.sql"), "utf8"));
   const manifest = await backup(source);
   assert.deepEqual(await verify(source.directory), manifest);
   assert.equal((await stat(source.directory)).mode & 0o777, 0o700);
@@ -63,8 +66,47 @@ try {
   await assert.rejects(backup(source)); // never replace an existing bundle
   assert.deepEqual(await verify(source.directory), manifest);
   console.log("PASS: real PostgreSQL 16 snapshot export, full archive, private permissions and refusal to overwrite");
+  // Refusal must leave both existing data and connection policy unchanged.
+  await assert.rejects(restore(source));
+  assert.equal(await pgQuery(source, "SELECT count(*) FROM users;"), "1");
+  assert.equal(await pgQuery(source, "SELECT datallowconn FROM pg_database WHERE datname=current_database();"), "t");
+  const target = { ...source, database: "recovery_target" };
+  await pgQuery(source, 'CREATE DATABASE recovery_target TEMPLATE template0;');
+  const busy = pgProcess(target, "psql", ["-X", "-qAt", "--set", "ON_ERROR_STOP=1"]);
+  busy.child.stdin.write("SELECT 1;\n");
+  await Promise.race([once(busy.child.stdout, "data"), busy.done.then(() => { throw new Error("occupied target connection lost"); })]);
+  try { await assert.rejects(restore(target), /前置检查/); }
+  finally { busy.child.stdin.end(); await busy.done; }
+  assert.equal(await pgQuery(target, "SELECT datallowconn FROM pg_database WHERE datname=current_database();"), "t");
+  const corrupt = join(directory, "corrupt"); await cp(source.directory, corrupt, { recursive: true });
+  await writeFile(join(corrupt, "database.dump"), "damaged");
+  await assert.rejects(restore({ ...target, directory: corrupt }), /SHA-256/);
+  assert.equal(await pgQuery(target, "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace;"), "0");
+  const external = join(directory, "external"); await cp(source.directory, external, { recursive: true });
+  await writeFile(join(external, "manifest.json"), JSON.stringify({ ...manifest, externalOriginals: 1 }));
+  await assert.rejects(restore({ ...target, directory: external }), /S3/);
+  // Valid checksum but invalid archive: partial SQL cannot commit; keep target offline.
+  const invalid = Buffer.from("not a PostgreSQL archive");
+  await writeFile(join(corrupt, "database.dump"), invalid);
+  await writeFile(join(corrupt, "manifest.json"), JSON.stringify({ ...manifest, dump: { ...manifest.dump, bytes: invalid.length, sha256: createHash("sha256").update(invalid).digest("hex") } }));
+  await assert.rejects(restore({ ...target, directory: corrupt }), /保持离线/);
+  assert.equal(await pgQuery(source, "SELECT datallowconn FROM pg_database WHERE datname='recovery_target';"), "f");
+  await pgQuery(source, 'ALTER DATABASE recovery_target ALLOW_CONNECTIONS true;');
+  assert.equal(await pgQuery(target, "SELECT count(*) FROM pg_class WHERE relnamespace='public'::regnamespace;"), "0");
+  const result = await restore(target);
+  assert.equal(result.quarantined, true);
+  const state = JSON.parse(await pgQuery(target, await readFile(join(root, "tests/recovery/state.sql"), "utf8")));
+  assert.equal(state.users, 1); assert.equal(state.documents, 1);
+  for (const key of ["sessions", "activeMcp", "activeConfigurations", "unsettledMoney", "activeJobs"]) assert.equal(state[key], 0, key);
+  assert.equal(state.occupiedMoney, 100); assert.equal(state.retainedMoney, 100);
+  assert.equal(state.occupiedCalls, 1); assert.equal(state.toolCalls, 1);
+  assert.deepEqual(state.learningStates, ["invalidated", "unknown"]);
+  assert.equal(state.unknownSending, 1); assert.equal(state.sendingAudits, 1);
+  await assert.rejects(restore(target));
+  assert.equal(await pgQuery(target, "SELECT count(*) FROM users;"), "1");
+  console.log("PASS: empty-target transactional restore, corruption rollback, old-session/credential revocation, paused jobs and retained costs");
 } catch (error) {
-  console.error(error.code ? "隔离恢复验收文件操作失败" : error.message); process.exitCode = 1;
+  console.error(error.code && error.code !== "ERR_ASSERTION" ? "隔离恢复验收文件操作失败" : error.message); process.exitCode = 1;
 } finally {
   if (container && /^[a-f0-9]{64}$/.test(container)) {
     try {
