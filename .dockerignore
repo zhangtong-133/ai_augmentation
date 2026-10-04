@@ -1,5 +1,6 @@
 .git
 .local-model
+.backups
 .github
 .next
 **/.next

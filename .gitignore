@@ -1,6 +1,7 @@
 # Rust 构建产物
 /target/
 /.local-model/
+/.backups/
 **/*.rs.bk
 
 # Node / Next.js 依赖与构建产物

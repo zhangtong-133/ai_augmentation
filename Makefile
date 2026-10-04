@@ -146,3 +146,11 @@ local-model-test: ## 验收显存预算、监控故障与停止边界
 
 local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST）
 	node scripts/local-model.mjs review "$(OWNER)" "$(REQUEST)"
+
+.PHONY: recovery-test
+recovery-test: ## 验收备份清单、迁移及文件完整性边界
+	node scripts/test-recovery.mjs
+
+.PHONY: recovery-acceptance
+recovery-acceptance: ## 在一次性 PostgreSQL 中验收真实备份及恢复边界
+	node scripts/recovery-acceptance.mjs

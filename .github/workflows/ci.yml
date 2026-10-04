@@ -125,5 +125,6 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: node ../../scripts/test-local-model-budget.mjs
+      - run: node ../../scripts/test-recovery.mjs
       - run: npm run typecheck
       - run: npm run build
