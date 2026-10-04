@@ -153,4 +153,5 @@ recovery-test: ## 验收备份清单、迁移及文件完整性边界
 
 .PHONY: recovery-acceptance
 recovery-acceptance: ## 在一次性 PostgreSQL 中验收真实备份及恢复边界
+	cargo build --locked -p api-server --bin api-server --bin local-review
 	node scripts/recovery-acceptance.mjs

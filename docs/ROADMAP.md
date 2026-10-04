@@ -21,7 +21,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
-- [ ] [PostgreSQL 备份恢复](design/postgres-recovery.md)：本轮按一致性归档/校验、空库恢复/执行隔离、隔离恢复闭环三阶段交付；外部原文及真实质量验收保持独立。
+- [x] [PostgreSQL 备份恢复](design/postgres-recovery.md)：一致性归档/校验、空库事务恢复/执行隔离、真实应用登录/用户隔离/会话与证据墓碑演练已完成；外部原文及真实质量验收继续推进。
 
 - [x] [用户证据核验与显式自评确认](design/learning-review-confirmation.md)：逐项判断与理由、版本校验、原请求恢复、证据删除撤销直接关联自评；保留后续历史计划并限制来源失效后的新增写入。
 

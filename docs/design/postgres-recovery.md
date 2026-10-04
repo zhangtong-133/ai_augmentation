@@ -16,7 +16,7 @@
 
 ## 阶段状态
 
-阶段 1 实现一致性归档和清单、离线校验及一次性 PostgreSQL 验收入口。阶段 2 将提供只恢复到空数据库、恢复前后阻止其他连接和旧任务/授权处理；阶段 3 将补齐登录/私有数据/墓碑/模型一次执行生命周期演练与完整使用说明。
+三阶段 PostgreSQL 范围已交付：一致性归档及离线校验、空库恢复与旧任务/授权处理、登录/私有数据/墓碑/旧模型授权不执行的应用演练。后续增加真实本地模型完整执行、外部原文备份和部署诊断。
 
 2026-10-04 阶段 1 验收：Node 边界用例与真实 PostgreSQL 16 导出通过；核验所有迁移、标准 custom archive 的业务表、0700/0600 权限及拒绝覆盖旧目录。一次性容器与匿名卷已清理。未改 Rust/前端业务代码，本阶段未重跑 Rust、页面及完整 smoke；恢复及 HTTP 闭环在下一阶段验收。
 
@@ -33,5 +33,39 @@ custom archive 解码、实际迁移/外部原文数量复核及 `infra/postgres
 若清单含外部原文引用，恢复默认拒绝。先恢复并核对原 S3 桶的对应对象，才可追加 `--external-originals-ready true`；该参数是操作人对外部准备状态的明确声明，当前阶段尚不自动校验 S3。Qdrant 向量需使用独立新集合重建，Redis 应使用空实例，避免旧缓存或临时正文与恢复后的数据库混用。
 
 2026-10-04 阶段 2 验收：一次性 PostgreSQL 中恢复全部业务表，验证拒绝非空/占用目标、篡改提前拒绝、有效校验但非法归档不提交且目标保持离线，以及会话/凭据/自动任务/模型状态/发送标记/费用与次数保留。阶段 2 未改 Rust/前端业务代码；应用 HTTP 恢复闭环在阶段 3 验收。
+
+## 常规使用
+
+备份时只运行导出命令，不切换服务、不暂停模型或采集。快照只代表备份时点；如需与外部原文保持一致，须单独阻止原文写入/删除并准备对应对象。以下命令由操作人选择实际服务和数据库，开发验收不使用常规项目。
+
+```bash
+mkdir -p .backups
+recovery_container_id=$(./scripts/compose.sh ps -q postgres)
+node scripts/recovery.mjs backup --container "$recovery_container_id" \
+  --database personal_ai --directory .backups/personal_ai_20261004_120000
+node scripts/recovery.mjs verify --directory .backups/personal_ai_20261004_120000
+```
+
+日期目录仅是示例，改为本次唯一名称。准备独立空目标时，从维护数据库执行 `CREATE DATABASE personal_ai_restored TEMPLATE template0`，无需删除现有数据库。然后：
+
+```bash
+node scripts/recovery.mjs restore --container "$recovery_container_id" \
+  --database personal_ai_restored --directory .backups/personal_ai_20261004_120000
+```
+
+确认命令返回 `restored=true` 与 `quarantined=true` 后，在本机配置把应用 `DATABASE_URL` 的数据库名切换到新库。先用关闭模型/索引/RSS/scheduler 的配置启动 API，使用空 Redis、新 Qdrant 集合及已核对的 S3 桶；重新登录并只读核对用户数据、墓碑和审计。旧会话必须失败，旧待核验授权必须 invalidated/unknown，不能复用。新模型请求或周期任务须重新审阅授权，索引须显式重建；重新配置最小数据库角色权限，归档没有恢复 ACL。保留原数据库和备份，切换失败时不要覆盖原库。
+
+如恢复导入失败，目标可能保持禁止连接；使用容器内 `postgres` 维护数据库查询 `pg_database.datallowconn`。先核对目标确属本次恢复，再决定保留、删除重建，或在确认事务结果后用 `ALTER DATABASE personal_ai_restored ALLOW_CONNECTIONS true` 开放。该维护操作不会自动恢复授权或重新发送请求。
+
+## 可重复演练
+
+```bash
+make recovery-test
+make recovery-acceptance
+```
+
+后者构建当前 API 与 local-review 二进制，创建随机命名的 PostgreSQL 容器和专用匿名卷。通过 API 使用随机密码的合成账户创建文档、删除会话、完成训练、核验/确认自评再删除证据，并保存本地模型授权；随后备份、恢复、重新启动 API 验证原会话失效、重新登录和用户隔离、墓碑及原授权不再批准/执行。模型服务无需启动，不产生推理请求。还覆盖所有自动任务暂停与费用保留、忙碌目标/非空目标拒绝、损坏归档不提交。结束仅停止本次 API、删除本次容器/卷和临时文件，不写常规 `.env`；不上传归档、认证状态或私有正文到 CI artifact。
+
+2026-10-04 阶段 3 的实际 PostgreSQL/API 演练通过，已接入 Rust CI 任务。全仓 Rust 和前端检查单独执行；没有新增迁移、UI 行为或真实模型调用。本阶段未重跑完整浏览器、对象存储、向量及公网专项；当前远程完整 CI 状态须单独核对。
 
 参考：[PostgreSQL 16 pg_dump](https://www.postgresql.org/docs/16/app-pgdump.html)、[pg_restore](https://www.postgresql.org/docs/16/app-pgrestore.html)。

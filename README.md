@@ -91,10 +91,13 @@ npm --prefix apps/web run build
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make learning-acceptance` | 固定运行学习双入口 UI、数据库/HTTP 闭环及只读核验运维验收，不调用真实模型 |
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
+| `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 
 自动验收不调用真实付费模型；历史通过记录不代表当前环境或最新 CI 状态。
+
+应用 PostgreSQL 可使用[备份与恢复命令](docs/design/postgres-recovery.md)导出一致性归档、离线校验，并恢复到独立空数据库。恢复会撤销旧会话和待执行授权、停用自动任务，保留正常终态与费用/次数审计；默认不覆盖在线数据库。S3 原文及外部凭据需另行准备。
 
 ## 工程与文档
 
