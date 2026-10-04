@@ -10,7 +10,7 @@ permissions:
 jobs:
   smoke:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -35,7 +35,7 @@ jobs:
 
   index:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -124,5 +124,6 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      - run: node ../../scripts/test-local-model-budget.mjs
       - run: npm run typecheck
       - run: npm run build

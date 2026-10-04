@@ -124,3 +124,25 @@ test-subscription-connections: ## 使用一次性 TEST_DATABASE_URL 验证订阅
 .PHONY: learning-acceptance
 learning-acceptance: ## 在隔离环境中验收学习数据库、运维、HTTP 及双入口页面，不调用真实模型
 	$(MAKE) browser-test BROWSER_SPEC=learning.spec.mjs
+
+.PHONY: local-model-install local-model-start local-model-stop local-model-status local-model-probe local-model-test local-review
+local-model-install: ## 在项目私有目录安装固定官方 llama.cpp/Qwen 模型
+	python3 scripts/install-local-model.py
+
+local-model-start: ## 前台启动单模型服务并监督至少 6 GiB 游戏显存
+	node scripts/local-model.mjs start
+
+local-model-stop: ## 停止本项目模型及其 GPU 资源，不停止其他程序
+	node scripts/local-model.mjs stop
+
+local-model-status: ## 核对 GPU 余量及本项目模型状态
+	node scripts/local-model.mjs status
+
+local-model-probe: ## 用固定测试材料验收真实模型协议，不读取用户记录
+	node scripts/local-model.mjs probe
+
+local-model-test: ## 验收显存预算、监控故障与停止边界
+	node scripts/test-local-model-budget.mjs
+
+local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST）
+	node scripts/local-model.mjs review "$(OWNER)" "$(REQUEST)"

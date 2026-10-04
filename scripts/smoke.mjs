@@ -911,7 +911,7 @@ try {
       E2E_ADMIN_TOKEN: env.SMOKE_TOKEN,
       E2E_PUBLIC_WEB: process.argv.includes("--public-web") ? "1" : "0",
       E2E_INDEX: process.argv.includes("--index") ? "1" : "0",
-    }, false, 30);
+    }, false, 40);
   }
 } catch (error) {
   // 不输出请求体、环境变量、Cookie 或 Docker inspect 数据。

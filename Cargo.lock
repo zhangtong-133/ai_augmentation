@@ -46,6 +46,7 @@ dependencies = [
  "personal-ai-feeds",
  "personal-ai-git-local",
  "personal-ai-knowledge",
+ "personal-ai-learning",
  "personal-ai-llm",
  "personal-ai-llm-local",
  "personal-ai-llm-openai",

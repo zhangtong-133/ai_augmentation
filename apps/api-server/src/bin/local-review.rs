@@ -6,6 +6,8 @@ use personal_ai_domain::UserId;
 use personal_ai_llm::local::LocalTarget;
 use personal_ai_storage::{learning::LearningStore, learning::review_text::ReviewTextBridge};
 use personal_ai_storage_postgres::PostgresStore;
+#[path = "local-review/probe.rs"]
+mod probe;
 fn uuid(value: &str) -> Result<String, &'static str> {
     uuid::Uuid::parse_str(value)
         .ok()
@@ -29,9 +31,18 @@ fn parse(args: &[String]) -> Result<(UserId, String, Option<LocalTarget>), &'sta
     }
 }
 async fn run(args: &[String]) -> Result<(), &'static str> {
+    if args.first().map(String::as_str) == Some("probe") {
+        if args.len() != 4 || args[3] != "--use-local" {
+            return Err("usage: local-review probe ENDPOINT MODEL --use-local");
+        }
+        return probe::run(
+            &LocalTarget::new(&args[1], &args[2]).map_err(|_| "invalid local target")?,
+        )
+        .await;
+    }
     if args == ["--help"] {
         println!(
-            "local-review show OWNER REQUEST\nlocal-review run OWNER REQUEST ENDPOINT MODEL --use-local\n执行前核对游戏显存预算；原授权仅发送一次，未知结果不重发。"
+            "local-review show OWNER REQUEST\nlocal-review run OWNER REQUEST ENDPOINT MODEL --use-local\nlocal-review probe ENDPOINT MODEL --use-local\n执行前核对游戏显存预算；原授权仅发送一次，未知结果不重发。\nprobe 仅发送固定测试材料，不读取用户记录。"
         );
         return Ok(());
     }

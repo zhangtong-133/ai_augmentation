@@ -58,6 +58,7 @@ cargo run -p api-server
 | 引用问答 | 已启用索引，再设置 `KNOWLEDGE_ANSWER_ENABLED=true` 和 `OPENAI_CHAT_MODEL` | `POST /api/knowledge/answer`；模型须支持严格结构化输出 |
 | RSS 手动采集 | `RSS_COLLECTION_MODE=public` | [订阅管理、预览、明确确认和状态恢复](docs/design/sprint-4-rss-http.md)；默认 `disabled`，管理和预览仍可用 |
 | 消息快照缓存 | `MESSAGE_CACHE_ENABLED=true`，配置 `REDIS_URL` | 固定 30 分钟 TTL；关闭或故障时从 PostgreSQL 读取，不丢失消息 |
+| 独立本地学习核验 | `LEARNING_LOCAL_ENABLED=true`，显式运行项目模型服务 | [官方 llama.cpp/Qwen 部署](docs/design/local-model.md)、逐次分享/本机计算同意；预留 6 GiB 游戏显存，保留 vLLM 替换端口 |
 
 知识库接口需要登录会话；POST 还需 `X-Requested-With: personal-ai`。同步分批索引接口仍保留，但不更新异步任务进度。协议和限制见 [索引任务](docs/design/sprint-2-index-jobs.md)、[检索与问答](docs/design/sprint-2-retrieval-qa.md)。模型超时或任务恢复可能重复计费，真实模型需单独评估。
 
@@ -89,6 +90,7 @@ npm --prefix apps/web run build
 | `TEST_DATABASE_URL=… make test-model-agent` | 一次性 PostgreSQL 验证模型规划阶段事务金额/次数、领取、取消及查重 |
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make learning-acceptance` | 固定运行学习双入口 UI、数据库/HTTP 闭环及只读核验运维验收，不调用真实模型 |
+| `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 

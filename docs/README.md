@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [独立本地模型部署](design/local-model.md)：官方 llama.cpp/Qwen、精确授权与一次执行、6 GiB 游戏显存预算、真实模型验收和 vLLM 替换边界。
+
 - [学习核验临时正文](design/learning-text-stream.md)：已交付默认关闭的 Pub/Sub 通道、逐段来源复核与纯文本页面，含分阶段验收记录。
 
 - [v1 后续交付计划](design/v1-completion-plan.md)：订阅评分阅读闭环及能力评估、流式/本地适配、可选 API 和最终集成的验收门槛。
