@@ -320,6 +320,8 @@ try {
   assert.equal(feedAudit.counts.collections, 0);
   assert.equal(feedAudit.remaining_collections_today, 20);
   console.log("PASS: packaged RSS metadata audit");
+  assert.match(await compose(["exec", "-T", "api-server", "local-value", "--help"], true), /local-value run OWNER REQUEST ENDPOINT MODEL --use-local/);
+  console.log("PASS: packaged explicit local RSS scoring command");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
   assert.equal(mcpAudit.consistent, true);
   assert.equal(mcpAudit.counts.total, 0);

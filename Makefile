@@ -175,3 +175,8 @@ recovery-acceptance-local: ## 用合成证据验收受显存保护的真实本�
 recovery-acceptance-objects: ## 在一次性 PostgreSQL/MinIO 中验收数据库与外部原文完整恢复
 	cargo build --locked -p api-server --bin api-server --bin local-review --bin original-archive
 	node scripts/recovery-acceptance.mjs --objects
+
+.PHONY: recovery-acceptance-rss-local
+recovery-acceptance-rss-local: ## 用合成 RSS 验收真实本地评分及恢复后不重发，需要显式启动保护服务
+	cargo build --locked -p api-server --bin api-server --bin local-review --bin local-value
+	node scripts/recovery-acceptance.mjs --local-rss

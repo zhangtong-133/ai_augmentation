@@ -15,9 +15,11 @@ import { exerciseLocalModel, seedApplication, startApplication, verifyApplicatio
 import { checkOriginals, exportOriginals, objectOperation, restoreOriginals, verifyOriginals } from "./originals-recovery.mjs";
 import { checkDeployment } from "./deployment-check.mjs";
 
+import { exerciseLocalRss, verifyLocalRss } from "./recovery-rss-local.mjs";
+
 const execute = promisify(execFile);
 const flags = process.argv.slice(2);
-if (flags.some(value => !["--local-model", "--objects", "--cached-images", "--storage-tests"].includes(value)) || new Set(flags).size !== flags.length || (flags.includes("--cached-images") && !flags.includes("--objects"))) throw new Error("仅支持显式 --local-model / --objects / --storage-tests 及配套 --cached-images 验收开关");
+if (flags.some(value => !["--local-model", "--local-rss", "--objects", "--cached-images", "--storage-tests"].includes(value)) || new Set(flags).size !== flags.length || (flags.includes("--cached-images") && !flags.includes("--objects"))) throw new Error("仅支持显式 --local-model / --local-rss / --objects / --storage-tests 及配套 --cached-images 验收开关");
 const native = process.argv.includes("--local-model");
 const withObjects = process.argv.includes("--objects");
 const directory = await mkdtemp(join(tmpdir(), "personal-ai-recovery-"));
@@ -89,12 +91,13 @@ try {
     console.log(http.stdout.split("\n").find(line=>line.startsWith("test result:"))??"PASS: disposable scoring HTTP tests");
   }
   const adminToken = randomBytes(32).toString("hex");
-  const sourceApp = await startApplication(databaseUrl(source.database), adminToken, sourceObjects); applications.push(sourceApp);
+  const sourceApp = await startApplication(databaseUrl(source.database), adminToken, { ...sourceObjects, ...(flags.includes("--local-rss") ? { RSS_LOCAL_ENABLED: "true" } : {}) }); applications.push(sourceApp);
   const fixture = await seedApplication(sourceApp);
   if (native) {
     await exerciseLocalModel(sourceApp, fixture);
     assert.equal(await pgQuery(source, `SELECT count(*) FROM learning_model_authorization_audit WHERE request_id='${fixture.nativeId}' AND event='sending';`), "1");
-  } else console.log("SKIP: real local model; use make recovery-acceptance-local with an explicitly started protected server");
+  } else console.log("SKIP: real local learning model; use make recovery-acceptance-local with an explicitly started protected server");
+  if (flags.includes("--local-rss")) await exerciseLocalRss(sourceApp, fixture, source);
   await sourceApp.close();
   const expectedUsers = await pgQuery(source, "SELECT count(*) FROM users;");
   const expectedDocuments = await pgQuery(source, "SELECT count(*) FROM documents;");
@@ -209,6 +212,7 @@ try {
   console.log("PASS: read-only deployment diagnosis rejects active recovery state, wrong migrations and unverified/conflicting originals, and accepts quarantined target without changing data");
   const restoredApp = await startApplication(databaseUrl(target.database), adminToken, targetObjects); applications.push(restoredApp);
   await verifyApplication(restoredApp, fixture);
+  if (flags.includes("--local-rss")) await verifyLocalRss(restoredApp, fixture, target);
   if (native) assert.equal(await pgQuery(target, `SELECT count(*) FROM learning_model_authorization_audit WHERE request_id='${fixture.nativeId}' AND event='sending';`), "1");
 } catch (error) {
   console.error(error.code && error.code !== "ERR_ASSERTION" ? "隔离恢复验收文件操作失败" : error.message); process.exitCode = 1;

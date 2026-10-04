@@ -12,7 +12,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 原始 v1 尚未补齐
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
+- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；[独立本地评分](design/rss-value-local-model.md)的精确授权、真实合成材料评分、阅读及删除/恢复闭环也已通过；真实材料排序质量、真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
 - [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，已提供只读材料检查、结构化证据保存/删除与页面；已实现[用户核验与版本确认](design/learning-review-confirmation.md)，已接入[订阅模型核验执行与建议回看](design/learning-model-execution.md)，真实订阅及质量验收仍待完成；模型建议须由用户复核，完成训练不自动提高分数。
 - [x] [订阅核验只读运维与固定验收入口](design/learning-model-operations.md)：授权/派发/发送审计、超时与配额诊断、最小列权限及人工确认/来源删除闭环；真实订阅质量仍需用户验收。
 - [ ] 流式模型输出及独立本地模型适配：已接入[内部文本序列与订阅传输终态保护](design/model-streaming.md)、[请求绑定的运行时增量通知](design/learning-model-progress.md)、私有状态接口与页面；[学习核验临时正文](design/learning-text-stream.md)及[独立本地模型](design/local-model.md)三阶段已交付。官方 llama.cpp/Qwen 真实协议、显存保护与停止释放已验收，保留 vLLM 替换端口；其他模型场景的流式展示、真实用户闭环与质量仍待完成。
@@ -20,6 +20,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
+
+- [x] [独立本地 RSS 评分](design/rss-value-local-model.md)：默认关闭、地址/模型/材料精确授权、一次性本机执行与阅读；真实模型及删除/恢复通过，生产镜像与 26 项双入口 UI 验收通过，保留 vLLM 替换端口及 6 GiB 显存保护。
 
 - [x] [PostgreSQL 备份恢复](design/postgres-recovery.md)：一致性归档/校验、空库事务恢复/执行隔离、真实应用登录/用户隔离/会话与证据墓碑演练已完成；外部原文及真实质量验收继续推进。
 - [x] [外部原文备份恢复](design/originals-recovery.md)：同快照引用、原文回收锁、私有归档、完整性校验、条件创建及数据库恢复前字节核对；真实 MinIO/应用恢复通过，已接入对象 CI。

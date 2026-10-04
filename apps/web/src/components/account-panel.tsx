@@ -109,7 +109,7 @@ export function AccountPanel() {
       {user && <SubscriptionConnectionPanel key={`subscription-connections-${user.id}`} />}
       {user && <McpCredentialPanel key={`mcp-${user.id}`} />}
       {user && <FeedPanel key={`feeds-${user.id}`} />}
-      {user && <FeedValuePanel key={`feed-values-${user.id}`} />}
+      {user && <FeedValuePanel key={`feed-values-${user.id}`} ownerId={user.id} />}
       {user && <FeedSchedulePanel key={`feed-schedules-${user.id}`} />}
       {user && <LearningPanel key={`learning-${user.id}`} />}
       {user && <BriefPanel key={`briefs-${user.id}`} />}

@@ -4,16 +4,20 @@ import { useEffect, useRef, useState } from "react";
 import { FeedValueReading } from "./feed-value-reading";
 import { feedValueInputsChanging } from "./feed-value-events";
 import { connection, type Connection } from "./subscription-connection-panel";
-import { audit, date, detail, page, reading, statuses, summary, type Audit, type ValueDetail, type ValueSummary, type ValueReading } from "./feed-value-types";
+import { audit, date, detail, localTarget, page, reading, statuses, summary, type Audit, type ValueDetail, type ValueSummary, type ValueReading } from "./feed-value-types";
 
 const endpoint = "/api/feed-values";
-type Preview = { id: string; connection_id: string; connection_revision: string; model: string };
+type Preview = { id: string; connection_id: string; connection_revision: string; model: string } | { id: string; endpoint: string; model: string };
 class HttpError extends Error {
   constructor(public status: number) {
     super(status === 401 ? "登录已失效，请退出后重新登录。" : status === 404 ? "原请求不存在或无权查看。" : status === 409 ? "候选、连接、摘要或状态已变化，请核对原请求；没有候选时请先采集 RSS 并设置日报关键词。" : status === 403 ? "请求未通过安全检查，请重新登录后核对。" : "服务暂不可用或输入无效，请核对原请求。");
   }
 }
-export function FeedValuePanel() {
+export function FeedValuePanel({ ownerId }: { ownerId: string }) {
+  const [mode, setMode] = useState("subscription");
+  const [localEndpoint, setLocalEndpoint] = useState("http://127.0.0.1:11435");
+  const [localModel, setLocalModel] = useState("qwen3:4b-q4_K_M");
+  const [localEnabled, setLocalEnabled] = useState<boolean | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [connectionNext, setConnectionNext] = useState<string | null>(null);
   const [selected, setSelected] = useState("");
@@ -41,7 +45,7 @@ export function FeedValuePanel() {
       if (expired) return;
       active.current?.abort(); active.current = null; setBusy(false);
       setReview(null); setReadingView(null); setEvents([]); setShare(false); setUsage(false);
-      setItems([]); setNext(null); setLoaded(false); setConnections([]); setConnectionNext(null); setSelected(""); setModel("");
+      setItems([]); setNext(null); setLoaded(false); setConnections([]); setConnectionNext(null); setSelected(""); setModel(""); setLocalEnabled(null);
       setError("来源、偏好或连接正在变更，请重新核对评分。");
     };
     window.addEventListener(feedValueInputsChanging, changed);
@@ -67,10 +71,19 @@ export function FeedValuePanel() {
       if (active.current !== controller) return;
       onFailure?.();
       if (e instanceof HttpError && e.status === 401) {
-        setExpired(true); setConnections([]); setConnectionNext(null); setSelected(""); setModel(""); setItems([]); setNext(null); clearReview(); setPending(null); setUncertain(null);
+        setExpired(true); setLocalEnabled(null); setConnections([]); setConnectionNext(null); setSelected(""); setModel(""); setItems([]); setNext(null); clearReview(); setPending(null); setUncertain(null);
       }
       setError(e instanceof Error && e.name === "Error" ? e.message : "响应未确认，请核对原请求；不会自动重试。");
     } finally { if (active.current === controller) { active.current = null; setBusy(false); } }
+  }
+  function loadLocalConfig() {
+    if (active.current || locked) return;
+    setLocalEnabled(null); clearReview();
+    void perform(async request => {
+      const value = await request(`${endpoint}/config`) as { local_enabled: boolean; execution_mode: string };
+      if (!value || typeof value.local_enabled !== "boolean" || value.execution_mode !== "local_only") throw new Error("本地评分配置不完整。");
+      setLocalEnabled(value.local_enabled);
+    });
   }
   function loadConnections(after: string | null) {
     if (active.current || locked) return;
@@ -108,58 +121,76 @@ export function FeedValuePanel() {
     }, clearReview);
   }
   function preview(original?: Preview) {
-    if (active.current || busy || expired || (!original && (uncertain || !chosen || chosen.status !== "active" || Number(chosen.valid_until_unix_ms) <= now || !chosen.models.includes(model)))) return;
-    const input = original ?? { id: crypto.randomUUID(), connection_id: chosen!.id, connection_revision: chosen!.revision, model };
+    if (active.current || busy || expired || (!original && uncertain)) return;
+    let input: Preview;
+    if (original) input = original;
+    else if (mode === "local") {
+      if (localEnabled !== true || !localTarget(localEndpoint, localModel)) return;
+      input = { id: crypto.randomUUID(), endpoint: localEndpoint, model: localModel };
+    } else {
+      if (!chosen || chosen.status !== "active" || Number(chosen.valid_until_unix_ms) <= now || !chosen.models.includes(model)) return;
+      input = { id: crypto.randomUUID(), connection_id: chosen.id, connection_revision: chosen.revision, model };
+    }
     setPending(input); setUncertain(input.id); setMissing(false); clearReview();
     void perform(async request => {
-      const saved = detail(await request(endpoint, input), input.id);
+      const saved = detail(await request("endpoint" in input ? `${endpoint}/local` : endpoint, input), input.id);
       setReview(saved); setPending(null); setUncertain(null);
     });
   }
   function mutate(kind: "approve" | "cancel") {
-    if (active.current || locked || !review || review.pricing.kind !== "subscription" || (kind === "approve" && (!share || !usage || review.status !== "draft" || review.pricing.kind !== "subscription" || Number(review.expires_at_unix_ms) <= now || Number(review.pricing.valid_until_unix_ms) <= now))) return;
+    if (active.current || locked || !review || review.pricing.kind === "api" || (kind === "approve" && (!share || !usage || !canApprove))) return;
     const original = review;
     setUncertain(original.id); setMissing(false); clearReview();
     void perform(async request => {
-      const saved = detail(await request(`${endpoint}/${original.id}/${kind}`, kind === "cancel" ? {} : { digest: original.digest, acknowledge_sharing: true, acknowledge_subscription_usage: true }), original.id);
+      const saved = detail(await request(`${endpoint}/${original.id}/${kind === "approve" && original.pricing.kind === "local" ? "approve-local" : kind}`, kind === "cancel" ? {} : { digest: original.digest, acknowledge_sharing: true, ...(original.pricing.kind === "local" ? { acknowledge_local_compute: true } : { acknowledge_subscription_usage: true }) }), original.id);
       if (kind === "approve" && !["authorized", "running", "succeeded"].includes(saved.status)) throw new Error("批准结果不完整，请核对原请求。");
       if (kind === "cancel" && saved.status !== "cancelled") throw new Error("取消结果不完整，请核对原请求。");
       setReview(saved); setUncertain(null); setItems(previous => previous.map(i => i.id === saved.id ? saved : i));
     });
   }
-  const canApprove = review?.status === "draft" && review.pricing.kind === "subscription" && Number(review.expires_at_unix_ms) > now && Number(review.pricing.valid_until_unix_ms) > now;
+  const canApprove = review?.status === "draft" && review.pricing.kind !== "api" && (review.pricing.kind !== "local" || localEnabled === true) && Number(review.expires_at_unix_ms) > now && Number(review.pricing.valid_until_unix_ms) > now;
   return <section className="feedPanel feedValuePanel" aria-label="RSS 价值评分">
     <p className="kicker">RSS / VALUE</p><h3>RSS 价值评分</h3>
-    <p>分享当前候选和日报关键词，获取模型的参考评分。先在本机绑定订阅连接，再预览并确认分享内容和订阅用量。</p>
+    <p>分享当前候选和日报关键词，获取模型的参考评分。选择订阅模型或本地模型，再预览并分别确认分享内容和资源用量。</p>
     <p>网页批准后不会自动运行。请在本机显式执行，再回来查询并阅读结果；可切换模型或规则顺序，当前日报仍保留关键词规则排序。</p>
     {error && <p role="alert">{error}</p>}{busy && <p role="status">正在处理评分请求…</p>}
     <fieldset disabled={locked}>
       <legend>创建评分预览</legend>
+      <label>评分方式<select value={mode} onChange={e => { setMode(e.target.value); clearReview(); }}><option value="subscription">订阅模型</option><option value="local">本地模型</option></select></label>
+      {mode === "local" ? <>
+        <button onClick={loadLocalConfig}>读取本地评分配置</button>
+        <p>{localEnabled === null ? "请先读取本地评分配置。" : localEnabled ? "本地评分已启用；批准后仍需在本机显式执行。" : "本地评分未启用，请先由本机管理员启用。"}</p>
+        <label>本地评分地址<input value={localEndpoint} onChange={e => { setLocalEndpoint(e.target.value); clearReview(); }} /></label>
+        <label>本地评分模型<input value={localModel} onChange={e => { setLocalModel(e.target.value); clearReview(); }} /></label>
+        <button disabled={localEnabled !== true || !localTarget(localEndpoint, localModel)} onClick={() => preview()}>预览本地分享内容</button>
+        {!localTarget(localEndpoint, localModel) && <p>请填写带端口的 HTTP 回环 IP 地址和本地模型名称。</p>}
+      </> : <>
       <button onClick={() => loadConnections(null)}>读取评分连接</button>
       {connectionNext && <button onClick={() => loadConnections(connectionNext)}>下一页评分连接</button>}
       <label>评分连接<select value={selected} onChange={e => { setSelected(e.target.value); setModel(""); }}><option value="">请选择已绑定连接</option>{connections.map(c => <option key={c.id} value={c.id} disabled={c.status !== "active" || Number(c.valid_until_unix_ms) <= now}>{c.label} · 版本 {c.revision}{c.status !== "active" || Number(c.valid_until_unix_ms) <= now ? "（不可用）" : ""}</option>)}</select></label>
       <label>评分模型<select value={model} onChange={e => setModel(e.target.value)}><option value="">请选择模型</option>{chosen?.models.map(m => <option key={m} value={m}>{m}</option>)}</select></label>
       <button disabled={!chosen || !model || chosen.status !== "active" || Number(chosen.valid_until_unix_ms) <= now} onClick={() => preview()}>预览分享内容</button>
       <small>连接每页最多 10 条。找不到连接时，请先完成本机绑定；没有候选时请先采集 RSS 并设置日报关键词。</small>
+      </>}
     </fieldset>
     <button disabled={locked} onClick={() => loadHistory(null)}>刷新评分记录</button>
     {next && <button disabled={locked} onClick={() => loadHistory(next)}>下一页评分记录</button>}
     <small>记录每页最多 20 条，刷新回到第一页。</small>
     {loaded && !busy && items.length === 0 && <p>暂无评分记录。</p>}
-    <ul className="feedList">{items.map(item => <li key={item.id}><p>{statuses[item.status]} · {item.pricing.kind === "subscription" ? item.pricing.model : "历史 API 模式（只读）"}</p><small>{date(item.created_at_unix_ms)}</small><p>请求：<code>{item.id}</code></p><button disabled={locked} onClick={() => inspect(item.id)}>查看评分 {item.id}</button></li>)}</ul>
+    <ul className="feedList">{items.map(item => <li key={item.id}><p>{statuses[item.status]} · {item.pricing.kind !== "api" ? `${item.pricing.kind === "local" ? "本地 · " : ""}${item.pricing.model}` : "历史 API 模式（只读）"}</p><small>{date(item.created_at_unix_ms)}</small><p>请求：<code>{item.id}</code></p><button disabled={locked} onClick={() => inspect(item.id)}>查看评分 {item.id}</button></li>)}</ul>
     {uncertain && <div className="feedReview" role="region" aria-label="待核对评分请求"><p>操作结果未确认。请核对原请求，不会自动重发或改用新摘要。</p><p>请求：<code>{uncertain}</code></p><button disabled={busy || expired} onClick={() => inspect(uncertain)}>核对原评分请求</button>
       {pending && <button disabled={busy || expired} onClick={() => preview(pending)}>重试原预览</button>}
       {missing && <button disabled={busy || expired} onClick={() => { setUncertain(null); setPending(null); setMissing(false); setError(""); }}>关闭不存在的请求</button>}
     </div>}
     {review && <div className="feedReview" role="region" aria-label="评分详情">
       <h4>{statuses[review.status]}</h4><p>请求：<code>{review.id}</code></p><p>摘要：<code>{review.digest}</code></p><p>授权期限：{date(review.expires_at_unix_ms)}</p>
-      {review.pricing.kind === "subscription" ? <p>订阅模型：{review.pricing.model}<br />连接：<code>{review.pricing.connection_id}</code><br />连接版本：{review.pricing.configuration_version}</p> : <p>历史 API 模式仅可查询，网页不能批准金额用量。</p>}
+      {review.pricing.kind === "subscription" ? <p>订阅模型：{review.pricing.model}<br />连接：<code>{review.pricing.connection_id}</code><br />连接版本：{review.pricing.configuration_version}</p> : review.pricing.kind === "local" ? <p>本地模型：{review.pricing.model}<br />地址：<code>{review.pricing.endpoint}</code></p> : <p>历史 API 模式仅可查询，网页不能批准金额用量。</p>}
       {review.shared_content ? <><h4>将分享给模型的完整内容</h4><p>以下为冻结的指令、关键词及候选标题/摘要，请先审阅。</p><h5>系统指令</h5><pre>{review.shared_content.instructions}</pre><h5>候选与关键词</h5><pre>{review.shared_content.input}</pre></> : <p>分享正文已清除。</p>}
-      {review.status === "draft" && review.pricing.kind === "subscription" && <><p>执行会消耗订阅额度，或账户设置允许的 credits。这里不表示免费、额度充足或调用已经验证。</p><label className="agentConsent"><input type="checkbox" checked={share} disabled={locked || !canApprove} onChange={e => setShare(e.target.checked)} />我同意分享以上冻结内容。</label><label className="agentConsent"><input type="checkbox" checked={usage} disabled={locked || !canApprove} onChange={e => setUsage(e.target.checked)} />我同意使用所选账户的订阅额度或允许的 credits。</label><button disabled={locked || !canApprove || !share || !usage} onClick={() => mutate("approve")}>批准此次评分</button>{!canApprove && <p>当前预览不能批准，请核对状态或重新预览。</p>}</>}
-      {review.status === "authorized" && <p>已保存授权。请用本机已绑定的连接执行 <code>chatgpt-connect</code> 的 <code>value-run</code> 命令，使用上面的请求标识；完成后点击“核对评分状态”。</p>}
+      {review.status === "draft" && review.pricing.kind !== "api" && <><p>{review.pricing.kind === "local" ? "执行会使用本机 GPU 资源，请先核对游戏显存余量和本地服务。" : "执行会消耗订阅额度，或账户设置允许的 credits。这里不表示免费、额度充足或调用已经验证。"}</p><label className="agentConsent"><input type="checkbox" checked={share} disabled={locked || !canApprove} onChange={e => setShare(e.target.checked)} />我同意分享以上冻结内容。</label><label className="agentConsent"><input type="checkbox" checked={usage} disabled={locked || !canApprove} onChange={e => setUsage(e.target.checked)} />{review.pricing.kind === "local" ? "我同意使用本机计算资源，并已核对游戏显存预算。" : "我同意使用所选账户的订阅额度或允许的 credits。"}</label><button disabled={locked || !canApprove || !share || !usage} onClick={() => mutate("approve")}>批准此次评分</button>{!canApprove && <p>当前预览不能批准，请核对状态或重新预览。</p>}</>}
+      {review.status === "authorized" && (review.pricing.kind === "local" ? <p>已保存授权。请在本机运行 <code>make local-value OWNER={ownerId} REQUEST={review.id}</code>；完成后点击“核对评分状态”。</p> : <p>已保存授权。请用本机已绑定的连接执行 <code>chatgpt-connect</code> 的 <code>value-run</code> 命令，使用上面的请求标识；完成后点击“核对评分状态”。</p>)}
       {review.status === "unknown" && <p>结果未知，可能已消耗用量。请核对本机记录；不要自动重派或重复创建。</p>}
       {review.scores && !readingView && <><h4>模型参考评分</h4><p>评分仅为建议，不代表事实真伪；无法评分保留为空。</p><ul className="feedList">{review.scores.map(s => <li key={s.id}><h5>{review.candidates?.find(c => c.id === s.id)?.title}</h5><p>{s.score === null ? "无法评分" : `${s.score} / 100`}</p><p>{s.reason}</p></li>)}</ul></>}
-      {review.pricing.kind === "subscription" && ["draft", "authorized", "running"].includes(review.status) && <><p>取消会清除分享内容；已发出的模型请求可能仍消耗用量，晚到结果会丢弃。</p><button disabled={locked} onClick={() => mutate("cancel")}>取消此次评分</button></>}
+      {review.pricing.kind !== "api" && ["draft", "authorized", "running"].includes(review.status) && <><p>取消会清除分享内容；已发出的模型请求可能仍消耗用量，晚到结果会丢弃。</p><button disabled={locked} onClick={() => mutate("cancel")}>取消此次评分</button></>}
       {review.status === "succeeded" && <button disabled={locked} onClick={readItems}>读取评分阅读</button>}
       {readingView && <FeedValueReading key={`${readingView.id}:${readingView.digest}`} value={readingView} disabled={locked} />}
       <button disabled={locked} onClick={() => inspect(review.id)}>核对评分状态</button>

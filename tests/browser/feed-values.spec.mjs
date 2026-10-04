@@ -289,3 +289,108 @@ test("late reading responses cannot enter a different signed-in account", async 
   await expect(panel.getByRole("region", { name: "评分阅读视图", exact: true })).toHaveCount(0);
   await expect(panel).not.toContainText("冻结摘要");
 });
+
+function localFixture(id = connectionId) {
+  return { ...fixture(id), pricing: { kind: "local", endpoint: "http://127.0.0.1:11435", model: "qwen3:4b-q4_K_M", valid_until_unix_ms: String(Date.now() + 300000) } };
+}
+async function selectLocal(panel) {
+  await panel.getByRole("combobox", { name: "评分方式", exact: true }).selectOption("local");
+  await panel.getByRole("button", { name: "读取本地评分配置", exact: true }).click();
+}
+test("local scoring is disabled until explicit configuration read and rejects remote or cloud targets", async ({ page }) => {
+  let enabled = false, writes = 0, configs = 0;
+  await page.route(endpoint, route => {
+    if (route.request().method() === "POST") { writes++; return route.fulfill({ status: 503, json: {} }); }
+    configs++; return route.fulfill({ json: { local_enabled: enabled, execution_mode: "local_only" } });
+  });
+  const panel = await setup(page); expect(configs).toBe(0);
+  await selectLocal(panel); await expect(panel).toContainText("本地评分未启用");
+  const preview = panel.getByRole("button", { name: "预览本地分享内容", exact: true });
+  await expect(preview).toBeDisabled(); enabled = true;
+  await panel.getByRole("button", { name: "读取本地评分配置", exact: true }).click();
+  await expect(preview).toBeEnabled();
+  for (const address of ["https://127.0.0.1:11435", "http://localhost:11435", "http://127.0.0.1:11435/", "http://127.0.0.1:00080", "http://192.168.1.1:11435", "http://127.0.0.1:65536"]) {
+    await panel.getByLabel("本地评分地址", { exact: true }).fill(address); await expect(preview).toBeDisabled();
+  }
+  await panel.getByLabel("本地评分地址", { exact: true }).fill("http://127.0.0.1:80"); await expect(preview).toBeEnabled();
+  await panel.getByLabel("本地评分模型", { exact: true }).fill("qwen3:4b-cloud"); await expect(preview).toBeDisabled();
+  expect(writes).toBe(0);
+});
+test("local lost preview preserves original target and approval needs separate sharing and compute consent", async ({ page }, testInfo) => {
+  let item, approvals = 0; const previews = [], writes = [];
+  await page.route(endpoint, route => {
+    const req = route.request(), path = new URL(req.url()).pathname;
+    if (path.endsWith("/config")) return route.fulfill({ json: { local_enabled: true, execution_mode: "local_only" } });
+    if (req.method() === "POST") {
+      expect(req.headers()["x-requested-with"]).toBe("personal-ai"); writes.push(path);
+      if (path.endsWith("/approve-local")) {
+        approvals++; expect(req.postDataJSON()).toEqual({ digest: item.digest, acknowledge_sharing: true, acknowledge_local_compute: true });
+        item = { ...item, status: "authorized", approved_at_unix_ms: String(Date.now()) }; return route.abort("failed");
+      }
+      expect(path).toBe("/api/feed-values/local"); previews.push(req.postDataJSON());
+      expect(previews.at(-1)).toEqual({ id: expect.any(String), endpoint: "http://127.0.0.1:11435", model: "qwen3:4b-q4_K_M" });
+      item = localFixture(previews[0].id); return previews.length === 1 ? route.abort("failed") : route.fulfill({ json: item });
+    }
+    if (path.endsWith("/reading")) return route.fulfill({ json: readingFixture(item) });
+    return route.fulfill({ json: item });
+  });
+  const panel = await setup(page); await selectLocal(panel);
+  await panel.getByRole("button", { name: "预览本地分享内容", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("响应未确认");
+  await expect(panel.getByLabel("本地评分地址", { exact: true })).toBeDisabled();
+  await panel.getByRole("button", { name: "重试原预览", exact: true }).click();
+  const review = panel.getByRole("region", { name: "评分详情", exact: true });
+  const approve = review.getByRole("button", { name: "批准此次评分", exact: true });
+  await expect(review).toContainText(item.shared_content.input); await expect(review.locator("script,img")).toHaveCount(0);
+  expect(previews).toHaveLength(2); expect(previews[0]).toEqual(previews[1]);
+  await expect(approve).toBeDisabled();
+  await review.getByRole("checkbox", { name: "我同意分享以上冻结内容。", exact: true }).check(); await expect(approve).toBeDisabled();
+  await review.getByRole("checkbox", { name: "我同意使用本机计算资源，并已核对游戏显存预算。", exact: true }).check();
+  const screenshot = testInfo.outputPath("rss-local-consent.png"); await panel.screenshot({ path: screenshot });
+  await testInfo.attach("rss-local-consent", { path: screenshot, contentType: "image/png" });
+  expect(await panel.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await approve.click(); await expect(panel.getByRole("alert")).toContainText("响应未确认");
+  await panel.getByRole("button", { name: "核对原评分请求", exact: true }).click();
+  await expect(review).toContainText(/make local-value OWNER=[a-f0-9-]{36} REQUEST=[a-f0-9-]{36}/); expect(approvals).toBe(1);
+  item = { ...completedFixture(), id: item.id, pricing: item.pricing };
+  await review.getByRole("button", { name: "核对评分状态", exact: true }).click();
+  await review.getByRole("button", { name: "读取评分阅读", exact: true }).click();
+  await expect(panel.getByRole("region", { name: "评分阅读视图", exact: true })).toContainText("无法评分");
+  expect(writes.some(path => /\/(run|claim|confirm|approve)$/.test(path))).toBe(false);
+});
+test("local cancellation clears content and malformed local receipts cannot authorize", async ({ page }) => {
+  let item = localFixture(), malformed = false, cancelled = 0;
+  await page.route(endpoint, route => {
+    const req = route.request(), path = new URL(req.url()).pathname;
+    if (path.endsWith("/config")) return route.fulfill({ json: { local_enabled: true, execution_mode: "local_only" } });
+    if (path.endsWith("/cancel")) { cancelled++; item = { ...item, status: "cancelled", scores: null, shared_content: null, candidates: null }; return route.fulfill({ json: item }); }
+    if (req.method() === "POST") { item = localFixture(req.postDataJSON().id); return route.fulfill({ json: item }); }
+    if (path.endsWith(item.id)) return route.fulfill({ json: malformed ? { ...item, pricing: { ...item.pricing, endpoint: "https://remote.example" } } : item });
+    return route.fulfill({ json: { items: [item], next_cursor: null } });
+  });
+  const panel = await setup(page); await selectLocal(panel);
+  await panel.getByRole("button", { name: "预览本地分享内容", exact: true }).click();
+  await panel.getByRole("button", { name: "取消此次评分", exact: true }).click();
+  await expect(panel).toContainText("已取消"); await expect(panel).not.toContainText("rust 候选内容"); expect(cancelled).toBe(1);
+  malformed = true; await panel.getByRole("button", { name: "核对评分状态", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("数据不完整");
+  await expect(panel.getByRole("region", { name: "评分详情", exact: true })).toHaveCount(0);
+});
+
+test("real private local configuration and empty preview traverse both application proxies", async ({ page }) => {
+  const panel = await setup(page); await selectLocal(panel);
+  await expect(panel).toContainText("本地评分已启用");
+  const pendingResponse = page.waitForResponse(response => new URL(response.url()).pathname === "/api/feed-values/local" && response.request().method() === "POST");
+  await panel.getByRole("button", { name: "预览本地分享内容", exact: true }).click();
+  expect((await pendingResponse).status()).toBe(400); // Missing keywords/candidates is input validation, before draft persistence.
+  await expect(panel.getByRole("alert")).toContainText("输入无效");
+  await panel.getByRole("button", { name: "核对原评分请求", exact: true }).click();
+  await expect(panel.getByRole("alert")).toContainText("原请求不存在");
+  await panel.getByRole("button", { name: "关闭不存在的请求", exact: true }).click();
+  await expect(panel.getByRole("button", { name: "预览本地分享内容", exact: true })).toBeEnabled();
+  const status = await page.evaluate(async () => {
+    const response = await fetch(`/api/feed-values/${crypto.randomUUID()}/approve-local`, { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" }, body: JSON.stringify({ digest: "a".repeat(64), acknowledge_sharing: true, acknowledge_local_compute: true }) });
+    await response.body?.cancel(); return response.status;
+  });
+  expect(status).toBe(404);
+});
