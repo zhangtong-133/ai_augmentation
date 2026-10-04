@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { expectedMigrations, matchingMigrations, parseOptions, validateManifest, verify } from "./recovery-lib.mjs";
 import { verifyOriginals } from "./originals-recovery.mjs";
+import { deploymentOptions } from "./deployment-check.mjs";
 
 test("endpoint arguments reject ambiguous containers, databases, switches and duplicate paths", () => {
   const good = ["--container", "a".repeat(64), "--database", "personal_ai", "--directory", "/tmp/example"];
@@ -15,6 +16,11 @@ test("endpoint arguments reject ambiguous containers, databases, switches and du
   assert.equal(parseOptions([...good, "--external-originals-ready", "true"], "restore").externalOriginalsReady, true);
   assert.throws(() => parseOptions([...good, "--external-originals-ready", "false"], "restore"));
   assert.throws(() => parseOptions([...good, "--external-originals-ready", "true"], "backup"));
+});
+test("deployment diagnosis requires an explicit local target and profile without mutation switches", () => {
+  const args = ["--container", "a".repeat(64), "--database", "personal_ai", "--profile", "recovery"];
+  assert.equal(deploymentOptions(args).profile, "recovery");
+  for (const input of [args.slice(0, -1), [...args, "--apply", "true"], [...args, "--profile", "current"], args.map(value => value === "personal_ai" ? "postgres" : value), args.map(value => value === "recovery" ? "automatic" : value), args.map(value => value === "a".repeat(64) ? "postgres" : value)]) assert.throws(() => deploymentOptions(input));
 });
 
 test("original archive binds to the database snapshot and rejects missing, corrupt, escaped and symlinked files", async () => {
@@ -52,7 +58,7 @@ test("backup checksum, exact migrations and file names fail closed on corruption
     const save = value => writeFile(join(directory, "manifest.json"), JSON.stringify(value));
     await writeFile(join(directory, "database.dump"), bytes); await save(manifest);
     assert.deepEqual(await verify(directory), manifest);
-    for (const invalid of [{ ...manifest, unknown: true }, { ...manifest, postgresMajor: 17 }, { ...manifest, dump: { ...manifest.dump, file: "../database.dump" } }]) assert.throws(() => validateManifest(invalid));
+    for (const invalid of [{ ...manifest, unknown: true }, { ...manifest, postgresMajor: 17 }, { ...manifest, originals: null }, { ...manifest, dump: { ...manifest.dump, file: "../database.dump" } }]) assert.throws(() => validateManifest(invalid));
     assert.equal(matchingMigrations([...manifest.migrations].reverse(), manifest.migrations), false);
     await save({ ...manifest, migrations: manifest.migrations.slice(1) }); await assert.rejects(verify(directory), /迁移/);
     await save(manifest); await writeFile(join(directory, "database.dump"), "corrupted"); await assert.rejects(verify(directory), /SHA-256/);

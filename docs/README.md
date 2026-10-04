@@ -43,6 +43,7 @@
 ## 验收与架构
 
 - [PostgreSQL 备份恢复](design/postgres-recovery.md)：同一快照归档、迁移/SHA-256 校验、空库事务恢复与执行隔离、应用登录/用户隔离/删除墓碑演练。
+- [部署数据库只读诊断](design/deployment-check.md)：显式 current/recovery 检查、迁移校验、旧执行状态和外部原文核对。
 
 - [用户长期记忆](design/sprint-3-long-memory.md)：手动 CRUD、版本冲突、配额、数据隔离及页面操作。
 - [Redis 短期记忆](design/sprint-3-short-memory.md)：存储适配器、TTL、条目/活跃对话配额；尚未接入 API。

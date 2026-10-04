@@ -24,6 +24,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 - [x] [PostgreSQL 备份恢复](design/postgres-recovery.md)：一致性归档/校验、空库事务恢复/执行隔离、真实应用登录/用户隔离/会话与证据墓碑演练已完成；外部原文及真实质量验收继续推进。
 - [x] [外部原文备份恢复](design/originals-recovery.md)：同快照引用、原文回收锁、私有归档、完整性校验、条件创建及数据库恢复前字节核对；真实 MinIO/应用恢复通过，已接入对象 CI。
 - [x] [真实本地核验恢复闭环](design/postgres-recovery.md)：精确授权、单次推理、保存建议、恢复后重复读取及证据撤销不重发通过；真实材料质量和游戏峰值压力仍待实测。
+- [x] [部署数据库只读诊断](design/deployment-check.md)：迁移、恢复残留授权/任务、费用与原文一致性核对；默认、MinIO 及真实本地模型组合恢复演练通过。
 
 - [x] [用户证据核验与显式自评确认](design/learning-review-confirmation.md)：逐项判断与理由、版本校验、原请求恢复、证据删除撤销直接关联自评；保留后续历史计划并限制来源失效后的新增写入。
 

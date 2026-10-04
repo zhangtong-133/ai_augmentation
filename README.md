@@ -94,6 +94,7 @@ npm --prefix apps/web run build
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |
 | `make recovery-acceptance-objects` | 一次性 PostgreSQL/MinIO 验收原文归档、目标冲突拒绝与应用完整恢复 |
+| `make deployment-check CONTAINER=… DATABASE=… PROFILE=current` | 显式核对数据库迁移与执行计数；恢复前使用 recovery，外部原文通过 Node 命令核对 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 

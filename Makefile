@@ -151,6 +151,11 @@ local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST�
 recovery-test: ## 验收备份清单、迁移及文件完整性边界
 	node scripts/test-recovery.mjs
 
+.PHONY: deployment-check
+deployment-check: ## 显式检查部署数据库迁移及恢复隔离状态，仅输出计数
+	@test -n "$(CONTAINER)" -a -n "$(DATABASE)" -a -n "$(PROFILE)" || (echo '需要 CONTAINER=完整ID DATABASE=数据库名 PROFILE=current或recovery'; exit 1)
+	node scripts/deployment-check.mjs --container "$(CONTAINER)" --database "$(DATABASE)" --profile "$(PROFILE)"
+
 .PHONY: recovery-acceptance
 recovery-acceptance: ## 在一次性 PostgreSQL 中验收真实备份及恢复边界
 	cargo build --locked -p api-server --bin api-server --bin local-review

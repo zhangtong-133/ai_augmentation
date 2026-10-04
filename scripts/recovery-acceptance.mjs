@@ -13,6 +13,7 @@ import { backup, expectedMigrations, localDocker, pgProcess, pgQuery, root, veri
 import { restore } from "./recovery-restore.mjs";
 import { exerciseLocalModel, seedApplication, startApplication, verifyApplication } from "./recovery-http.mjs";
 import { checkOriginals, exportOriginals, objectOperation, restoreOriginals, verifyOriginals } from "./originals-recovery.mjs";
+import { checkDeployment } from "./deployment-check.mjs";
 
 const execute = promisify(execFile);
 const flags = process.argv.slice(2);
@@ -90,6 +91,12 @@ try {
   await sourceApp.close();
   const expectedUsers = await pgQuery(source, "SELECT count(*) FROM users;");
   const expectedDocuments = await pgQuery(source, "SELECT count(*) FROM documents;");
+  const diagnosisInput = { ...source, profile: "recovery" };
+  const beforeDiagnosis = await pgQuery(source, await readFile(join(root, "tests/recovery/state.sql"), "utf8"));
+  const sourceDiagnosis = await checkDeployment(diagnosisInput, sourceObjects);
+  assert.equal(sourceDiagnosis.ready, false); assert.ok(sourceDiagnosis.counts.activeJobs > 0);
+  assert.ok(sourceDiagnosis.issues.includes("recovery_activeJobs_remain"));
+  assert.equal(await pgQuery(source, await readFile(join(root, "tests/recovery/state.sql"), "utf8")), beforeDiagnosis);
   const manifest = await backup(source, withObjects ? { captureOriginals: async (path, value) => {
     assert.equal(await pgQuery(source, "SELECT pg_try_advisory_xact_lock(7384920617);"), "f");
     return exportOriginals(path, value, sourceObjects);
@@ -177,6 +184,22 @@ try {
   await assert.rejects(restore(target));
   assert.equal(await pgQuery(target, "SELECT count(*) FROM users;"), expectedUsers);
   console.log("PASS: empty-target transactional restore, corruption rollback, old-session/credential revocation, paused jobs and retained costs");
+  const recoveryDiagnosis = await checkDeployment({ ...target, profile: "recovery", ...(withObjects ? { originals: source.directory } : {}) }, targetObjects);
+  assert.equal(recoveryDiagnosis.ready, true); assert.ok(recoveryDiagnosis.counts.unknownModelRequests > 0);
+  assert.equal(JSON.stringify(recoveryDiagnosis).includes(fixture.owner.id), false);
+  assert.equal(JSON.stringify(recoveryDiagnosis).includes(fixture.owner.email), false);
+  assert.deepEqual(JSON.parse(await pgQuery(target, await readFile(join(root, "tests/recovery/state.sql"), "utf8"))), state);
+  await pgQuery(target, "UPDATE _sqlx_migrations SET success=false WHERE version=(SELECT min(version) FROM _sqlx_migrations);");
+  const invalidDiagnosis = await checkDeployment({ ...target, profile: "current" }, targetObjects);
+  assert.equal(invalidDiagnosis.ready, false); assert.ok(invalidDiagnosis.issues.includes("migration_mismatch"));
+  await pgQuery(target, "UPDATE _sqlx_migrations SET success=true WHERE NOT success;");
+  if (withObjects) {
+    const unchecked = await checkDeployment({ ...target, profile: "recovery" }, targetObjects);
+    assert.equal(unchecked.ready, false); assert.ok(unchecked.issues.includes("originals_not_verified"));
+    const conflict = await checkDeployment({ ...target, profile: "recovery", originals: source.directory }, { ...targetObjects, OBJECT_STORE_BUCKET: "conflict" });
+    assert.equal(conflict.ready, false); assert.ok(conflict.issues.includes("originals_mismatch_or_unavailable"));
+  }
+  console.log("PASS: read-only deployment diagnosis rejects active recovery state, wrong migrations and unverified/conflicting originals, and accepts quarantined target without changing data");
   const restoredApp = await startApplication(databaseUrl(target.database), adminToken, targetObjects); applications.push(restoredApp);
   await verifyApplication(restoredApp, fixture);
   if (native) assert.equal(await pgQuery(target, `SELECT count(*) FROM learning_model_authorization_audit WHERE request_id='${fixture.nativeId}' AND event='sending';`), "1");

@@ -53,7 +53,7 @@ node scripts/recovery.mjs restore --container "$recovery_container_id" \
   --database personal_ai_restored --directory .backups/personal_ai_20261004_120000
 ```
 
-确认命令返回 `restored=true` 与 `quarantined=true` 后，在本机配置把应用 `DATABASE_URL` 的数据库名切换到新库。先用关闭模型/索引/RSS/scheduler 的配置启动 API，使用空 Redis、新 Qdrant 集合及已核对的 S3 桶；重新登录并只读核对用户数据、墓碑和审计。旧会话必须失败，旧待核验授权必须 invalidated/unknown，不能复用。新模型请求或周期任务须重新审阅授权，索引须显式重建；重新配置最小数据库角色权限，归档没有恢复 ACL。保留原数据库和备份，切换失败时不要覆盖原库。
+确认命令返回 `restored=true` 与 `quarantined=true` 后，先运行[只读部署诊断](deployment-check.md)的 recovery profile，核对隔离状态及目标原文；通过后在本机配置把应用 `DATABASE_URL` 的数据库名切换到新库。先用关闭模型/索引/RSS/scheduler 的配置启动 API，使用空 Redis、新 Qdrant 集合及已核对的 S3 桶；重新登录并只读核对用户数据、墓碑和审计。旧会话必须失败，旧待核验授权必须 invalidated/unknown，不能复用。新模型请求或周期任务须重新审阅授权，索引须显式重建；重新配置最小数据库角色权限，归档没有恢复 ACL。保留原数据库和备份，切换失败时不要覆盖原库。
 
 如恢复导入失败，目标可能保持禁止连接；使用容器内 `postgres` 维护数据库查询 `pg_database.datallowconn`。先核对目标确属本次恢复，再决定保留、删除重建，或在确认事务结果后用 `ALTER DATABASE personal_ai_restored ALLOW_CONNECTIONS true` 开放。该维护操作不会自动恢复授权或重新发送请求。
 

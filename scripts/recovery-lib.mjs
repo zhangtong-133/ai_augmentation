@@ -51,7 +51,7 @@ export function validateManifest(value) {
       !Number.isSafeInteger(value.externalOriginals) || value.externalOriginals < 0 || !Array.isArray(value.migrations) || !value.migrations.length ||
       !value.dump || Object.keys(value.dump).sort().join(",") !== "bytes,file,sha256" || value.dump.file !== "database.dump" ||
       !Number.isSafeInteger(value.dump.bytes) || value.dump.bytes <= 0 || !/^[a-f0-9]{64}$/.test(value.dump.sha256)) throw new Error("备份清单格式或版本不支持");
-  if (value.originals && (Object.keys(value.originals).sort().join(",") !== "bytes,file,sha256" || value.originals.file !== "originals.json" || !Number.isSafeInteger(value.originals.bytes) || value.originals.bytes < 1 || value.originals.bytes > 1048576 || !/^[a-f0-9]{64}$/.test(value.originals.sha256))) throw new Error("原文引用清单不合法");
+  if (Object.hasOwn(value, "originals") && (!value.originals || Object.keys(value.originals).sort().join(",") !== "bytes,file,sha256" || value.originals.file !== "originals.json" || !Number.isSafeInteger(value.originals.bytes) || value.originals.bytes < 1 || value.originals.bytes > 1048576 || !/^[a-f0-9]{64}$/.test(value.originals.sha256))) throw new Error("原文引用清单不合法");
   return value;
 }
 async function regular(path) {
