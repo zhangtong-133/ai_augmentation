@@ -1701,6 +1701,11 @@ dependencies = [
 [[package]]
 name = "personal-ai-llm"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
 
 [[package]]
 name = "personal-ai-llm-local"
