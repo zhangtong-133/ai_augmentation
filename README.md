@@ -95,6 +95,7 @@ npm --prefix apps/web run build
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |
 | `make local-value OWNER=… REQUEST=…` | 显式执行已批准的本地 RSS 评分，保留 6 GiB 游戏显存保护 |
 | `make local-value-benchmark-preview CASE=rust_preference` / `make local-value-benchmark` | 离线分享预览 / 显式合成 RSS 质量基准与私有报告；[当前 Qwen 基线未通过](docs/design/rss-value-quality.md) |
+| `make local-value-compare LEFT=报告1.json RIGHT=报告2.json` | 离线比较同条件质量报告；拒绝混合提示/模型指纹，单独记录协议失败与未运行场景 |
 | `make local-gpu-observe DURATION=30 SCENARIO=unspecified` | [只读 GPU 采样](docs/design/gpu-observation.md)，记录最低剩余/采样峰值；实际游戏需另行运行并核验 |
 | `make recovery-acceptance-rss-local` | 在项目模型监督器运行时，验收真实 RSS 评分、阅读、恢复及来源删除不重发 |
 | `make recovery-acceptance-objects` | 一次性 PostgreSQL/MinIO 验收原文归档、目标冲突拒绝与应用完整恢复 |

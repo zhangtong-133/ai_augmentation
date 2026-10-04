@@ -164,6 +164,13 @@ local-value-quality-test: ## 验收合成质量判定、报告绑定与协议故
 	cargo test -p api-server --bin local-value-benchmark
 	node scripts/test-local-value-benchmark.mjs
 
+.PHONY: local-value-compare local-value-compare-test
+local-value-compare: ## 离线比较两份同条件质量报告（LEFT、RIGHT），不调用模型
+	node scripts/local-value-compare.mjs "$(LEFT)" "$(RIGHT)"
+
+local-value-compare-test: ## 验收报告条件匹配、部分失败统计及有界私有读取
+	node scripts/test-local-value-compare.mjs
+
 .PHONY: local-gpu-observe local-gpu-observe-test
 DURATION ?= 30
 SCENARIO ?= unspecified
