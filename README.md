@@ -114,4 +114,4 @@ npm --prefix apps/web run build
 
 周期 RSS 已接入[默认关闭的后台运行](docs/design/rss-schedule-runner.md)：需要 `SCHEDULER_MODE=local`、`RSS_SCHEDULES_ENABLED=true` 和持久化用户授权。已提供[用户预览/授权/取消及历史 HTTP 接口](docs/design/rss-schedule-http.md)，并提供[配置与同意页面](docs/design/rss-schedule-ui.md)。
 
-学习核验可选启用[临时正文通道](docs/design/learning-text-stream.md)：API 与本机 `learning-run` 分别设置指向同一可信 Redis 的 `LEARNING_TEXT_REDIS_URL`（宿主机使用回环地址，容器使用内部地址）。默认关闭，只读观察不会执行模型；目前私有事件接口已接入，页面按下一阶段交付。
+学习核验可选启用[临时正文通道](docs/design/learning-text-stream.md)：API 与本机 `learning-run` 分别设置指向同一可信 Redis 的 `LEARNING_TEXT_REDIS_URL`（宿主机使用回环地址，容器使用内部地址）。默认关闭，只读观察不会执行模型；私有事件与授权详情的“观察临时文本”已接入。只显示当前观察的未校验正文，停止/退出/失效即清空，最终建议仍查询已保存结果。

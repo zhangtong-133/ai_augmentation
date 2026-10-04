@@ -31,3 +31,5 @@ Next 仅对白名单 GET 事件路径使用 30 秒超时并传播请求取消；
 `make check` 编译并运行非数据库测试。`make learning-acceptance` 在一次性 PostgreSQL/HTTP 栈中运行 `learning_events_*` 测试，覆盖跨连接执行、无自动领取、精简事件、用户隔离、取消、注销、来源删除、超时及连接配额释放；`scripts/smoke-learning-events.mjs` 验证 Next/Nginx 两个实际入口的事件帧、拒绝回放、超过十秒连接和取消终态，并继续执行原学习浏览器回归。全部使用夹具，无真实模型调用。
 
 已接入[私有状态观察页面](learning-status-ui.md)：显式观察/停止，终态后读取原授权，会话失效立即清空学习状态，切换或卸载中断读取。客户端协议限制和双入口 UI 验收见该设计。
+
+临时正文现通过独立的[正文事件接口与页面](learning-text-stream.md)交付；本状态接口继续只传已保存状态，两个入口共享连接配额，不执行或重发模型。

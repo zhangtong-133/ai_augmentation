@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "node --test ../../scripts/test-learning-status.mjs",
+    "test": "node --test ../../scripts/test-learning-status.mjs ../../scripts/test-learning-text.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

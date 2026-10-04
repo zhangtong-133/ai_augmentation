@@ -40,4 +40,4 @@ Rust 1.99 全仓格式、Clippy 和测试、前端 lint/typecheck/build 均通�
 
 后续已增加[私有状态事件接口](learning-status-events.md)：CLI/API 通过既有 PostgreSQL 状态实现跨进程观察，持续复核会话和来源。该通道只传状态；本文临时文本通道仍为同进程能力，未提供跨进程正文转发或页面展示。
 
-后续已实现[临时正文跨进程通道](learning-text-stream.md)：显式配置 Redis Pub/Sub 后，本机执行器可转发有界文本；私有读取及页面按后续阶段交付。原进程内通知协议保持不变。
+后续已实现[临时正文跨进程通道](learning-text-stream.md)：显式配置 Redis Pub/Sub 后，本机执行器可转发有界文本；私有读取及临时文本页面已接入，按该设计记录验收。原进程内通知协议保持不变。

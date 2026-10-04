@@ -31,7 +31,7 @@ export function LearningAuthorizationDetail({ item, locked, load, accept, openPl
     {item.status === "running" && <p>取消会阻止保存晚到建议；已经发出的请求仍可能消耗额度。请手动核对状态，页面不会重新发送模型请求。</p>}
     {item.status === "unknown" && <p>可能已经发送，无法确认结果。原授权不会再次执行；若要重新尝试，请重新预览并明确授权。</p>}
     {item.status === "succeeded" && item.advice && !pending && !hidden && <><LearningModelAdvice advice={item.advice} />{openPlan && <button disabled={locked} onClick={() => openPlan(`/api/learning/plans/${item.plan_id}`)}>回到原训练证据</button>}</>}
-    {!locked && !pending && <LearningStatusObserver request={item.request_id} enabled={["authorized", "running"].includes(observed ?? item.status) && (item.status === "running" || !expired)}
+    {!locked && !pending && <LearningStatusObserver key={item.request_id} request={item.request_id} enabled={["authorized", "running"].includes(observed ?? item.status) && (item.status === "running" || !expired)}
       begin={() => { hideSharing?.(); setHidden(true); setSharing(false); setUsage(false); }} observed={setObserved}
       refresh={() => load<ModelAuthorization>(`${root}/${item.request_id}`, receive)} expire={load.expireSession} />}
     {hidden && <p>分享材料和建议已收起；核对模型授权状态后再查看。</p>}
