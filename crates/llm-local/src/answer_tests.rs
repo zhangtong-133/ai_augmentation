@@ -21,6 +21,16 @@ fn previews_bind_wire_target_model_and_local_byte_budget() {
     let target = LocalTarget::new("http://127.0.0.1:11435", "fixture-local").unwrap();
     let value = preview(&target, "question", &sources()).unwrap();
     assert_eq!(value.body()["stream"], true);
+    let schema = value.body()["messages"][0]["content"]
+        .as_str()
+        .unwrap()
+        .split("\nRequired JSON schema:\n")
+        .nth(1)
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(schema).unwrap(),
+        *prepare("question", &sources()).unwrap().schema()
+    );
     assert_eq!(value.body()["temperature"], 0.0);
     assert_eq!(value.body()["max_tokens"], 2048);
     assert_eq!(value.body()["n"], 1);

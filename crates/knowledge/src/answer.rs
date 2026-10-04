@@ -47,10 +47,16 @@ pub async fn answer(
         })
         .collect();
     let output = provider.answer(question, &sources).await?;
-    validate(output, hits)
+    validate_output(output, hits)
 }
 
-fn validate(output: ModelAnswer, hits: &[SearchHit]) -> Result<KnowledgeAnswer, LlmError> {
+/// Validate a completed model answer against authoritative source text.
+/// # Errors
+/// Rejects invalid output, fabricated or ambiguous citations. No partial result is returned.
+pub fn validate_output(
+    output: ModelAnswer,
+    hits: &[SearchHit],
+) -> Result<KnowledgeAnswer, LlmError> {
     let invalid = || LlmError::InvalidResponse("invalid answer evidence".into());
     if output.insufficient_evidence {
         if !output.answer.is_empty() || !output.citations.is_empty() {

@@ -138,6 +138,7 @@ jobs:
       - run: npm test
       - run: node ../../scripts/test-local-model-budget.mjs
       - run: python3 ../../scripts/test-local-model-install.py
+      - run: node ../../scripts/test-local-answer-benchmark.mjs
       - run: node ../../scripts/test-local-value-benchmark.mjs
       - run: node ../../scripts/test-local-value-compare.mjs
       - run: node ../../scripts/test-local-value-gate.mjs

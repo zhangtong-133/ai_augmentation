@@ -224,3 +224,15 @@ local-value-order-test: ## 验收换序差异、弃权、失败与当前语料�
 .PHONY: local-value-public-test
 local-value-public-test: ## 验收公开文档改写双套件门槛及逐主题偏差统计
 	node scripts/test-local-value-public.mjs
+
+.PHONY: local-answer-benchmark local-answer-benchmark-preview local-answer-quality-test
+local-answer-benchmark: ## 显式运行固定合成本地问答评估；先启动受至少 6 GiB 显存保护的模型
+	node scripts/local-answer-benchmark.mjs run $(if $(MODEL),--model "$(MODEL)",)
+
+local-answer-benchmark-preview: ## 离线预览问答合成材料、实际请求和预先冻结的条件（CASE）
+	node scripts/local-answer-benchmark.mjs preview "$(CASE)" $(if $(MODEL),--model "$(MODEL)",)
+
+local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边界，不启动 GPU
+	cargo test -p personal-ai-knowledge answer_quality
+	cargo test -p api-server --bin local-answer-benchmark
+	node scripts/test-local-answer-benchmark.mjs

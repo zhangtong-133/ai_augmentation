@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod answer;
+pub mod answer_quality;
 pub mod index;
 pub mod model_retrieval;
 pub mod retrieval;

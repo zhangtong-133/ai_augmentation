@@ -1,15 +1,15 @@
 //! Local-only answer adapter and exact wire preview, without private-data execution wiring.
 use crate::{LocalChatClient, wire_payload};
 use personal_ai_llm::{
-    AnswerProvider, AnswerSource, BoxFuture, LlmResult, ModelAnswer,
-    answer::prepare,
+    AnswerProvider, AnswerSource, BoxFuture, ChatRequest, LlmResult, ModelAnswer,
+    answer::{AnswerPrompt, prepare},
     local::{LocalInference, LocalTarget},
     stream::IgnoreTextDeltas,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "local-knowledge-answer-v1";
+pub const PROFILE: &str = "local-knowledge-answer-v2";
 #[derive(Clone, Debug, Serialize)]
 pub struct LocalAnswerPreview {
     profile: &'static str,
@@ -30,6 +30,17 @@ impl LocalAnswerPreview {
         Ok(format!("{:x}", Sha256::digest(bytes)))
     }
 }
+// json_object constrains JSON syntax only; include the full shape in the system message.
+fn request(prompt: &AnswerPrompt) -> ChatRequest {
+    let mut request = prompt.request();
+    request.messages[0]
+        .content
+        .push_str("\nRequired JSON schema:\n");
+    request.messages[0]
+        .content
+        .push_str(&prompt.schema().to_string());
+    request
+}
 /// Offline preview; applies the same byte limits as the actual local transport.
 /// # Errors
 /// Rejects invalid/oversized messages before any network access.
@@ -43,7 +54,7 @@ pub fn preview(
         profile: PROFILE,
         endpoint: format!("{}/v1/chat/completions", target.endpoint()),
         protocol_sha256: prompt.fingerprint()?,
-        body: wire_payload(target, &prompt.request())?,
+        body: wire_payload(target, &request(&prompt))?,
     })
 }
 pub struct LocalAnswers {
@@ -70,7 +81,7 @@ impl AnswerProvider for LocalAnswers {
         Box::pin(async move {
             let output = self
                 .client
-                .infer(&self.target, &prompt?.request(), &IgnoreTextDeltas)
+                .infer(&self.target, &request(&prompt?), &IgnoreTextDeltas)
                 .await?;
             personal_ai_llm::answer::decode(&output)
         })

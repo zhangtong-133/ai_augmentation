@@ -136,12 +136,28 @@ async function benchmarkCase() {
   try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("固定基准执行未确认，不自动重试"); }
   finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
 }
+async function answerBenchmarkCase() {
+  const args = process.argv.slice(3);
+  if (!/^[a-z0-9_]{1,40}$/.test(args[0] ?? "")) throw new Error("invalid answer case");
+  const selected = modelCommandOptions(args.slice(1));
+  const state = await owner(); if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
+  const choice = await activeChoice(state);
+  if (choice.key !== selected) throw new Error("运行中的模型与问答候选不一致");
+  await readyToSend(choice);
+  const child = spawn(join(root, "target/debug/local-answer-benchmark"), ["case", args[0], endpoint, choice.config.model_alias, "--use-local-benchmark"],
+    { cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: "inherit" });
+  const halt = () => child.kill("SIGTERM"); process.on("SIGINT", halt); process.on("SIGTERM", halt);
+  try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("问答基准执行未确认，不自动重试"); }
+  finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
+}
+
 try {
   if (command === "start") await start(); else if (command === "status") await status(); else if (command === "stop") await stop();
   else if (command === "check") { const choice = await modelChoice(modelCommandOptions(process.argv.slice(3))); const gpu = await readGpu(); if (!canLoad(gpu, choice.config.load_budget_mib)) throw new Error("模型加载预算不足"); console.log("显存预算核对通过"); }
   else if (command === "review") await runReview();
   else if (command === "value") await runReview(false, true);
   else if (command === "probe") await runReview(true);
+  else if (command === "answer-benchmark-case") await answerBenchmarkCase();
   else if (command === "benchmark-case") await benchmarkCase();
   else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review|value OWNER REQUEST|benchmark-case CASE");
 } catch (error) { console.error(error.message); process.exitCode = 1; }

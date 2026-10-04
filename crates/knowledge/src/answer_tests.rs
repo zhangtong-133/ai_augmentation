@@ -24,7 +24,7 @@ fn output(id: usize, quote: &str) -> ModelAnswer {
 #[test]
 fn citations_use_server_metadata_and_unicode_scalar_ranges() {
     let text = "前🙂言：证据 e\u{301}\n结尾";
-    let result = validate(output(2, "证据 e\u{301}\n"), &[hit("other"), hit(text)]).unwrap();
+    let result = validate_output(output(2, "证据 e\u{301}\n"), &[hit("other"), hit(text)]).unwrap();
     let citation = &result.citations[0];
     assert_eq!(citation.id, 2);
     assert_eq!(citation.hit.document_id, "server-document");
@@ -54,30 +54,30 @@ fn invented_normalized_empty_oversized_and_ambiguous_quotes_are_rejected() {
         ("🙂🙂🙂", "🙂🙂"),
     ] {
         assert!(
-            validate(output(1, quote), &[hit(text)]).is_err(),
+            validate_output(output(1, quote), &[hit(text)]).is_err(),
             "{text:?} / {quote:?}"
         );
     }
     let boundary = "🙂".repeat(400);
-    assert!(validate(output(1, &boundary), &[hit(&boundary)]).is_ok());
+    assert!(validate_output(output(1, &boundary), &[hit(&boundary)]).is_ok());
     let too_long = "🙂".repeat(401);
-    assert!(validate(output(1, &too_long), &[hit(&too_long)]).is_err());
+    assert!(validate_output(output(1, &too_long), &[hit(&too_long)]).is_err());
 }
 #[test]
 fn every_citation_must_be_valid_and_duplicate_or_unknown_ids_are_rejected() {
     for id in [0, 2, usize::MAX] {
-        assert!(validate(output(id, "evidence"), &[hit("evidence")]).is_err());
+        assert!(validate_output(output(id, "evidence"), &[hit("evidence")]).is_err());
     }
     let mut answer = output(1, "evidence");
     answer.citations.push(answer.citations[0].clone());
-    assert!(validate(answer, &[hit("evidence"), hit("other")]).is_err());
+    assert!(validate_output(answer, &[hit("evidence"), hit("other")]).is_err());
     let mut answer = output(1, "evidence");
     answer.citations.push(AnswerCitation {
         id: 2,
         quote: "invented".into(),
     });
-    assert!(validate(answer, &[hit("evidence"), hit("other")]).is_err());
+    assert!(validate_output(answer, &[hit("evidence"), hit("other")]).is_err());
     let mut answer = output(1, "evidence");
     answer.insufficient_evidence = true;
-    assert!(validate(answer, &[hit("evidence")]).is_err());
+    assert!(validate_output(answer, &[hit("evidence")]).is_err());
 }

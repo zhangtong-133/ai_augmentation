@@ -330,6 +330,10 @@ try {
   assert.ok(qualityManifest.every(c => c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));
   assert.match(await compose(["exec", "-T", "api-server", "local-value-benchmark", "--help"], true), /--use-local-benchmark/);
   console.log("PASS: packaged offline RSS quality corpus; no model call");
+  const answerManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11435", "qwen3:4b-q4_K_M"], true));
+  assert.equal(answerManifest.length, 7);
+  assert.ok(answerManifest.every(item => item.case.synthetic_only && item.request_sha256.length === 64));
+  console.log("PASS: packaged offline local answer corpus and exact request preview; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

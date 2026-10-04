@@ -1684,6 +1684,8 @@ dependencies = [
  "personal-ai-storage",
  "pulldown-cmark",
  "serde",
+ "serde_json",
+ "sha2",
  "uuid",
 ]
 
