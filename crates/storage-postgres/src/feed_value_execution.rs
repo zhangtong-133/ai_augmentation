@@ -20,38 +20,7 @@ impl FeedValueExecutionStore for PostgresStore {
         owner: &UserId,
         request: &str,
     ) -> BoxFuture<'_, StorageResult<Option<ValueClaim>>> {
-        let ids = id(owner.as_str()).and_then(|o| Ok((o, id(request)?)));
-        Box::pin(async move {
-            let (owner, request) = ids?;
-            let mut tx = locked(self, owner).await?;
-            let time = now(&mut tx).await?;
-            feed_value::expire(&mut tx, owner, time).await?;
-            let saved = feed_value::read(&mut tx, owner, request).await?;
-            if saved.status != "authorized"
-                || !matches!(saved.pricing, ValuePricing::Subscription { .. })
-            {
-                tx.commit().await.map_err(map_error)?;
-                return Ok(None);
-            }
-            subscription_connections::check_quote(&mut tx, owner, &saved.pricing, time).await?;
-            if saved.snapshot.as_ref()
-                != Some(&feed_value::snapshot(&mut tx, owner, saved.created_at_unix_ms).await?)
-            {
-                return Err(conflict());
-            }
-            let token = Uuid::new_v4();
-            let deadline = (time + 90_000).min(saved.expires_at_unix_ms);
-            sqlx::query("UPDATE feed_value_reviews SET status='running',dispatch_token=$3,dispatch_deadline_ms=$4 WHERE user_id=$1 AND id=$2")
-                .bind(owner).bind(request).bind(token).bind(deadline).execute(&mut *tx).await.map_err(map_error)?;
-            let review = feed_value::read(&mut tx, owner, request).await?;
-            tx.commit().await.map_err(map_error)?;
-            Ok(Some(ValueClaim {
-                owner: UserId::new(owner.to_string()),
-                request_id: request.to_string(),
-                token: token.to_string(),
-                review,
-            }))
-        })
+        claim_value(self, owner, request, false)
     }
 
     fn begin_subscription_value(
@@ -127,54 +96,109 @@ impl FeedValueExecutionStore for PostgresStore {
         claim: &ValueClaim,
         output: Option<Vec<u8>>,
     ) -> BoxFuture<'_, StorageResult<personal_ai_storage::feed_value::ValueReview>> {
-        let ids = id(claim.owner.as_str())
-            .and_then(|o| Ok((o, id(&claim.request_id)?, id(&claim.token)?)));
-        Box::pin(async move {
-            let (owner, request, token) = ids?;
-            let mut tx = locked(self, owner).await?;
-            let time = now(&mut tx).await?;
-            feed_value::expire(&mut tx, owner, time).await?;
-            let saved = feed_value::read(&mut tx, owner, request).await?;
-            let row = sqlx::query(
-                "SELECT dispatch_token,sent_ms FROM feed_value_reviews WHERE user_id=$1 AND id=$2",
-            )
-            .bind(owner)
-            .bind(request)
-            .fetch_one(&mut *tx)
-            .await
-            .map_err(map_error)?;
-            if row.get::<Option<Uuid>, _>("dispatch_token") != Some(token) {
-                return Err(conflict());
-            }
-            if saved.status != "running" {
-                tx.commit().await.map_err(map_error)?;
-                return Ok(saved);
-            }
-            subscription_connections::check_quote(&mut tx, owner, &saved.pricing, time).await?;
-            let scores = output
-                .filter(|_| row.get::<Option<i64>, _>("sent_ms").is_some())
-                .and_then(|bytes| {
-                    let snapshot = saved.snapshot.as_ref()?;
-                    let plan = plan_value_scoring(
-                        &UserId::new(owner.to_string()),
-                        &request.to_string(),
-                        snapshot.day_start_unix_ms,
-                        snapshot.as_of_unix_ms,
-                        &snapshot.keywords,
-                        &snapshot.candidates,
-                    )
-                    .ok()??;
-                    decode_value_scores(&plan, &bytes).ok()
-                });
-            let scores = scores
-                .map(serde_json::to_value)
-                .transpose()
-                .map_err(|_| conflict())?;
-            sqlx::query("UPDATE feed_value_reviews SET status=CASE WHEN $3::jsonb IS NULL THEN 'unknown' ELSE 'succeeded' END, scores=$3,snapshot=CASE WHEN $3::jsonb IS NULL THEN NULL ELSE snapshot END WHERE user_id=$1 AND id=$2")
-                .bind(owner).bind(request).bind(scores).execute(&mut *tx).await.map_err(map_error)?;
-            let saved = feed_value::read(&mut tx, owner, request).await?;
-            tx.commit().await.map_err(map_error)?;
-            Ok(saved)
-        })
+        finish_value(self, claim, output, false)
     }
+}
+fn is_mode(pricing: &ValuePricing, local: bool) -> bool {
+    matches!(
+        (pricing, local),
+        (ValuePricing::Subscription { .. }, false) | (ValuePricing::Local { .. }, true)
+    )
+}
+pub(super) fn claim_value<'a>(
+    store: &'a PostgresStore,
+    owner: &UserId,
+    request: &str,
+    local: bool,
+) -> BoxFuture<'a, StorageResult<Option<ValueClaim>>> {
+    let ids = id(owner.as_str()).and_then(|o| Ok((o, id(request)?)));
+    Box::pin(async move {
+        let (owner, request) = ids?;
+        let mut tx = locked(store, owner).await?;
+        let time = now(&mut tx).await?;
+        feed_value::expire(&mut tx, owner, time).await?;
+        let saved = feed_value::read(&mut tx, owner, request).await?;
+        if saved.status != "authorized" || !is_mode(&saved.pricing, local) {
+            tx.commit().await.map_err(map_error)?;
+            return Ok(None);
+        }
+        subscription_connections::check_quote(&mut tx, owner, &saved.pricing, time).await?;
+        if saved.snapshot.as_ref()
+            != Some(&feed_value::snapshot(&mut tx, owner, saved.created_at_unix_ms).await?)
+        {
+            return Err(conflict());
+        }
+        let token = Uuid::new_v4();
+        let deadline = (time + 90_000).min(saved.expires_at_unix_ms);
+        sqlx::query("UPDATE feed_value_reviews SET status='running',dispatch_token=$3,dispatch_deadline_ms=$4 WHERE user_id=$1 AND id=$2")
+                .bind(owner).bind(request).bind(token).bind(deadline).execute(&mut *tx).await.map_err(map_error)?;
+        let review = feed_value::read(&mut tx, owner, request).await?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(Some(ValueClaim {
+            owner: UserId::new(owner.to_string()),
+            request_id: request.to_string(),
+            token: token.to_string(),
+            review,
+        }))
+    })
+}
+
+pub(super) fn finish_value<'a>(
+    store: &'a PostgresStore,
+    claim: &ValueClaim,
+    output: Option<Vec<u8>>,
+    local: bool,
+) -> BoxFuture<'a, StorageResult<personal_ai_storage::feed_value::ValueReview>> {
+    let ids =
+        id(claim.owner.as_str()).and_then(|o| Ok((o, id(&claim.request_id)?, id(&claim.token)?)));
+    Box::pin(async move {
+        let (owner, request, token) = ids?;
+        let mut tx = locked(store, owner).await?;
+        let time = now(&mut tx).await?;
+        feed_value::expire(&mut tx, owner, time).await?;
+        let saved = feed_value::read(&mut tx, owner, request).await?;
+        if !is_mode(&saved.pricing, local) {
+            return Err(conflict());
+        }
+        let row = sqlx::query(
+            "SELECT dispatch_token,sent_ms FROM feed_value_reviews WHERE user_id=$1 AND id=$2",
+        )
+        .bind(owner)
+        .bind(request)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(map_error)?;
+        if row.get::<Option<Uuid>, _>("dispatch_token") != Some(token) {
+            return Err(conflict());
+        }
+        if saved.status != "running" {
+            tx.commit().await.map_err(map_error)?;
+            return Ok(saved);
+        }
+        subscription_connections::check_quote(&mut tx, owner, &saved.pricing, time).await?;
+        let scores = output
+            .filter(|_| row.get::<Option<i64>, _>("sent_ms").is_some())
+            .and_then(|bytes| {
+                let snapshot = saved.snapshot.as_ref()?;
+                let plan = plan_value_scoring(
+                    &UserId::new(owner.to_string()),
+                    &request.to_string(),
+                    snapshot.day_start_unix_ms,
+                    snapshot.as_of_unix_ms,
+                    &snapshot.keywords,
+                    &snapshot.candidates,
+                )
+                .ok()??;
+                decode_value_scores(&plan, &bytes).ok()
+            });
+        let scores = scores
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(|_| conflict())?;
+        sqlx::query("UPDATE feed_value_reviews SET status=CASE WHEN $3::jsonb IS NULL THEN 'unknown' ELSE 'succeeded' END, scores=$3,snapshot=CASE WHEN $3::jsonb IS NULL THEN NULL ELSE snapshot END WHERE user_id=$1 AND id=$2")
+                .bind(owner).bind(request).bind(scores).execute(&mut *tx).await.map_err(map_error)?;
+        let saved = feed_value::read(&mut tx, owner, request).await?;
+        tx.commit().await.map_err(map_error)?;
+        Ok(saved)
+    })
 }

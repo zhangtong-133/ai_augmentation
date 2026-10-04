@@ -189,6 +189,7 @@ async fn manage(db: &PostgresStore, directory: &str, args: &Arguments) -> Result
                     acknowledge_sharing: true,
                     acknowledge_cost: false,
                     acknowledge_subscription_usage: true,
+                    acknowledge_local_compute: false,
                 },
             )
             .await

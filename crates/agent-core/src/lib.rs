@@ -3,6 +3,7 @@
 pub mod budget;
 pub mod feed_value;
 pub mod feed_value_execution;
+pub mod feed_value_local;
 pub mod feeds;
 pub mod knowledge_plan;
 pub mod model_answer;

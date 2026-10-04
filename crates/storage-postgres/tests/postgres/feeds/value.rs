@@ -96,12 +96,13 @@ fn approval(saved: &ValueReview) -> ValueApproval {
         digest: saved.digest.clone(),
         currency: match &saved.pricing {
             ValuePricing::Api { budget, .. } => Some(budget.currency.clone()),
-            ValuePricing::Subscription { .. } => None,
+            ValuePricing::Subscription { .. } | ValuePricing::Local { .. } => None,
         },
         amount: saved.amount,
         acknowledge_sharing: true,
         acknowledge_cost: matches!(saved.pricing, ValuePricing::Api { .. }),
         acknowledge_subscription_usage: matches!(saved.pricing, ValuePricing::Subscription { .. }),
+        acknowledge_local_compute: false,
     }
 }
 async fn preview(f: &Fixture, p: Arc<Planner>) -> ValueReview {
@@ -498,3 +499,5 @@ async fn subscription_revocation_rolls_back_when_review_audit_fails() {
 
 #[path = "value/execution.rs"]
 mod execution;
+#[path = "value/local.rs"]
+mod local;

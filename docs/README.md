@@ -42,6 +42,8 @@
 
 ## 验收与架构
 
+- [本地 RSS 价值评分](design/rss-value-local-model.md)：独立本地计算同意、精确目标、单次派发和私有阅读；按三阶段交付。
+
 - [PostgreSQL 备份恢复](design/postgres-recovery.md)：同一快照归档、迁移/SHA-256 校验、空库事务恢复与执行隔离、应用登录/用户隔离/删除墓碑演练。
 - [部署数据库只读诊断](design/deployment-check.md)：显式 current/recovery 检查、迁移校验、旧执行状态和外部原文核对。
 

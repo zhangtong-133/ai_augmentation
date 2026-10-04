@@ -59,6 +59,21 @@ fn sharing_is_minimal_and_injection_remains_data() {
     assert_eq!(request.max_output_tokens, Some(MAX_OUTPUT_TOKENS));
     assert_eq!(p.brief().items[0].entry.link, entry(1).link);
 }
+
+#[test]
+fn local_scoring_keeps_exact_sharing_and_rejects_oversized_material_before_authorization() {
+    let p = plan(&[entry(1)]).unwrap().unwrap();
+    let local = crate::feed_value_local::local_request(&p).unwrap();
+    assert_eq!(local.messages, p.request().messages);
+    assert_eq!(local.max_output_tokens, Some(2048));
+    let mut large = entry(1);
+    large.summary = "x".repeat(6000);
+    let p = plan(&[large]).unwrap().unwrap();
+    assert_eq!(
+        crate::feed_value_local::local_request(&p).err(),
+        Some(ValueError::TooLarge)
+    );
+}
 #[test]
 fn exact_input_and_snapshot_changes_bind_the_digest() {
     let entries = vec![entry(1), entry(2)];

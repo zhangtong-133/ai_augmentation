@@ -106,6 +106,14 @@ fn output(saved: &ValueReview) -> Value {
             json!({"kind":"subscription","provider":provider,"model":model,"configuration_version":configuration_version,"connection_id":connection_id,"valid_until_unix_ms":valid_until_unix_ms.to_string()})
         }
         ValuePricing::Api { .. } => json!({"kind":"api","available":false}),
+        ValuePricing::Local {
+            endpoint,
+            model,
+            valid_until_unix_ms,
+            ..
+        } => {
+            json!({"kind":"local","endpoint":endpoint,"model":model,"valid_until_unix_ms":valid_until_unix_ms.to_string()})
+        }
     };
     json!({"id":saved.request_id,"status":saved.status,"digest":saved.digest,"pricing":pricing,"created_at_unix_ms":saved.created_at_unix_ms.to_string(),"expires_at_unix_ms":saved.expires_at_unix_ms.to_string(),"approved_at_unix_ms":saved.approved_at_unix_ms.map(|v|v.to_string()),"execution_mode":"local_only"})
 }
@@ -313,6 +321,7 @@ async fn approve(
                 acknowledge_sharing: input.acknowledge_sharing,
                 acknowledge_cost: false,
                 acknowledge_subscription_usage: input.acknowledge_subscription_usage,
+                acknowledge_local_compute: false,
             },
         )
         .await

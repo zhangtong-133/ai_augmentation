@@ -17,7 +17,7 @@ import { checkDeployment } from "./deployment-check.mjs";
 
 const execute = promisify(execFile);
 const flags = process.argv.slice(2);
-if (flags.some(value => !["--local-model", "--objects", "--cached-images"].includes(value)) || new Set(flags).size !== flags.length || (flags.includes("--cached-images") && !flags.includes("--objects"))) throw new Error("仅支持显式 --local-model / --objects 及配套 --cached-images 验收开关");
+if (flags.some(value => !["--local-model", "--objects", "--cached-images", "--storage-tests"].includes(value)) || new Set(flags).size !== flags.length || (flags.includes("--cached-images") && !flags.includes("--objects"))) throw new Error("仅支持显式 --local-model / --objects / --storage-tests 及配套 --cached-images 验收开关");
 const native = process.argv.includes("--local-model");
 const withObjects = process.argv.includes("--objects");
 const directory = await mkdtemp(join(tmpdir(), "personal-ai-recovery-"));
@@ -81,6 +81,11 @@ try {
   await pgQuery(source, await readFile(join(root, "tests/recovery/active.sql"), "utf8"));
   const address = await docker(["port", container, "5432/tcp"]); assert.match(address, /^127\.0\.0\.1:\d+$/);
   const databaseUrl = name => `postgres://recovery:${process.env.RECOVERY_TEST_PASSWORD}@${address}/${name}`;
+  if (flags.includes("--storage-tests")) {
+    await pgQuery(source,"CREATE DATABASE recovery_storage TEMPLATE template0;");
+    const result=await execute("cargo",["test","--locked","-p","personal-ai-storage-postgres","--test","postgres","--","--ignored"],{cwd:root,timeout:600000,maxBuffer:4*1048576,env:{PATH:process.env.PATH,HOME:process.env.HOME,RUSTUP_TOOLCHAIN:process.env.RUSTUP_TOOLCHAIN,TEST_DATABASE_URL:databaseUrl("recovery_storage")}}).catch(error=>{ const failed=(error.stdout??"").split("\n").filter(line=>/^test .* FAILED$/.test(line)); throw new Error("隔离仓储验收失败："+failed.join("; ")); });
+    console.log(result.stdout.split("\n").find(line=>line.startsWith("test result:"))??"PASS: disposable storage tests");
+  }
   const adminToken = randomBytes(32).toString("hex");
   const sourceApp = await startApplication(databaseUrl(source.database), adminToken, sourceObjects); applications.push(sourceApp);
   const fixture = await seedApplication(sourceApp);

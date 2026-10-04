@@ -7,6 +7,7 @@ mod documents;
 mod feed_operations;
 mod feed_value;
 mod feed_value_execution;
+mod feed_value_local;
 mod feeds;
 mod index_jobs;
 mod learning;

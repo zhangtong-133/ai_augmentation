@@ -30,6 +30,13 @@ pub enum ValuePricing {
         connection_id: String,
         valid_until_unix_ms: i64,
     },
+    /// 精确本机计算同意，不包含订阅身份或 API 金额。
+    Local {
+        endpoint: String,
+        model: String,
+        profile: String,
+        valid_until_unix_ms: i64,
+    },
 }
 /// API 模式须重建请求并离线计数；订阅模式须绑定已验证连接。禁止网络 I/O 或客户端报价。
 pub trait ValueQuotePlanner: Send + Sync {
@@ -57,6 +64,7 @@ pub struct ValueReview {
     pub scores: Option<Vec<ValueScore>>,
 }
 #[derive(Clone)]
+#[allow(clippy::struct_excessive_bools)] // 保留各项独立同意，仓储拒绝遗漏或混合授权。
 pub struct ValueApproval {
     pub digest: String,
     pub currency: Option<String>,
@@ -64,6 +72,7 @@ pub struct ValueApproval {
     pub acknowledge_sharing: bool,
     pub acknowledge_cost: bool,
     pub acknowledge_subscription_usage: bool,
+    pub acknowledge_local_compute: bool,
 }
 #[derive(Clone, PartialEq, Eq, Serialize)]
 pub struct ValueAudit {
@@ -138,6 +147,24 @@ pub trait FeedValueExecutionStore: Send + Sync {
     ) -> BoxFuture<'_, StorageResult<bool>>;
     /// None 表示未知/失败；有输出也须重新校验完整协议，不保存原始错误正文。
     fn finish_subscription_value(
+        &self,
+        claim: &ValueClaim,
+        output: Option<Vec<u8>>,
+    ) -> BoxFuture<'_, StorageResult<ValueReview>>;
+}
+
+pub trait LocalValueExecutionStore: Send + Sync {
+    fn claim_local_value(
+        &self,
+        owner: &UserId,
+        request: &str,
+    ) -> BoxFuture<'_, StorageResult<Option<ValueClaim>>>;
+    fn begin_local_value(
+        &self,
+        claim: &ValueClaim,
+        target: &personal_ai_llm::local::LocalTarget,
+    ) -> BoxFuture<'_, StorageResult<bool>>;
+    fn finish_local_value(
         &self,
         claim: &ValueClaim,
         output: Option<Vec<u8>>,

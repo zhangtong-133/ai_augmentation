@@ -76,6 +76,20 @@ fn quote(pricing: &ValuePricing, time: i64) -> StorageResult<(Option<i64>, i64)>
             }
             Ok((None, *valid_until_unix_ms))
         }
+        ValuePricing::Local {
+            endpoint,
+            model,
+            profile,
+            valid_until_unix_ms,
+        } => {
+            personal_ai_llm::local::LocalTarget::new(endpoint, model).map_err(|_| invalid())?;
+            if profile != personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE
+                || *valid_until_unix_ms <= time
+            {
+                return Err(invalid());
+            }
+            Ok((None, *valid_until_unix_ms))
+        }
     }
 }
 fn digest(
@@ -127,6 +141,16 @@ pub(super) fn decode(row: &PgRow) -> StorageResult<ValueReview> {
             .map_err(|_| invalid())?,
     };
     let (amount, valid_until) = quote(&saved.pricing, saved.created_at_unix_ms)?;
+    if matches!(saved.pricing, ValuePricing::Local { .. })
+        && let Some(snapshot) = &saved.snapshot
+    {
+        personal_ai_agent_core::feed_value_local::validate_local_snapshot(
+            &UserId::new(row.get::<Uuid, _>("user_id").to_string()),
+            &saved.request_id,
+            snapshot,
+        )
+        .map_err(|_| invalid())?;
+    }
     if amount != saved.amount || saved.expires_at_unix_ms > valid_until {
         return Err(conflict());
     }
@@ -226,6 +250,14 @@ impl FeedValueStore for PostgresStore {
                 &input,
             )?;
             let (amount, valid_until) = quote(&pricing, time)?;
+            if matches!(pricing, ValuePricing::Local { .. }) {
+                personal_ai_agent_core::feed_value_local::validate_local_snapshot(
+                    &UserId::new(owner.to_string()),
+                    &request.to_string(),
+                    &input,
+                )
+                .map_err(|_| invalid())?;
+            }
             crate::subscription_connections::check_quote(&mut tx, owner, &pricing, time).await?;
             let expires = time
                 .checked_add(300_000)
@@ -258,11 +290,19 @@ impl FeedValueStore for PostgresStore {
                     approval.currency.as_deref() == Some(budget.currency.as_str())
                         && approval.acknowledge_cost
                         && !approval.acknowledge_subscription_usage
+                        && !approval.acknowledge_local_compute
                 }
                 ValuePricing::Subscription { .. } => {
                     approval.currency.is_none()
                         && !approval.acknowledge_cost
                         && approval.acknowledge_subscription_usage
+                        && !approval.acknowledge_local_compute
+                }
+                ValuePricing::Local { .. } => {
+                    approval.currency.is_none()
+                        && !approval.acknowledge_cost
+                        && !approval.acknowledge_subscription_usage
+                        && approval.acknowledge_local_compute
                 }
             };
             if !mode_ok
