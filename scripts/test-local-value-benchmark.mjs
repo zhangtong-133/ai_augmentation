@@ -59,3 +59,9 @@ test("suite/profile options are explicit, bounded and reject duplicates", async 
     assert.throws(() => benchmarkOptions(["run", ...flags]));
   }
 });
+test("v3 reports accept only the fixed classification score mapping", () => {
+  const m = { ...manifest, execution_profile: "local-rss-v3" }, raw = output(m);
+  assert.throws(() => verifyCase(raw, m, target));
+  raw.result.scores.rust = 80;
+  assert.equal(verifyCase(raw, m, target).scores.rust, 80);
+});

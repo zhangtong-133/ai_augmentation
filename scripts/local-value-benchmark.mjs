@@ -54,7 +54,7 @@ async function run() {
             { cwd: root, env, timeout: 90000, signal: abort.signal, maxBuffer: 65536 });
           return JSON.parse(result.stdout);
         } catch (error) {
-          const fixed = /^BENCH_FAILURE=(transport|output_json|output_schema|output_count|output_ids|output_score|output_reason|output_reason_category|output_strict)$/m.exec(error.stderr ?? "");
+          const fixed = /^BENCH_FAILURE=(transport|output_json|output_schema|output_count|output_ids|output_score|output_reason|output_reason_category|output_classification|output_strict)$/m.exec(error.stderr ?? "");
           throw Object.assign(new Error("benchmark unconfirmed"), { benchmarkFailure: fixed?.[1] });
         }
       });

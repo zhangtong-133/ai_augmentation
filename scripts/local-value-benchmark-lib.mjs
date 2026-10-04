@@ -11,6 +11,9 @@ export function verifyCase(raw, manifest, target) {
   assert.deepEqual(r.manifest, manifest); assert.equal(r.protocol_valid, true);
   assert.deepEqual(Object.keys(r.scores).sort(), [...manifest.items].sort());
   for (const score of Object.values(r.scores)) assert.ok(score === null || (Number.isInteger(score) && score >= 0 && score <= 100));
+  if (manifest.execution_profile === "local-rss-v3") {
+    for (const score of Object.values(r.scores)) assert.ok([null, 0, 40, 80].includes(score));
+  }
   assert.equal(r.checks.length, manifest.checks.length);
   r.checks.forEach((check, index) => {
     assert.deepEqual(Object.keys(check).sort(), ["index", "passed"]);
@@ -26,7 +29,7 @@ export async function runCases(manifests, target, send) {
   for (const manifest of manifests) {
     try { results.push(verifyCase(await send(manifest.id), manifest, target)); }
     catch (error) {
-      const known = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_reason_category", "output_strict"];
+      const known = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_reason_category", "output_classification", "output_strict"];
       return { complete: false, failure: known.includes(error.benchmarkFailure) ? error.benchmarkFailure : "case_execution_or_protocol_unconfirmed", failed_case: manifest.id, results, exit_code: 1 };
     }
   }

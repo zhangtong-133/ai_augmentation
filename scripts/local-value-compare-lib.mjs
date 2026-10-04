@@ -3,12 +3,12 @@ import { verifyCase } from "./local-value-benchmark-lib.mjs";
 const hash = v => typeof v === "string" && /^[0-9a-f]{64}$/.test(v);
 const key = v => typeof v === "string" && /^[a-z0-9_]{1,40}$/.test(v);
 const text = v => typeof v === "string" && /^[a-zA-Z0-9_.:/\[\]-]{1,128}$/.test(v);
-const failures = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_reason_category", "output_strict", "case_execution_or_protocol_unconfirmed"];
+const failures = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_reason_category", "output_classification", "output_strict", "case_execution_or_protocol_unconfirmed"];
 function keys(value, expected) { assert.deepEqual(Object.keys(value).sort(), expected.sort()); }
 function validateManifest(m) {
   keys(m, ["id", "corpus_sha256", "input_digest", "request_sha256", "execution_profile", "quality_version", "prompt_bytes", "checks", "items"]);
   assert.ok(key(m.id) && hash(m.corpus_sha256) && hash(m.input_digest) && hash(m.request_sha256));
-  assert.ok(["local-rss-v1", "local-rss-v2"].includes(m.execution_profile));
+  assert.ok(["local-rss-v1", "local-rss-v2", "local-rss-v3"].includes(m.execution_profile));
   assert.ok(["rss-quality-v1", "rss-challenge-v1"].includes(m.quality_version));
   assert.ok(Number.isSafeInteger(m.prompt_bytes) && m.prompt_bytes > 0 && m.prompt_bytes <= 5632);
   assert.ok(Array.isArray(m.items) && m.items.length > 0 && m.items.length <= 8 && m.items.every(key));

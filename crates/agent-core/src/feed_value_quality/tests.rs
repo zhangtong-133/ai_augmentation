@@ -183,3 +183,71 @@ fn independent_challenge_covers_semantics_injection_and_mixed_abstention() {
         );
     }
 }
+
+#[test]
+fn classification_preserves_all_data_and_conditions_but_binds_a_new_request() {
+    for suite in ["baseline", "challenge"] {
+        let old = cases_for_suite(suite, "local-rss-v2").unwrap();
+        let new = cases_for_suite(suite, "local-rss-v3").unwrap();
+        for (old, new) in old.iter().zip(new) {
+            let original: serde_json::Value =
+                serde_json::from_str(&old.plan.request().messages[1].content).unwrap();
+            let quoted: serde_json::Value =
+                serde_json::from_str(&new.request().unwrap().messages[1].content).unwrap();
+            assert_eq!(original, quoted);
+            let a = old.manifest().unwrap();
+            let b = new.manifest().unwrap();
+            assert_eq!(a.corpus_sha256, b.corpus_sha256);
+            assert_eq!(a.input_digest, b.input_digest);
+            assert_ne!(a.request_sha256, b.request_sha256);
+            assert!(b.prompt_bytes <= 5632);
+            let items: Vec<_> = new.labels.iter().map(|(id, label)| {
+                let empty = new.plan.brief().items[*id - 1].entry.summary.trim().is_empty();
+                let high = new.checks.iter().any(|c| matches!(c, Check::Minimum {item,..} if item == label));
+                json!({"id":id,"category":if empty {"empty"} else if high {"high"} else {"unrelated"}})
+            }).collect();
+            assert!(
+                new.evaluate(&serde_json::to_vec(&json!({"items":items})).unwrap())
+                    .unwrap()
+                    .quality_pass
+            );
+        }
+    }
+}
+#[test]
+fn classification_rejects_forged_scores_missing_duplicate_unknown_fields_and_ids() {
+    let case = cases_for_profile("local-rss-v3").unwrap().remove(0);
+    let valid = r#"{"items":[{"id":1,"category":"high"},{"id":2,"category":"partial"},{"id":3,"category":"insufficient"}]}"#;
+    let result = case.evaluate(valid.as_bytes()).unwrap();
+    assert_eq!(result.scores[&case.labels[&1]], Some(80));
+    assert_eq!(result.scores[&case.labels[&2]], Some(40));
+    assert_eq!(result.scores[&case.labels[&3]], None);
+    for invalid in [
+        valid.replace("\"high\"", "\"unknown\""),
+        valid.replace("\"high\"", "null"),
+        valid.replace("\"high\"", "\"empty\""),
+        valid.replace("\"id\":1", "\"id\":0"),
+        valid.replace("\"id\":2", "\"id\":1"),
+        valid.replace("\"id\":1", "\"id\":1,\"id\":1"),
+        valid.replace(
+            "\"category\":\"high\"",
+            "\"category\":\"high\",\"reason\":\"canary\"",
+        ),
+        valid.replace(
+            "\"category\":\"high\"",
+            "\"category\":\"high\",\"score\":100",
+        ),
+        "{\"items\":[]}".into(),
+        " ".repeat(32769),
+    ] {
+        assert!(case.evaluate(invalid.as_bytes()).is_err());
+    }
+    let empty = cases_for_profile("local-rss-v3").unwrap().remove(2);
+    assert!(
+        empty
+            .evaluate(
+                br#"{"items":[{"id":1,"category":"insufficient"},{"id":2,"category":"empty"}]}"#
+            )
+            .is_err()
+    );
+}

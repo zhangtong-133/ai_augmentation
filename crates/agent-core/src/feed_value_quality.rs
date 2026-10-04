@@ -164,6 +164,7 @@ pub fn cases_for_suite(suite: &str, profile: &str) -> Result<Vec<QualityCase>, V
     let profile = match profile {
         "local-rss-v1" => "local-rss-v1",
         "local-rss-v2" => "local-rss-v2",
+        "local-rss-v3" => "local-rss-v3",
         _ => return Err(ValueError::InvalidSnapshot),
     };
     let mut all = parse_version(input, version)?;
