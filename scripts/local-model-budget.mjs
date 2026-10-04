@@ -15,10 +15,14 @@ export function parseGpu(csv) {
   if (!Number.isSafeInteger(total) || !Number.isSafeInteger(free) || free < 0 || total <= 0 || free > total) throw new Error("无法核实 GPU 显存");
   return { uuid: parts[0], name: parts[1], totalMiB: total, freeMiB: free };
 }
-export function canLoad(gpu) { return gpu.freeMiB >= reserveMiB + headroomMiB + loadBudgetMiB; }
+export function canLoad(gpu, budget = loadBudgetMiB) {
+  if (![4096, 6144].includes(budget)) return false;
+  return gpu.freeMiB >= reserveMiB + headroomMiB + budget;
+}
 export function canContinue(gpu) { return gpu.freeMiB >= reserveMiB + headroomMiB; }
-export function canSend(gpu, sleeping) {
-  return sleeping ? canLoad(gpu) : gpu.freeMiB >= reserveMiB + headroomMiB + generationHeadroomMiB;
+export function canSend(gpu, sleeping, budget = loadBudgetMiB) {
+  if (![4096, 6144].includes(budget)) return false;
+  return sleeping ? canLoad(gpu, budget) : gpu.freeMiB >= reserveMiB + headroomMiB + generationHeadroomMiB;
 }
 export async function watchBudget({ query, gpuUuid, stopping, wait, violate }) {
   while (!stopping()) {

@@ -330,6 +330,11 @@ try {
   assert.ok(qualityManifest.every(c => c.execution_profile === "local-rss-v2" && c.prompt_bytes <= 5632));
   assert.match(await compose(["exec", "-T", "api-server", "local-value-benchmark", "--help"], true), /--use-local-benchmark/);
   console.log("PASS: packaged offline RSS quality corpus; no model call");
+  const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
+  assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
+  assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v2" && c.prompt_bytes <= 5632));
+  assert.notEqual(challengeManifest[0].corpus_sha256, qualityManifest[0].corpus_sha256);
+  console.log("PASS: packaged independent RSS challenge suite; no model call");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));
   assert.equal(mcpAudit.consistent, true);
   assert.equal(mcpAudit.counts.total, 0);

@@ -1,4 +1,5 @@
 """Install pinned official llama.cpp and Qwen artifacts inside this project only."""
+import argparse
 import hashlib
 import json
 import os
@@ -15,20 +16,32 @@ CONFIG = json.loads((ROOT / "infra/local-model-runtime.json").read_text())
 
 def download(filename, url, expected):
   archive = DIRECTORY / filename
+  partial = None
   if not archive.exists():
     partial = archive.with_suffix(archive.suffix + ".part")
     subprocess.run(["curl", "-fL", "--retry", "2", "--connect-timeout", "15", "--max-time", "600", "-o", str(partial), url], check=True)
-    partial.rename(archive)
   digest = hashlib.sha256()
-  with archive.open("rb") as source:
+  with (partial or archive).open("rb") as source:
     for chunk in iter(lambda: source.read(1024 * 1024), b""):
       digest.update(chunk)
   if digest.hexdigest() != expected:
     raise RuntimeError(f"SHA-256 不匹配，拒绝使用：{filename}")
+  if partial is not None:
+    partial.rename(archive)
   return archive
 
 
 def main():
+  parser = argparse.ArgumentParser(description=__doc__)
+  parser.add_argument("--model", choices=["qwen3-4b", "qwen3-8b"], default="qwen3-4b")
+  args = parser.parse_args()
+  if args.model != "qwen3-4b":
+    # Candidate install never replaces the pinned engine, launcher or default model.
+    model = json.loads((ROOT / "infra/local-model-candidates.json").read_text())[args.model]["model"]
+    DIRECTORY.mkdir(exist_ok=True)
+    download(model["filename"], f'https://huggingface.co/{model["repo"]}/resolve/{model["revision"]}/{model["filename"]}', model["sha256"])
+    print("候选模型校验完成；未启动模型、未更改默认运行配置。")
+    return
   if sys.platform != "linux" or os.uname().machine != "x86_64":
     raise RuntimeError("此入口仅支持 Linux/WSL2 x86_64")
   DIRECTORY.mkdir(exist_ok=True)

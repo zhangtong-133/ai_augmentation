@@ -52,9 +52,10 @@ test("each report is private, fresh, bounded and cannot replace a previous resul
 test("suite/profile options are explicit, bounded and reject duplicates", async () => {
   const { benchmarkOptions } = await import("./local-benchmark-options.mjs");
   assert.equal(benchmarkOptions(["run"]).suite, "baseline");
+  assert.equal(benchmarkOptions(["run", "--model", "qwen3-8b", "--suite", "challenge"]).model, "qwen3-8b");
   assert.equal(benchmarkOptions(["run", "--suite", "challenge", "--profile", "local-rss-v1"]).profile, "local-rss-v1");
   assert.equal(benchmarkOptions(["run", "--profile", "local-rss-v2", "--suite", "challenge"]).suite, "challenge");
-  for (const flags of [["--suite", "private.json"], ["--profile", "unknown"], ["--suite", "baseline", "--suite", "challenge"]]) {
+  for (const flags of [["--model", "unknown"], ["--model", "qwen3-8b", "--model", "qwen3-4b"], ["--suite", "private.json"], ["--profile", "unknown"], ["--suite", "baseline", "--suite", "challenge"]]) {
     assert.throws(() => benchmarkOptions(["run", ...flags]));
   }
 });

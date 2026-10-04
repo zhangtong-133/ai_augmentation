@@ -126,11 +126,11 @@ learning-acceptance: ## 在隔离环境中验收学习数据库、运维、HTTP 
 	$(MAKE) browser-test BROWSER_SPEC=learning.spec.mjs
 
 .PHONY: local-model-install local-model-start local-model-stop local-model-status local-model-probe local-model-test local-review
-local-model-install: ## 在项目私有目录安装固定官方 llama.cpp/Qwen 模型
-	python3 scripts/install-local-model.py
+local-model-install: ## 在项目私有目录安装官方运行时/默认模型；MODEL=qwen3-8b 仅装候选
+	python3 scripts/install-local-model.py $(if $(MODEL),--model "$(MODEL)",)
 
-local-model-start: ## 前台启动单模型服务并监督至少 6 GiB 游戏显存
-	node scripts/local-model.mjs start
+local-model-start: ## 前台启动单模型服务（可选 MODEL=qwen3-8b），监督至少 6 GiB 游戏显存
+	node scripts/local-model.mjs start $(if $(MODEL),--model "$(MODEL)",)
 
 local-model-stop: ## 停止本项目模型及其 GPU 资源，不停止其他程序
 	node scripts/local-model.mjs stop
@@ -143,6 +143,7 @@ local-model-probe: ## 用固定测试材料验收真实模型协议，不读取�
 
 local-model-test: ## 验收显存预算、监控故障与停止边界
 	node scripts/test-local-model-budget.mjs
+	python3 scripts/test-local-model-install.py
 
 local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST）
 	node scripts/local-model.mjs review "$(OWNER)" "$(REQUEST)"
@@ -154,10 +155,10 @@ local-value: ## 显式执行已批准的本地 RSS 评分（OWNER/REQUEST），�
 
 .PHONY: local-value-benchmark local-value-benchmark-preview local-value-quality-test
 local-value-benchmark: ## 显式运行合成 RSS 质量基准（SUITE=baseline/challenge）；先启动受显存保护的项目模型
-	node scripts/local-value-benchmark.mjs run $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",)
+	node scripts/local-value-benchmark.mjs run $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(MODEL),--model "$(MODEL)",)
 
 local-value-benchmark-preview: ## 离线预览固定基准的精确分享提示及条件（CASE）
-	node scripts/local-value-benchmark.mjs preview "$(CASE)" $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",)
+	node scripts/local-value-benchmark.mjs preview "$(CASE)" $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(MODEL),--model "$(MODEL)",)
 
 local-value-quality-test: ## 验收合成质量判定、报告绑定与协议故障；不启动 GPU 或调用模型
 	cargo test -p personal-ai-agent-core feed_value_quality

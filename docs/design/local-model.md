@@ -81,3 +81,5 @@ cargo run --locked -p api-server --bin local-review -- show 用户_UUID 已批�
 远程 CI 核对发现前两轮索引浏览器回归分别通过 201/200 项后触发 1500 秒整套超时，日志没有用例断言失败；Rust、Web、对象存储和 core 浏览器任务均通过。本批将 Playwright 整套时限改为 35 分钟、外层浏览器命令为 40 分钟、smoke/index CI 任务为 60 分钟，为完整回归与清理留空间；单用例 60 秒、零重试保持。配置语法已检查，新的完整 CI 耗时及结果由本批推送后记录。
 
 参考：[llama.cpp 官方 server](https://github.com/ggml-org/llama.cpp/tree/master/tools/server)、[Qwen 官方 GGUF](https://huggingface.co/Qwen/Qwen3-4B-GGUF)、[vLLM 资源配置](https://docs.vllm.ai/en/latest/configuration/conserving_memory/)。真实调用和质量验收独立记录，夹具不替代真实能力评估。
+
+后续增加[独立候选评估入口](rss-quality-candidates.md)：`MODEL=qwen3-8b` 显式安装/启动官方 8B Q4_K_M，仅用于固定合成 RSS 基准；默认业务 4B 保留。候选上下文 4096，冷启动/唤醒预算 12800 MiB，仍保留 6 GiB 游戏余量及 512 MiB 缓冲。停止当前模型后才能切换；候选模式不执行业务核验/评分，不能复用原业务授权。
