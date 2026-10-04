@@ -107,11 +107,24 @@ async function runReview(probe = false, scoring = false) {
   try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("本地执行未确认成功，请查询原请求，勿自动重发"); }
   finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
 }
+async function benchmarkCase() {
+  const args = process.argv.slice(3);
+  if (args.length !== 1 || !/^[a-z0-9_]{1,40}$/.test(args[0])) throw new Error("用法：benchmark-case 固定语料键");
+  const state = await owner(); if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
+  await readyToSend();
+  // Group runner builds this binary before any request; do not inherit DB/API credentials.
+  const child = spawn(join(root, "target/debug/local-value-benchmark"), ["case", args[0], endpoint, model, "--use-local-benchmark"],
+    { cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: "inherit" });
+  const halt = () => child.kill("SIGTERM"); process.on("SIGINT", halt); process.on("SIGTERM", halt);
+  try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("固定基准执行未确认，不自动重试"); }
+  finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
+}
 try {
   if (command === "start") await start(); else if (command === "status") await status(); else if (command === "stop") await stop();
   else if (command === "check") { const gpu = await readGpu(); if (!canLoad(gpu)) throw new Error("模型加载预算不足"); console.log("显存预算核对通过"); }
   else if (command === "review") await runReview();
   else if (command === "value") await runReview(false, true);
   else if (command === "probe") await runReview(true);
-  else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review|value OWNER REQUEST");
+  else if (command === "benchmark-case") await benchmarkCase();
+  else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review|value OWNER REQUEST|benchmark-case CASE");
 } catch (error) { console.error(error.message); process.exitCode = 1; }

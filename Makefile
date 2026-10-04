@@ -152,6 +152,18 @@ local-value: ## 显式执行已批准的本地 RSS 评分（OWNER/REQUEST），�
 	@test -n "$(OWNER)" -a -n "$(REQUEST)" || (echo '需要 OWNER=用户UUID REQUEST=原授权UUID'; exit 1)
 	node scripts/local-model.mjs value "$(OWNER)" "$(REQUEST)"
 
+.PHONY: local-value-benchmark local-value-benchmark-preview local-value-quality-test
+local-value-benchmark: ## 显式运行四组合成 RSS 质量基准；先启动受显存保护的项目模型
+	node scripts/local-value-benchmark.mjs run
+
+local-value-benchmark-preview: ## 离线预览固定基准的精确分享提示及条件（CASE）
+	node scripts/local-value-benchmark.mjs preview "$(CASE)"
+
+local-value-quality-test: ## 验收合成质量判定、报告绑定与协议故障；不启动 GPU 或调用模型
+	cargo test -p personal-ai-agent-core feed_value_quality
+	cargo test -p api-server --bin local-value-benchmark
+	node scripts/test-local-value-benchmark.mjs
+
 .PHONY: recovery-test
 recovery-test: ## 验收备份清单、迁移及文件完整性边界
 	node scripts/test-recovery.mjs
