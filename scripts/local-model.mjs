@@ -97,20 +97,21 @@ async function stop() {
   for (let i = 0; i < 40; i++) { await delay(250); if (!(await owner())) { console.log("已停止本项目模型并释放其 GPU 资源"); return; } }
   throw new Error("停止尚未确认，请核对原项目进程");
 }
-async function runReview(probe = false) {
+async function runReview(probe = false, scoring = false) {
   const args = process.argv.slice(3);
-  if (!probe && (args.length !== 2 || !args.every(v => /^[0-9a-f-]{36}$/i.test(v)))) throw new Error("用法：make local-review OWNER=用户_UUID REQUEST=已批准的请求_UUID");
+  if (!probe && (args.length !== 2 || !args.every(v => /^[0-9a-f-]{36}$/i.test(v)))) throw new Error(`用法：make ${scoring ? "local-value" : "local-review"} OWNER=用户_UUID REQUEST=已批准的请求_UUID`);
   const state = await owner(); if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
   await readyToSend();
-  const child = spawn("cargo", ["run", "--locked", "-p", "api-server", "--bin", "local-review", "--", ...(probe ? ["probe", endpoint, model, "--use-local"] : ["run", ...args, endpoint, model, "--use-local"])], { cwd: root, env: process.env, stdio: "inherit" });
+  const child = spawn("cargo", ["run", "--locked", "-p", "api-server", "--bin", scoring ? "local-value" : "local-review", "--", ...(probe ? ["probe", endpoint, model, "--use-local"] : ["run", ...args, endpoint, model, "--use-local"])], { cwd: root, env: process.env, stdio: "inherit" });
   const halt = () => child.kill("SIGTERM"); process.on("SIGINT", halt); process.on("SIGTERM", halt);
-  try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("本地核验未确认成功，请查询原请求，勿自动重发"); }
+  try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("本地执行未确认成功，请查询原请求，勿自动重发"); }
   finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
 }
 try {
   if (command === "start") await start(); else if (command === "status") await status(); else if (command === "stop") await stop();
   else if (command === "check") { const gpu = await readGpu(); if (!canLoad(gpu)) throw new Error("模型加载预算不足"); console.log("显存预算核对通过"); }
   else if (command === "review") await runReview();
+  else if (command === "value") await runReview(false, true);
   else if (command === "probe") await runReview(true);
-  else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review OWNER REQUEST");
+  else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review|value OWNER REQUEST");
 } catch (error) { console.error(error.message); process.exitCode = 1; }

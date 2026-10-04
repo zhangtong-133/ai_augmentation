@@ -147,6 +147,11 @@ local-model-test: ## 验收显存预算、监控故障与停止边界
 local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST）
 	node scripts/local-model.mjs review "$(OWNER)" "$(REQUEST)"
 
+.PHONY: local-value
+local-value: ## 显式执行已批准的本地 RSS 评分（OWNER/REQUEST），复用游戏显存保护
+	@test -n "$(OWNER)" -a -n "$(REQUEST)" || (echo '需要 OWNER=用户UUID REQUEST=原授权UUID'; exit 1)
+	node scripts/local-model.mjs value "$(OWNER)" "$(REQUEST)"
+
 .PHONY: recovery-test
 recovery-test: ## 验收备份清单、迁移及文件完整性边界
 	node scripts/test-recovery.mjs

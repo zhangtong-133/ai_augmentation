@@ -35,7 +35,7 @@ export async function startApplication(database, token, objects = {}) {
       await delay(100);
     }
     assert.equal(ready, true, "isolated API readiness");
-    return { base, close, database, token };
+    return { base, close, database, token, localRssEnabled: objects.RSS_LOCAL_ENABLED === "true" };
   } catch (error) { await close(); throw error; }
 }
 export async function request(app, path, expected, { method = "GET", cookie, admin = false, body } = {}) {
@@ -72,6 +72,11 @@ async function task(app, cookie, skill, revision) {
 export async function seedApplication(app) {
   const owner = await account(app, "owner@recovery.example"), other = await account(app, "other@recovery.example");
   const cookie = await login(app, owner), otherCookie = await login(app, other);
+  assert.equal((await request(app,"/api/feed-values/config",200,{cookie})).data.local_enabled,app.localRssEnabled);
+  if (!app.localRssEnabled) {
+    await request(app,"/api/feed-values/local",503,{method:"POST",cookie,body:{id:randomUUID(),endpoint:"http://127.0.0.1:11435",model:"qwen3:4b-q4_K_M"}});
+    await request(app,`/api/feed-values/${randomUUID()}/approve-local`,503,{method:"POST",cookie,body:{digest:"a".repeat(64),acknowledge_sharing:true,acknowledge_local_compute:true}});
+  }
   const document = (await request(app, "/api/documents", 201, { method: "POST", cookie, body: { title: "恢复私有文档", markdown: "# 合成材料\n\nUnicode 原文验证。", tags: ["recovery"] } })).data;
   const deletedInput = { request_id: randomUUID(), title: "已删除合成会话" };
   const deleted = (await request(app, "/api/conversations", 200, { method: "POST", cookie, body: deletedInput })).data;

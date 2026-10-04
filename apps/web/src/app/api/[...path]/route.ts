@@ -37,8 +37,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const learningReview = request.method === "POST" && /^learning\/plans\/[a-f0-9-]{36}\/tasks\/[a-f0-9-]{36}\/evidence\/review(?:\/confirm)?$/i.test(endpoint);
   const subscriptionConnections = (request.method === "GET" && /^subscription-connections(?:\/[a-f0-9-]{36})?$/i.test(endpoint))
     || (request.method === "POST" && /^subscription-connections\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));
-  const feedValues = (request.method === "GET" && /^feed-values(?:\/[a-f0-9-]{36}(?:\/(?:audit|reading))?)?$/i.test(endpoint))
-    || (request.method === "POST" && /^feed-values(?:\/[a-f0-9-]{36}\/(?:approve|cancel))?$/i.test(endpoint));
+  const feedValues = (request.method === "GET" && /^feed-values(?:\/config|\/[a-f0-9-]{36}(?:\/(?:audit|reading))?)?$/i.test(endpoint))
+    || (request.method === "POST" && /^feed-values(?:\/local|\/[a-f0-9-]{36}\/(?:approve|approve-local|cancel))?$/i.test(endpoint));
   const feedConfirmation = request.method === "POST" && /^feed-collections\/[a-f0-9-]{36}\/confirm$/i.test(endpoint);
   const mcpCredentials = (["GET", "POST"].includes(request.method) && endpoint === "mcp/credentials")
     || (request.method === "POST" && /^mcp\/credentials\/[a-f0-9-]{36}\/revoke$/i.test(endpoint));

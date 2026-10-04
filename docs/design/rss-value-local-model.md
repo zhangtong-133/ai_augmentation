@@ -17,3 +17,13 @@
 阶段 1：协议、0041 迁移、独立同意及一次性仓储已实现。验收覆盖无订阅身份、混合同意拒绝、目标冲突、次数上限、并发单次领取、错误输出未知、取消晚到、来源失效及超时；执行命令、API 与页面继续后续交付。
 
 阶段 1 验收通过：166 项真实 PostgreSQL 仓储用例（新增 4 项本地评分）、全仓 Rust 和前端检查，以及包含 0041 的真实备份恢复/应用演练。使用一次性数据库及夹具模型，无真实模型/订阅调用；继续执行 CLI 和私有授权 API。
+
+## 显式命令与配置
+
+设置 `RSS_LOCAL_ENABLED=true` 后可通过私有 `GET /api/feed-values/config` 查询开关；默认 false。`POST /api/feed-values/local` 接收 id、endpoint、model，返回冻结分享预览；`POST /api/feed-values/{id}/approve-local` 必须给出原 digest、acknowledge_sharing=true、acknowledge_local_compute=true。未知字段拒绝，订阅批准端点不能批准本地记录。网页不派发推理，所有接口仍检查会话/CSRF 和归属，Next/Nginx 双入口转发不携带管理员凭据。
+
+先显式 `make local-model-start`，再导出应用 `DATABASE_URL`，运行 `make local-value OWNER=用户UUID REQUEST=原授权UUID`。该入口复用 6 GiB 显存监督、加载/发送门槛及单模型/单并发配置。`local-value show OWNER REQUEST` 只查原记录；直接 `local-value run OWNER REQUEST ENDPOINT MODEL --use-local` 适用于另有独立显存保护的受控运行时，目标不匹配在领取前拒绝。正常终态重复执行只读保存评分，其他终态退出 1，无自动重试、登录或回退到付费模型。通过原私有 detail/reading/audit 接口查询结果，规则日报不变。
+
+本批仅为 RSS 新增已保存结果的阅读，不新增临时正文跨进程通道；学习核验原有临时文本仍独立。后续 vLLM 可替换标准 SSE 适配器，但部署须另行核对显存和完整协议。
+
+阶段 2 已通过：166 项真实仓储、6 项连接/评分 HTTP、默认关闭的原生 API 恢复演练、全仓 Rust/前端、显存保护边界与 CLI 参数/帮助检查。新增命令已纳入生产镜像；镜像和双入口页面整体验收继续阶段 3。本阶段仅使用夹具，未调用真实模型或个人订阅。

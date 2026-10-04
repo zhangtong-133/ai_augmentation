@@ -337,6 +337,16 @@ async fn value_http_checks_session_and_csrf_before_optional_runtime() {
         ("POST", "/api/feed-values".into(), create),
         ("POST", format!("/api/feed-values/{id}/approve"), consent),
         ("POST", format!("/api/feed-values/{id}/cancel"), json!({})),
+        (
+            "POST",
+            "/api/feed-values/local".into(),
+            json!({"id":id,"endpoint":"http://127.0.0.1:11435","model":"qwen3:4b"}),
+        ),
+        (
+            "POST",
+            format!("/api/feed-values/{id}/approve-local"),
+            json!({"digest":"a".repeat(64),"acknowledge_sharing":true,"acknowledge_local_compute":true}),
+        ),
     ] {
         for (session, csrf, expected) in [
             (None, true, 401),
@@ -361,6 +371,9 @@ async fn value_http_checks_session_and_csrf_before_optional_runtime() {
         }
     }
 }
+
+#[path = "feed_value_http_tests/local.rs"]
+mod local;
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL"]

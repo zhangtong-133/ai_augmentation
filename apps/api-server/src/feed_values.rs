@@ -21,14 +21,18 @@ use personal_ai_storage::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::Arc;
+mod local;
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/feed-values", get(list).post(preview))
+        .route("/api/feed-values/config", get(local::config))
+        .route("/api/feed-values/local", post(local::preview))
         .route("/api/feed-values/{id}", get(detail))
         .route("/api/feed-values/{id}/audit", get(audit))
         .route("/api/feed-values/{id}/reading", get(reading))
         .route("/api/feed-values/{id}/approve", post(approve))
+        .route("/api/feed-values/{id}/approve-local", post(local::approve))
         .route("/api/feed-values/{id}/cancel", post(cancel))
         .layer(middleware::from_fn(no_store))
 }
@@ -289,6 +293,11 @@ async fn preview(
         .preview_feed_value(&owner.id, &request, Arc::new(planner))
         .await
         .map_err(error)?;
+    if !matches!(saved.pricing, ValuePricing::Subscription { .. }) {
+        return Err(error(StorageError::Conflict(
+            "different scoring mode".into(),
+        )));
+    }
     Ok(Json(full(&owner.id, &saved)?).into_response())
 }
 async fn approve(

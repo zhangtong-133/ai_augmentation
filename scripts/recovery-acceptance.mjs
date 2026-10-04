@@ -85,6 +85,8 @@ try {
     await pgQuery(source,"CREATE DATABASE recovery_storage TEMPLATE template0;");
     const result=await execute("cargo",["test","--locked","-p","personal-ai-storage-postgres","--test","postgres","--","--ignored"],{cwd:root,timeout:600000,maxBuffer:4*1048576,env:{PATH:process.env.PATH,HOME:process.env.HOME,RUSTUP_TOOLCHAIN:process.env.RUSTUP_TOOLCHAIN,TEST_DATABASE_URL:databaseUrl("recovery_storage")}}).catch(error=>{ const failed=(error.stdout??"").split("\n").filter(line=>/^test .* FAILED$/.test(line)); throw new Error("隔离仓储验收失败："+failed.join("; ")); });
     console.log(result.stdout.split("\n").find(line=>line.startsWith("test result:"))??"PASS: disposable storage tests");
+    const http=await execute("cargo",["test","--locked","-p","api-server","--lib","subscription_connection_tests","--","--ignored"],{cwd:root,timeout:600000,maxBuffer:4*1048576,env:{PATH:process.env.PATH,HOME:process.env.HOME,RUSTUP_TOOLCHAIN:process.env.RUSTUP_TOOLCHAIN,TEST_DATABASE_URL:databaseUrl("recovery_storage"),RSS_LOCAL_ENABLED:"true"}}).catch(error=>{throw new Error("隔离 HTTP 验收失败："+(error.stdout??"").split("\n").filter(line=>/^test .* FAILED$/.test(line)||/panicked at apps\//.test(line)||/^\s+(left|right): \d+$/.test(line)).join("; "));});
+    console.log(http.stdout.split("\n").find(line=>line.startsWith("test result:"))??"PASS: disposable scoring HTTP tests");
   }
   const adminToken = randomBytes(32).toString("hex");
   const sourceApp = await startApplication(databaseUrl(source.database), adminToken, sourceObjects); applications.push(sourceApp);

@@ -41,6 +41,7 @@ services:
       DATABASE_URL: postgres://smoke:${SMOKE_PASSWORD}@postgres:5432/smoke
       SESSION_COOKIE_SECURE: "false"
       LEARNING_LOCAL_ENABLED: "true"
+      RSS_LOCAL_ENABLED: "true"
       LEARNING_TEXT_REDIS_URL: redis://redis:6379/0
       MESSAGE_CACHE_ENABLED: "true"
       CONVERSATION_REPLY_MODE: "fixture"

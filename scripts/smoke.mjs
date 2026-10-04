@@ -252,6 +252,7 @@ try {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
   await command("make", ["test-subscription-connections"], {
+    RSS_LOCAL_ENABLED: "true",
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
   await command("cargo", ["test", "-p", "api-server", "--bin", "chatgpt-connect", "--", "--ignored"], {
