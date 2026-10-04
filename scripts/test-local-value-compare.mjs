@@ -65,3 +65,43 @@ test("challenge reports compare separately and cannot mix suites within or acros
   b.manifests[0].quality_version = "rss-quality-v1";
   assert.throws(() => validateReport(b));
 });
+
+test("coverage exposes optional abstention without confusing failure or absence with null", () => {
+  const a = report(), b = report("2026-10-04T12:10:00.000Z");
+  for (const r of [a, b]) {
+    r.manifests[1].checks = [{ kind: "ceiling", item: "article", value: 20 }];
+    r.manifests[2].checks = [{ kind: "abstain", item: "article" }];
+    r.results[1].scores.article = null; r.results[2].scores.article = null;
+  }
+  let result = compareReports([a, b]);
+  assert.equal(result.all_passed, true);
+  assert.deepEqual(result.coverage.total, { expected: 6, scored: 2, abstained: 4, protocol_failed: 0, not_run: 0,
+    completed: 6, abstention_rate: 4 / 6, completion_rate: 1 });
+  assert.equal(result.coverage.groups.optional_score.abstention_rate, 1);
+  assert.equal(result.coverage.groups.expected_abstention.abstention_rate, 1);
+  assert.equal(result.coverage.groups.required_score.abstention_rate, 0);
+  b.complete = false; b.results = []; b.passed_cases = 0; b.exit_code = 1;
+  b.failed_case = "a"; b.failure = "transport";
+  result = compareReports([a, b]);
+  assert.deepEqual(result.coverage.total, { expected: 6, scored: 1, abstained: 2, protocol_failed: 1, not_run: 2,
+    completed: 3, abstention_rate: 2 / 3, completion_rate: 0.5 });
+  assert.equal(result.coverage.groups.required_score.protocol_failed, 1);
+  assert.equal(result.coverage.groups.optional_score.not_run, 1);
+  const failed = structuredClone(b); failed.started_at = failed.ended_at = "2026-10-04T12:20:00.000Z";
+  const unknown = compareReports([b, failed]).coverage;
+  assert.equal(unknown.total.abstention_rate, null);
+  assert.equal(unknown.total.completion_rate, 0);
+  assert.equal(unknown.groups.optional_score.scored, 0);
+});
+
+test("coverage counts items once even with repeated criteria and includes numeric zero", () => {
+  const a = report(), b = report("2026-10-04T12:10:00.000Z");
+  for (const r of [a, b]) {
+    r.manifests.forEach(m => m.checks = [{ kind: "minimum", item: "article", value: 0 }, { kind: "ceiling", item: "article", value: 20 }]);
+    r.results.forEach(result => { result.scores.article = 0; result.checks.push({ index: 1, passed: true }); });
+  }
+  const coverage = compareReports([a, b]).coverage;
+  assert.equal(coverage.total.expected, 6); assert.equal(coverage.total.scored, 6);
+  assert.equal(coverage.groups.required_score.expected, 6);
+  assert.equal(coverage.groups.optional_score.abstention_rate, null);
+});

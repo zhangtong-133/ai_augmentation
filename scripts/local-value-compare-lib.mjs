@@ -108,5 +108,34 @@ export function compareReports(inputs) {
   return { schema: "rss-quality-comparison-v1", runs: reports.length, comparable: true,
     corpus_sha256: first.manifests[0].corpus_sha256, execution_profile: first.manifests[0].execution_profile,
     model_sha256: first.runtime.model_sha256, all_passed: reports.every(r => r.exit_code === 0),
-    repeated_identically: cases.every(c => c.repeated_identically), complete_runs: reports.filter(r => r.complete).length, cases };
+    repeated_identically: cases.every(c => c.repeated_identically), complete_runs: reports.filter(r => r.complete).length,
+    coverage: coverage(reports), cases };
+}
+
+// These groups describe frozen checks, not a claim about real material sufficiency.
+// Missing results never become abstentions or zero scores.
+function coverage(reports) {
+  const empty = () => ({ expected: 0, scored: 0, abstained: 0, protocol_failed: 0, not_run: 0 });
+  const groups = { required_score: empty(), expected_abstention: empty(), optional_score: empty() };
+  for (const report of reports) {
+    report.manifests.forEach((manifest, index) => {
+      for (const item of manifest.items) {
+        const required = manifest.checks.some(c => (c.kind === "minimum" && c.item === item) || (c.kind === "prefer" && c.higher === item));
+        const abstain = manifest.checks.some(c => c.kind === "abstain" && c.item === item);
+        const group = groups[required ? "required_score" : abstain ? "expected_abstention" : "optional_score"];
+        group.expected++;
+        if (report.results[index]) group[report.results[index].scores[item] === null ? "abstained" : "scored"]++;
+        else group[report.failed_case === manifest.id ? "protocol_failed" : "not_run"]++;
+      }
+    });
+  }
+  const total = empty();
+  for (const group of Object.values(groups)) for (const key of Object.keys(total)) total[key] += group[key];
+  for (const group of [total, ...Object.values(groups)]) {
+    const completed = group.scored + group.abstained;
+    group.completed = completed;
+    group.abstention_rate = completed ? group.abstained / completed : null;
+    group.completion_rate = group.expected ? completed / group.expected : null;
+  }
+  return { grouping: "frozen_checks", total, groups };
 }
