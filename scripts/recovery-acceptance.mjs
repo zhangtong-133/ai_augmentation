@@ -11,9 +11,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import { once } from "node:events";
 import { backup, expectedMigrations, localDocker, pgProcess, pgQuery, root, verify } from "./recovery-lib.mjs";
 import { restore } from "./recovery-restore.mjs";
-import { seedApplication, startApplication, verifyApplication } from "./recovery-http.mjs";
+import { exerciseLocalModel, seedApplication, startApplication, verifyApplication } from "./recovery-http.mjs";
 
 const execute = promisify(execFile);
+if (process.argv.slice(2).some(value => value !== "--local-model") || process.argv.filter(value => value === "--local-model").length > 1) throw new Error("仅支持显式 --local-model 验收开关");
+const native = process.argv.includes("--local-model");
 const directory = await mkdtemp(join(tmpdir(), "personal-ai-recovery-"));
 let container;
 const applications = [];
@@ -60,6 +62,10 @@ try {
   const adminToken = randomBytes(32).toString("hex");
   const sourceApp = await startApplication(databaseUrl(source.database), adminToken); applications.push(sourceApp);
   const fixture = await seedApplication(sourceApp);
+  if (native) {
+    await exerciseLocalModel(sourceApp, fixture);
+    assert.equal(await pgQuery(source, `SELECT count(*) FROM learning_model_authorization_audit WHERE request_id='${fixture.nativeId}' AND event='sending';`), "1");
+  } else console.log("SKIP: real local model; use make recovery-acceptance-local with an explicitly started protected server");
   await sourceApp.close();
   const expectedUsers = await pgQuery(source, "SELECT count(*) FROM users;");
   const expectedDocuments = await pgQuery(source, "SELECT count(*) FROM documents;");
@@ -110,13 +116,14 @@ try {
   for (const key of ["sessions", "activeMcp", "activeConfigurations", "unsettledMoney", "activeJobs"]) assert.equal(state[key], 0, key);
   assert.equal(state.occupiedMoney, 100); assert.equal(state.retainedMoney, 100);
   assert.equal(state.occupiedCalls, 1); assert.equal(state.toolCalls, 1);
-  assert.deepEqual(state.learningStates, ["invalidated", "invalidated", "unknown"]);
+  assert.deepEqual(state.learningStates, ["invalidated", "invalidated", ...(native ? ["succeeded"] : []), "unknown"]);
   assert.equal(state.unknownSending, 1); assert.equal(state.sendingAudits, 1);
   await assert.rejects(restore(target));
   assert.equal(await pgQuery(target, "SELECT count(*) FROM users;"), expectedUsers);
   console.log("PASS: empty-target transactional restore, corruption rollback, old-session/credential revocation, paused jobs and retained costs");
   const restoredApp = await startApplication(databaseUrl(target.database), adminToken); applications.push(restoredApp);
   await verifyApplication(restoredApp, fixture);
+  if (native) assert.equal(await pgQuery(target, `SELECT count(*) FROM learning_model_authorization_audit WHERE request_id='${fixture.nativeId}' AND event='sending';`), "1");
 } catch (error) {
   console.error(error.code && error.code !== "ERR_ASSERTION" ? "隔离恢复验收文件操作失败" : error.message); process.exitCode = 1;
 } finally {

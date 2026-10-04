@@ -92,6 +92,7 @@ npm --prefix apps/web run build
 | `make learning-acceptance` | 固定运行学习双入口 UI、数据库/HTTP 闭环及只读核验运维验收，不调用真实模型 |
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
+| `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 

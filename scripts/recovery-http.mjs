@@ -96,6 +96,26 @@ export async function seedApplication(app) {
   const snapshot = (await request(app, "/api/learning/snapshot", 200, { cookie })).data;
   return { owner, other, cookie, otherCookie, document, deleted, deletedInput, source, erased, id, approval, snapshot };
 }
+export async function exerciseLocalModel(app, fixture) {
+  fixture.nativeId = randomUUID();
+  const draft = (await request(app, `${fixture.source.path}/local-model-authorizations`, 200, { method: "POST", cookie: fixture.cookie,
+    body: { request_id: fixture.nativeId, endpoint: "http://127.0.0.1:11435", model: "qwen3:4b-q4_K_M" } })).data;
+  await request(app, `/api/learning/model-authorizations/${fixture.nativeId}/approve-local`, 200, { method: "POST", cookie: fixture.cookie,
+    body: { digest: draft.digest, acknowledge_sharing: true, acknowledge_local_compute: true } });
+  const options = { cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME, RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN, DATABASE_URL: app.database }, timeout: 90000, maxBuffer: 1048576 };
+  const args = ["scripts/local-model.mjs", "review", fixture.owner.id, fixture.nativeId];
+  let first;
+  try { first = JSON.parse((await execute("node", args, options)).stdout); }
+  catch { throw new Error("真实本地核验未确认成功，请核对本次原请求；验收不会自动重发"); }
+  assert.equal(first.status, "succeeded"); assert.ok(first.advice);
+  const replay = JSON.parse((await execute("node", args, options)).stdout);
+  assert.equal(replay.status, "succeeded"); assert.deepEqual(replay.advice, first.advice);
+  fixture.nativeAdvice = first.advice;
+  const saved = (await request(app, `/api/learning/model-authorizations/${fixture.nativeId}`, 200, { cookie: fixture.cookie })).data;
+  assert.deepEqual(saved.advice, first.advice);
+  assert.deepEqual((await request(app, "/api/learning/snapshot", 200, { cookie: fixture.cookie })).data, fixture.snapshot);
+  console.log("PASS: real local model from exact HTTP consent to strict persisted advice, terminal replay and unchanged assessments");
+}
 export async function verifyApplication(app, fixture) {
   await request(app, "/api/learning/snapshot", 401, { cookie: fixture.cookie });
   const cookie = await login(app, fixture.owner), otherCookie = await login(app, fixture.other);
@@ -117,5 +137,19 @@ export async function verifyApplication(app, fixture) {
       { env: { PATH: process.env.PATH, DATABASE_URL: app.database }, timeout: 10000 });
     assert.fail("restored old authorization cannot run");
   } catch (error) { assert.equal(error.code, 1); assert.equal(JSON.parse(error.stdout).status, "invalidated"); }
+  if (fixture.nativeId) {
+    const args = ["run", fixture.owner.id, fixture.nativeId, "http://127.0.0.1:11435", "qwen3:4b-q4_K_M", "--use-local"];
+    const options = { env: { PATH: process.env.PATH, DATABASE_URL: app.database }, timeout: 10000 };
+    const saved = (await request(app, `/api/learning/model-authorizations/${fixture.nativeId}`, 200, { cookie })).data;
+    assert.equal(saved.status, "succeeded"); assert.deepEqual(saved.advice, fixture.nativeAdvice);
+    const replay = JSON.parse((await execute(join(root, "target/debug/local-review"), args, options)).stdout);
+    assert.deepEqual(replay.advice, fixture.nativeAdvice);
+    await request(app, fixture.source.path, 200, { method: "DELETE", cookie, body: { request_id: fixture.source.evidenceId } });
+    const revoked = (await request(app, `/api/learning/model-authorizations/${fixture.nativeId}`, 200, { cookie })).data;
+    assert.equal(revoked.status, "invalidated"); assert.equal(revoked.advice, null);
+    try { await execute(join(root, "target/debug/local-review"), args, options); assert.fail("erased native advice cannot run again"); }
+    catch (error) { assert.equal(error.code, 1); assert.equal(JSON.parse(error.stdout).status, "invalidated"); }
+    console.log("PASS: restored real-model advice reads without dispatch and evidence deletion clears advice without resend");
+  }
   console.log("PASS: restored HTTP login, owner isolation, private document, conversation/evidence erasure, assessment provenance and original authorization refusing execution");
 }

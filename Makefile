@@ -155,3 +155,8 @@ recovery-test: ## 验收备份清单、迁移及文件完整性边界
 recovery-acceptance: ## 在一次性 PostgreSQL 中验收真实备份及恢复边界
 	cargo build --locked -p api-server --bin api-server --bin local-review
 	node scripts/recovery-acceptance.mjs
+
+.PHONY: recovery-acceptance-local
+recovery-acceptance-local: ## 用合成证据验收受显存保护的真实本地模型、建议保存及恢复后不重发
+	cargo build --locked -p api-server --bin api-server --bin local-review
+	node scripts/recovery-acceptance.mjs --local-model

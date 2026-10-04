@@ -68,4 +68,6 @@ make recovery-acceptance
 
 2026-10-04 阶段 3 的实际 PostgreSQL/API 演练通过，已接入 Rust CI 任务。全仓 Rust 和前端检查单独执行；没有新增迁移、UI 行为或真实模型调用。本阶段未重跑完整浏览器、对象存储、向量及公网专项；当前远程完整 CI 状态须单独核对。
 
+追加阶段 4 已通过 `make recovery-acceptance-local`：先显式启动项目模型监督器，再以合成证据通过 HTTP 创建精确本地授权，由受显存保护的执行命令完成真实 llama.cpp/Qwen 推理。重复原请求读取相同保存建议，备份恢复后仍读取已完成结果，删除来源证据后建议清除且原请求不能重发；数据库发送审计始终只有一次，自评快照没有自动改变。该命令独立于默认 CI，无模型服务时不会偷偷启用其他模型；运行结束应执行 `make local-model-stop`。此次验收不替代真实用户材料质量及游戏峰值压力测试。
+
 参考：[PostgreSQL 16 pg_dump](https://www.postgresql.org/docs/16/app-pgdump.html)、[pg_restore](https://www.postgresql.org/docs/16/app-pgrestore.html)。
