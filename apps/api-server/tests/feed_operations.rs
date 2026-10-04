@@ -8,9 +8,14 @@ use sqlx::{ConnectOptions, postgres::PgConnectOptions};
 use std::{process::Command, str::FromStr};
 use uuid::Uuid;
 
+// GRANT and DROP OWNED update the same PostgreSQL catalog rows even when roles
+// differ. Keep the full role lifecycle serialized within this integration binary.
+static ROLE_LIFECYCLE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[tokio::test]
 #[ignore = "需要有建角色权限的一次性 TEST_DATABASE_URL"]
 async fn metadata_only_cli_has_stable_exit_codes_and_never_reads_private_columns() {
+    let _role_guard = ROLE_LIFECYCLE.lock().await;
     let url = std::env::var("TEST_DATABASE_URL").unwrap();
     let store = PostgresStore::connect(&url).await.unwrap();
     let pool = sqlx::PgPool::connect(&url).await.unwrap();
@@ -128,6 +133,7 @@ async fn grant_metadata(pool: &sqlx::PgPool, role: &str, password: &str) {
 #[tokio::test]
 #[ignore = "需要有建角色权限的一次性 TEST_DATABASE_URL"]
 async fn value_audit_uses_only_metadata_and_preserves_expired_requests() {
+    let _role_guard = ROLE_LIFECYCLE.lock().await;
     let url = std::env::var("TEST_DATABASE_URL").unwrap();
     let store = PostgresStore::connect(&url).await.unwrap();
     let pool = sqlx::PgPool::connect(&url).await.unwrap();
