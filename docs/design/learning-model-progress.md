@@ -39,3 +39,5 @@ Rust 1.99 全仓格式、Clippy 和测试、前端 lint/typecheck/build 均通�
 另外根据 1acfa90 CI 日志修复两个权限夹具并发更新 PostgreSQL ACL 目录的竞争；以 16 个测试线程连续复验 10 轮运维套件均通过，详见[运维 CI 修复](sprint-4-learning-operations.md#权限夹具的-ci-并发修复)。完整 CI 由本次推送触发。未调用真实模型，本地未重跑其他页面全量、对象存储/向量专项或公网验收；没有 UI 实现变更。
 
 后续已增加[私有状态事件接口](learning-status-events.md)：CLI/API 通过既有 PostgreSQL 状态实现跨进程观察，持续复核会话和来源。该通道只传状态；本文临时文本通道仍为同进程能力，未提供跨进程正文转发或页面展示。
+
+后续已实现[临时正文跨进程通道](learning-text-stream.md)：显式配置 Redis Pub/Sub 后，本机执行器可转发有界文本；私有读取及页面按后续阶段交付。原进程内通知协议保持不变。

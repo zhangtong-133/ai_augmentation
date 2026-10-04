@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+mod review_text;
+pub use review_text::RedisReviewText;
 mod message_cache;
 pub use message_cache::RedisMessageCache;
 

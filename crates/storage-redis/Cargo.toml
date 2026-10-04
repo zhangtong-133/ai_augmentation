@@ -6,6 +6,8 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+serde.workspace = true
 personal-ai-storage.workspace = true
 personal-ai-domain.workspace = true
 redis = { version = "1.0", default-features = false, features = ["tokio-comp", "script"] }

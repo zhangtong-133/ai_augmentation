@@ -9,6 +9,7 @@ use personal_ai_storage::{
 };
 use std::time::Duration;
 pub mod progress;
+pub mod text_bridge;
 use progress::{Publisher, ReviewProgressEvent, ReviewProgressKind};
 #[derive(Debug)]
 pub struct ReviewRuntimeError;

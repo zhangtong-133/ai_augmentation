@@ -2,6 +2,7 @@
 pub mod evidence;
 pub mod model_authorization;
 pub mod review;
+pub mod review_text;
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
 use personal_ai_learning::planning::{LearningPlan, SelfAssessment, SkillNode};

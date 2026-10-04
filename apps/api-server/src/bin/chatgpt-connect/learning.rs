@@ -3,7 +3,8 @@ use super::{store::Store, value_runtime::Runtime};
 use personal_ai_agent_core::{
     feed_value_execution::SubscriptionValueRuntime,
     learning_model_execution::{
-        ReviewRuntimeError, SubscriptionReviewRuntime, execute_model_review,
+        ReviewRuntimeError, SubscriptionReviewRuntime, execute_model_review, observe_model_review,
+        text_bridge::relay_progress,
     },
 };
 use personal_ai_domain::UserId;
@@ -12,6 +13,7 @@ use personal_ai_llm_openai::chatgpt::{ChatGptClient, Error, Result};
 use personal_ai_storage::{
     BoxFuture,
     feed_value::ValuePricing,
+    learning::review_text::ReviewTextBridge,
     learning::{LearningStore, model_authorization::ModelAuthorization},
     subscription_connections::VerifiedSubscriptionConnection,
 };
@@ -93,6 +95,16 @@ fn parse(args: &[String]) -> Result<(UserId, String, Option<&str>)> {
         _ => Err(Error("invalid learning arguments; see --help")),
     }
 }
+fn text_bridge_from_env() -> Result<Option<personal_ai_storage_redis::RedisReviewText>> {
+    match std::env::var("LEARNING_TEXT_REDIS_URL") {
+        Ok(url) if url.is_empty() => Ok(None),
+        Ok(url) => personal_ai_storage_redis::RedisReviewText::new(&url)
+            .map(Some)
+            .map_err(|_| Error("invalid learning text bridge configuration")),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(_) => Err(Error("invalid learning text bridge configuration")),
+    }
+}
 pub(super) async fn run(args: &[String]) -> Result<()> {
     let (owner, request, label) = parse(args)?;
     let url = std::env::var("DATABASE_URL")
@@ -132,10 +144,23 @@ pub(super) async fn run(args: &[String]) -> Result<()> {
         eprintln!(
             "核对原核验授权后单次发送；可能消耗订阅额度或账户允许的 credits，未知结果不会重发。"
         );
-        item = match execute_model_review(&db, &runtime, &owner, &request)
-            .await
-            .map_err(failed)?
-        {
+        let bridge = text_bridge_from_env()?;
+        let result = if let Some(bridge) = bridge {
+            if let Ok(mut publisher) = bridge.publisher(&owner, &request).await {
+                let (receiver, execution) = observe_model_review(&db, &runtime, &owner, &request);
+                let (result, ()) = tokio::join!(
+                    execution,
+                    relay_progress(receiver, publisher.as_mut(), &owner, &request)
+                );
+                result
+            } else {
+                eprintln!("临时文本通道不可用；继续原授权执行，完成后核对保存状态。");
+                execute_model_review(&db, &runtime, &owner, &request).await
+            }
+        } else {
+            execute_model_review(&db, &runtime, &owner, &request).await
+        };
+        item = match result.map_err(failed)? {
             Some(item) => item,
             None => db
                 .get_model_authorization(&owner, &request)

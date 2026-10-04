@@ -1791,9 +1791,11 @@ dependencies = [
 name = "personal-ai-storage-redis"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "personal-ai-domain",
  "personal-ai-storage",
  "redis",
+ "serde",
  "serde_json",
  "sha2",
  "tokio",

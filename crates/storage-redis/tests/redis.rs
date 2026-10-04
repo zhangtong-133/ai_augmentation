@@ -264,3 +264,127 @@ async fn unresponsive_service_is_an_error() {
         Err(StorageError::Unavailable(_))
     ));
 }
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_REDIS_URL；只使用随机 Pub/Sub 频道"]
+async fn review_text_is_live_only_private_bounded_and_never_replayed() {
+    use personal_ai_storage::learning::review_text::{ReviewTextBridge, TextKind, TextPacket};
+    use personal_ai_storage_redis::RedisReviewText;
+    let url = std::env::var("TEST_REDIS_URL").unwrap();
+    let publisher_bridge = RedisReviewText::new(&url).unwrap();
+    let observer_bridge = RedisReviewText::new(&url).unwrap();
+    let owner = UserId::new(uuid::Uuid::new_v4().to_string());
+    let request = uuid::Uuid::new_v4().to_string();
+    let mut publisher = publisher_bridge.publisher(&owner, &request).await.unwrap();
+    let packet = |sequence, text: &str| TextPacket {
+        sequence,
+        detail: TextKind::Delta { text: text.into() },
+    };
+    publisher
+        .publish(packet(0, "before observation"))
+        .await
+        .unwrap();
+    let mut observer = observer_bridge.subscribe(&owner, &request).await.unwrap();
+    let mut other = observer_bridge
+        .subscribe(&UserId::new("other"), &request)
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), observer.next())
+            .await
+            .is_err()
+    );
+    publisher
+        .publish(packet(1, "临时正文 <script>"))
+        .await
+        .unwrap();
+    let received = tokio::time::timeout(Duration::from_secs(2), observer.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(received.sequence, 1);
+    assert!(matches!(received.detail, TextKind::Delta { text } if text == "临时正文 <script>"));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), other.next())
+            .await
+            .is_err()
+    );
+    publisher
+        .publish(TextPacket {
+            sequence: 2,
+            detail: TextKind::Clear,
+        })
+        .await
+        .unwrap();
+    publisher
+        .publish(TextPacket {
+            sequence: 3,
+            detail: TextKind::End,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        observer.next().await.unwrap().unwrap().detail,
+        TextKind::Clear
+    ));
+    assert!(matches!(
+        observer.next().await.unwrap().unwrap().detail,
+        TextKind::End
+    ));
+    assert!(observer.next().await.unwrap().is_none());
+    assert!(publisher.publish(packet(4, "late")).await.is_err());
+    let mut reopened = observer_bridge.subscribe(&owner, &request).await.unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), reopened.next())
+            .await
+            .is_err()
+    );
+    // Pub/Sub creates no body keys, so persistence settings cannot retain these packets.
+    let client = redis::Client::open(url).unwrap();
+    let mut connection = client.get_multiplexed_async_connection().await.unwrap();
+    let keys: Vec<String> = redis::cmd("KEYS")
+        .arg("learning-text:*")
+        .query_async(&mut connection)
+        .await
+        .unwrap();
+    assert_eq!(keys, [] as [String; 0]);
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_REDIS_URL"]
+async fn review_text_slow_reader_closes_and_releases_its_subscription() {
+    use personal_ai_storage::learning::review_text::{ReviewTextBridge, TextKind, TextPacket};
+    use personal_ai_storage_redis::RedisReviewText;
+    let bridge = RedisReviewText::new(&std::env::var("TEST_REDIS_URL").unwrap()).unwrap();
+    let owner = UserId::new(uuid::Uuid::new_v4().to_string());
+    let request = uuid::Uuid::new_v4().to_string();
+    let mut observer = bridge.subscribe(&owner, &request).await.unwrap();
+    let mut publisher = bridge.publisher(&owner, &request).await.unwrap();
+    for sequence in 0..40 {
+        publisher
+            .publish(TextPacket {
+                sequence,
+                detail: TextKind::Delta {
+                    text: "private".into(),
+                },
+            })
+            .await
+            .unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(observer.next().await.is_err());
+    drop(observer);
+    let mut fresh = bridge.subscribe(&owner, &request).await.unwrap();
+    publisher
+        .publish(TextPacket {
+            sequence: 40,
+            detail: TextKind::End,
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        fresh.next().await.unwrap().unwrap().detail,
+        TextKind::End
+    ));
+}

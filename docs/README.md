@@ -4,6 +4,8 @@
 
 ## 账户与页面
 
+- [学习核验临时正文](design/learning-text-stream.md)：默认关闭的 Pub/Sub 通道、私有观察与页面分阶段验收。
+
 - [v1 后续交付计划](design/v1-completion-plan.md)：订阅评分阅读闭环及能力评估、流式/本地适配、可选 API 和最终集成的验收门槛。
 
 - [评分私有阅读投影](design/rss-value-reading.md)：从已完成的冻结评分映射摘要、原文和两种分数，失效后拒绝正文。
