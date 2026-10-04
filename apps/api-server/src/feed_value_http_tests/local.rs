@@ -17,7 +17,7 @@ impl LocalInference for Runtime {
             self.0.fetch_add(1, Ordering::SeqCst);
             assert_eq!(request.max_output_tokens, Some(2048));
             assert!(!request.messages[1].content.contains("private=secret"));
-            Ok(r#"{"items":[{"id":1,"score":null,"reason":"insufficient information"}]}"#.into())
+            Ok(r#"{"items":[{"id":1,"score":null,"reason":"现有内容不足，无法评分。"}]}"#.into())
         })
     }
 }

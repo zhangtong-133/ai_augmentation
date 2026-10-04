@@ -327,7 +327,7 @@ try {
   console.log("PASS: packaged explicit local RSS scoring command");
   const qualityManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest"], true));
   assert.deepEqual(qualityManifest.map(c => c.id), ["rust_preference", "python_preference", "insufficient_content", "injected_summary"]);
-  assert.ok(qualityManifest.every(c => c.execution_profile === "local-rss-v1" && c.prompt_bytes <= 5632));
+  assert.ok(qualityManifest.every(c => c.execution_profile === "local-rss-v2" && c.prompt_bytes <= 5632));
   assert.match(await compose(["exec", "-T", "api-server", "local-value-benchmark", "--help"], true), /--use-local-benchmark/);
   console.log("PASS: packaged offline RSS quality corpus; no model call");
   const mcpAudit = JSON.parse(await compose(["exec", "-T", "api-server", "mcp-operations", "audit", "--user", owner.id], true));

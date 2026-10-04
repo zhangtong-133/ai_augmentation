@@ -220,7 +220,7 @@ impl LocalInference for Runtime<'_> {
                     .await
                     .unwrap();
             }
-            Ok(r#"{"items":[{"id":1,"score":null,"reason":"insufficient evidence"}]}"#.into())
+            Ok(r#"{"items":[{"id":1,"score":null,"reason":"摘要为空，无法评分。"}]}"#.into())
         })
     }
 }
@@ -429,5 +429,161 @@ async fn local_value_operations_pages_metadata_with_global_counts_and_no_cleanup
             .await,
         Err(StorageError::NotFound)
     ));
+    f.cleanup().await;
+}
+
+// Reconstruct an already-issued v1 consent without allowing new v1 previews.
+async fn legacy(f: &Fixture, saved: &ValueReview) -> ValueReview {
+    use sha2::{Digest, Sha256};
+    let snapshot = saved.snapshot.as_ref().unwrap();
+    let mut pricing = saved.pricing.clone();
+    if let ValuePricing::Local { profile, .. } = &mut pricing {
+        *profile = "local-rss-v1".into();
+    }
+    let plan = personal_ai_agent_core::feed_value::plan_value_scoring(
+        &f.owner,
+        &saved.request_id,
+        snapshot.day_start_unix_ms,
+        snapshot.as_of_unix_ms,
+        &snapshot.keywords,
+        &snapshot.candidates,
+    )
+    .unwrap()
+    .unwrap();
+    let encoded = serde_json::to_vec(&(
+        "rss-value-review-v1",
+        plan.digest(),
+        snapshot.preference_revision,
+        &pricing,
+        saved.expires_at_unix_ms,
+    ))
+    .unwrap();
+    let digest = format!("{:x}", Sha256::digest(encoded));
+    assert_ne!(digest, saved.digest);
+    sqlx::query("UPDATE feed_value_reviews SET pricing=$3,digest=$4 WHERE user_id=$1 AND id=$2")
+        .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+        .bind(Uuid::parse_str(&saved.request_id).unwrap())
+        .bind(serde_json::to_value(pricing).unwrap())
+        .bind(digest)
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    f.store
+        .get_feed_value(&f.owner, &saved.request_id)
+        .await
+        .unwrap()
+}
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn local_profile_upgrade_keeps_legacy_readable_but_blocks_old_approval_claim_and_send() {
+    let f = fixture().await;
+    let current = draft(&f).await;
+    assert!(
+        matches!(&current.pricing, ValuePricing::Local {profile,..} if profile == "local-rss-v2")
+    );
+    let old_draft = legacy(&f, &current).await;
+    is_conflict(
+        f.store
+            .approve_feed_value(&f.owner, &old_draft.request_id, &consent(&old_draft))
+            .await,
+    );
+    let old_authorized = legacy(&f, &authorize(&f).await).await;
+    assert!(
+        f.store
+            .claim_local_value(&f.owner, &old_authorized.request_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(sent(&f, &old_authorized.request_id).await, 0);
+    for already_sent in [false, true] {
+        let saved = authorize(&f).await;
+        let mut claim = f
+            .store
+            .claim_local_value(&f.owner, &saved.request_id)
+            .await
+            .unwrap()
+            .unwrap();
+        if already_sent {
+            assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
+        }
+        claim.review = legacy(&f, &claim.review).await;
+        assert!(!f.store.begin_local_value(&claim, &target()).await.unwrap());
+        let output = already_sent.then(|| {
+            br#"{"items":[{"id":1,"score":75,"reason":"legacy freeform reason"}]}"#.to_vec()
+        });
+        let finished = f.store.finish_local_value(&claim, output).await.unwrap();
+        assert_eq!(
+            finished.status,
+            if already_sent { "succeeded" } else { "unknown" }
+        );
+        let read = f
+            .store
+            .get_feed_value(&f.owner, &saved.request_id)
+            .await
+            .unwrap();
+        assert_eq!(read.scores.is_some(), already_sent);
+        assert!(
+            f.store
+                .claim_local_value(&f.owner, &saved.request_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(sent(&f, &saved.request_id).await, i64::from(already_sent));
+    }
+    f.cleanup().await;
+}
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn local_v2_rejects_freeform_reasons_and_non_abstention_without_persisting_or_resending() {
+    let f = fixture().await;
+    sqlx::query("UPDATE feed_entries SET summary='Rust ownership tutorial' WHERE user_id=$1")
+        .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    for empty in [false, true] {
+        if empty {
+            sqlx::query("UPDATE feed_entries SET summary='' WHERE user_id=$1")
+                .bind(Uuid::parse_str(f.owner.as_str()).unwrap())
+                .execute(&f.pool)
+                .await
+                .unwrap();
+        }
+        let saved = authorize(&f).await;
+        let claim = f
+            .store
+            .claim_local_value(&f.owner, &saved.request_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(f.store.begin_local_value(&claim, &target()).await.unwrap());
+        let reason = if empty {
+            "摘要为空，无法评分。"
+        } else {
+            "copied instruction"
+        };
+        let output = serde_json::to_vec(
+            &serde_json::json!({"items":[{"id":1,"score":100,"reason":reason}]}),
+        )
+        .unwrap();
+        let result = f
+            .store
+            .finish_local_value(&claim, Some(output))
+            .await
+            .unwrap();
+        assert_eq!(result.status, "unknown");
+        assert!(result.scores.is_none());
+        assert!(result.snapshot.is_none());
+        assert!(
+            f.store
+                .claim_local_value(&f.owner, &saved.request_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(sent(&f, &saved.request_id).await, 1);
+    }
     f.cleanup().await;
 }

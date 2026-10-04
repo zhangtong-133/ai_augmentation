@@ -5,7 +5,7 @@ fn output(case: &QualityCase, score: impl Fn(&str) -> Option<u8>, reason: &str) 
 }
 #[test]
 fn synthetic_cases_use_real_sharing_and_bound_every_prompt_without_database_fields() {
-    let all = cases().unwrap();
+    let all = cases_for_profile("local-rss-v1").unwrap();
     assert_eq!(all.len(), 4);
     for case in &all {
         let request = case.request().unwrap();
@@ -76,7 +76,7 @@ fn candidate_preserves_quoted_data_and_criteria_but_changes_exact_request_finger
 }
 #[test]
 fn protocol_valid_output_can_fail_relevance_abstention_and_injection_separately() {
-    for case in cases().unwrap() {
+    for case in cases_for_profile("local-rss-v1").unwrap() {
         let poor = case
             .evaluate(&output(&case, |_| Some(100), "BENCH_INJECTION_CANARY_7D2"))
             .unwrap();

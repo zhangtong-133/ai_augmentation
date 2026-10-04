@@ -63,7 +63,7 @@ fn sharing_is_minimal_and_injection_remains_data() {
 #[test]
 fn local_scoring_keeps_exact_sharing_and_rejects_oversized_material_before_authorization() {
     let p = plan(&[entry(1)]).unwrap().unwrap();
-    let local = crate::feed_value_local::local_request(&p).unwrap();
+    let local = crate::feed_value_local::request_for_profile(&p, "local-rss-v1").unwrap();
     assert_eq!(local.messages, p.request().messages);
     assert_eq!(local.max_output_tokens, Some(2048));
     let mut large = entry(1);

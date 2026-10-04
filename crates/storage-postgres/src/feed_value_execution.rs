@@ -118,7 +118,10 @@ pub(super) fn claim_value<'a>(
         let time = now(&mut tx).await?;
         feed_value::expire(&mut tx, owner, time).await?;
         let saved = feed_value::read(&mut tx, owner, request).await?;
-        if saved.status != "authorized" || !is_mode(&saved.pricing, local) {
+        if saved.status != "authorized"
+            || !is_mode(&saved.pricing, local)
+            || matches!(&saved.pricing, ValuePricing::Local { profile, .. } if profile != personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE)
+        {
             tx.commit().await.map_err(map_error)?;
             return Ok(None);
         }
@@ -189,7 +192,15 @@ pub(super) fn finish_value<'a>(
                     &snapshot.candidates,
                 )
                 .ok()??;
-                decode_value_scores(&plan, &bytes).ok()
+                match &saved.pricing {
+                    ValuePricing::Local { profile, .. } => {
+                        personal_ai_agent_core::feed_value_local::decode_for_profile(
+                            &plan, profile, &bytes,
+                        )
+                        .ok()
+                    }
+                    _ => decode_value_scores(&plan, &bytes).ok(),
+                }
             });
         let scores = scores
             .map(serde_json::to_value)

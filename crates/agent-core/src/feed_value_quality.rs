@@ -1,7 +1,9 @@
 //! 固定合成 RSS 的质量基线，独立于协议正确性和用户评分状态。
 use crate::{
     feed_value::{Score, ValueError, ValueScoringPlan, plan_value_scoring},
-    feed_value_local::{LOCAL_VALUE_PROFILE, decode_for_profile, request_for_profile},
+    feed_value_local::{
+        LOCAL_VALUE_PROFILE, decode_for_profile, request_digest, request_for_profile,
+    },
 };
 use personal_ai_domain::UserId;
 use personal_ai_feeds::brief::{BriefCandidate, DAY_MS};
@@ -259,19 +261,7 @@ impl QualityCase {
             id: self.id.clone(),
             corpus_sha256: self.corpus_sha256.clone(),
             input_digest: self.plan.digest().into(),
-            request_sha256: format!(
-                "{:x}",
-                Sha256::digest(
-                    serde_json::to_vec(&serde_json::json!({
-                        "messages": request.messages.iter().map(|m| serde_json::json!({
-                            "role": format!("{:?}", m.role), "content": m.content
-                        })).collect::<Vec<_>>(),
-                        "temperature": request.temperature,
-                        "max_output_tokens": request.max_output_tokens
-                    }))
-                    .map_err(|_| ValueError::InvalidSnapshot)?
-                )
-            ),
+            request_sha256: request_digest(&self.plan, self.profile)?,
             execution_profile: self.profile,
             quality_version: QUALITY_VERSION,
             prompt_bytes: request.messages.iter().map(|m| m.content.len()).sum(),

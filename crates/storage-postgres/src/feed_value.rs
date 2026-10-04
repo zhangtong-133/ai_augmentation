@@ -83,7 +83,7 @@ fn quote(pricing: &ValuePricing, time: i64) -> StorageResult<(Option<i64>, i64)>
             valid_until_unix_ms,
         } => {
             personal_ai_llm::local::LocalTarget::new(endpoint, model).map_err(|_| invalid())?;
-            if profile != personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE
+            if !["local-rss-v1", "local-rss-v2"].contains(&profile.as_str())
                 || *valid_until_unix_ms <= time
             {
                 return Err(invalid());
@@ -109,6 +109,23 @@ fn digest(
     )
     .map_err(|_| invalid())?
     .ok_or_else(invalid)?;
+    if let ValuePricing::Local { profile, .. } = pricing
+        && profile == "local-rss-v2"
+    {
+        let request_digest =
+            personal_ai_agent_core::feed_value_local::request_digest(&plan, profile)
+                .map_err(|_| invalid())?;
+        let bytes = serde_json::to_vec(&(
+            "rss-value-local-review-v2",
+            plan.digest(),
+            snapshot.preference_revision,
+            pricing,
+            expires,
+            request_digest,
+        ))
+        .map_err(|_| invalid())?;
+        return Ok(format!("{:x}", Sha256::digest(bytes)));
+    }
     let bytes = serde_json::to_vec(&(
         "rss-value-review-v1",
         plan.digest(),
@@ -141,13 +158,14 @@ pub(super) fn decode(row: &PgRow) -> StorageResult<ValueReview> {
             .map_err(|_| invalid())?,
     };
     let (amount, valid_until) = quote(&saved.pricing, saved.created_at_unix_ms)?;
-    if matches!(saved.pricing, ValuePricing::Local { .. })
+    if let ValuePricing::Local { profile, .. } = &saved.pricing
         && let Some(snapshot) = &saved.snapshot
     {
         personal_ai_agent_core::feed_value_local::validate_local_snapshot(
             &UserId::new(row.get::<Uuid, _>("user_id").to_string()),
             &saved.request_id,
             snapshot,
+            profile,
         )
         .map_err(|_| invalid())?;
     }
@@ -250,11 +268,15 @@ impl FeedValueStore for PostgresStore {
                 &input,
             )?;
             let (amount, valid_until) = quote(&pricing, time)?;
-            if matches!(pricing, ValuePricing::Local { .. }) {
+            if let ValuePricing::Local { profile, .. } = &pricing {
+                if profile != personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE {
+                    return Err(invalid());
+                }
                 personal_ai_agent_core::feed_value_local::validate_local_snapshot(
                     &UserId::new(owner.to_string()),
                     &request.to_string(),
                     &input,
+                    profile,
                 )
                 .map_err(|_| invalid())?;
             }
@@ -298,8 +320,9 @@ impl FeedValueStore for PostgresStore {
                         && approval.acknowledge_subscription_usage
                         && !approval.acknowledge_local_compute
                 }
-                ValuePricing::Local { .. } => {
-                    approval.currency.is_none()
+                ValuePricing::Local { profile, .. } => {
+                    profile == personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE
+                        && approval.currency.is_none()
                         && !approval.acknowledge_cost
                         && !approval.acknowledge_subscription_usage
                         && approval.acknowledge_local_compute

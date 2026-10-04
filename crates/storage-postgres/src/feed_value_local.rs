@@ -54,7 +54,10 @@ impl LocalValueExecutionStore for PostgresStore {
             if row.get::<Option<Uuid>, _>("dispatch_token") != Some(token) {
                 return Err(conflict());
             }
-            if saved.status != "running" || row.get::<Option<i64>, _>("sent_ms").is_some() {
+            if saved.status != "running"
+                || row.get::<Option<i64>, _>("sent_ms").is_some()
+                || matches!(&saved.pricing, ValuePricing::Local { profile, .. } if profile != personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE)
+            {
                 tx.commit().await.map_err(map_error)?;
                 return Ok(false);
             }
