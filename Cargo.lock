@@ -1701,6 +1701,18 @@ name = "personal-ai-llm"
 version = "0.1.0"
 
 [[package]]
+name = "personal-ai-llm-ollama"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "personal-ai-llm",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "personal-ai-llm-openai"
 version = "0.1.0"
 dependencies = [

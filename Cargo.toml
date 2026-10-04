@@ -8,6 +8,7 @@ members = [
   "crates/storage-s3",
   "crates/storage-qdrant",
   "crates/llm-openai",
+  "crates/llm-ollama",
   "apps/api-server",
   "apps/scheduler",
   "crates/domain",

@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod local;
 pub mod stream;
 
 use std::error::Error;
