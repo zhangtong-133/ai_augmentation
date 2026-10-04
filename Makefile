@@ -208,3 +208,7 @@ recovery-acceptance-objects: ## 在一次性 PostgreSQL/MinIO 中验收数据库
 recovery-acceptance-rss-local: ## 用合成 RSS 验收真实本地评分及恢复后不重发，需要显式启动保护服务
 	cargo build --locked -p api-server --bin api-server --bin local-review --bin local-value
 	node scripts/recovery-acceptance.mjs --local-rss
+
+.PHONY: local-value-gate-test
+local-value-gate-test: ## 离线验收双套件多轮质量门槛，不调用模型
+	node scripts/test-local-value-gate.mjs
