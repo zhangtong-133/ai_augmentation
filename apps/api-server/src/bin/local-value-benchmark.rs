@@ -1,12 +1,12 @@
 //! 显式固定合成基准；没有数据库、用户来源或授权状态。
-use personal_ai_agent_core::feed_value_quality::{QualityCase, cases};
+use personal_ai_agent_core::feed_value_quality::{QualityCase, cases_for_profile};
 use personal_ai_llm::{
     local::{LocalInference, LocalTarget},
     stream::IgnoreTextDeltas,
 };
 
 // Diagnostic labels only: the strict domain decoder remains the acceptance gate.
-fn output_failure(raw: &str, count: usize) -> &'static str {
+fn output_failure(raw: &str, count: usize, profile: &str) -> &'static str {
     let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
         return "BENCH_FAILURE=output_json";
     };
@@ -52,6 +52,14 @@ fn output_failure(raw: &str, count: usize) -> &'static str {
             return "BENCH_FAILURE=output_reason";
         }
     }
+    if profile == "local-rss-v2"
+        && items.iter().any(|item| {
+            !personal_ai_agent_core::feed_value_local::LOCAL_REASONS
+                .contains(&item["reason"].as_str().unwrap_or(""))
+        })
+    {
+        return "BENCH_FAILURE=output_reason_category";
+    }
     "BENCH_FAILURE=output_strict"
 }
 
@@ -63,22 +71,31 @@ fn target(args: &[String]) -> Result<LocalTarget, &'static str> {
     }
     LocalTarget::new(&args[2], &args[3]).map_err(|_| "invalid local benchmark target")
 }
-fn select(id: &str) -> Result<QualityCase, &'static str> {
-    cases()
+fn select(id: &str, profile: &str) -> Result<QualityCase, &'static str> {
+    cases_for_profile(profile)
         .map_err(|_| "invalid benchmark corpus")?
         .into_iter()
         .find(|c| c.id() == id)
         .ok_or("unknown fixed benchmark case")
 }
 async fn run(args: &[String]) -> Result<(), &'static str> {
+    let (args, profile) = if args.len() >= 2 && args[args.len() - 2] == "--profile" {
+        (&args[..args.len() - 2], args[args.len() - 1].as_str())
+    } else {
+        (
+            args,
+            personal_ai_agent_core::feed_value_local::LOCAL_VALUE_PROFILE,
+        )
+    };
+    cases_for_profile(profile).map_err(|_| "unknown benchmark profile")?;
     if args == ["--help"] {
         println!(
-            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
+            "local-value-benchmark manifest\nlocal-value-benchmark preview CASE\nlocal-value-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在命令末尾加 --profile local-rss-v1|local-rss-v2。仅固定合成 RSS，无数据库；完整基准请用 make local-value-benchmark 复用显存保护。质量失败输出 quality_pass=false，组运行退出 2；传输/协议失败退出 1，无自动重试。"
         );
         return Ok(());
     }
     if args == ["manifest"] {
-        let all = cases()
+        let all = cases_for_profile(profile)
             .map_err(|_| "invalid benchmark corpus")?
             .iter()
             .map(QualityCase::manifest)
@@ -91,7 +108,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         return Ok(());
     }
     if args.len() == 2 && args[0] == "preview" {
-        let case = select(&args[1])?;
+        let case = select(&args[1], profile)?;
         let request = case.request().map_err(|_| "invalid benchmark request")?;
         println!(
             "{}",
@@ -102,7 +119,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         return Ok(());
     }
     let target = target(args)?;
-    let case = select(&args[1])?;
+    let case = select(&args[1], profile)?;
     let request = case.request().map_err(|_| "invalid benchmark request")?;
     let client =
         personal_ai_llm_local::LocalChatClient::new().map_err(|_| "local client unavailable")?;
@@ -113,7 +130,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         .map_err(|_| "BENCH_FAILURE=transport")?;
     let result = case
         .evaluate(raw.as_bytes())
-        .map_err(|_| output_failure(&raw, case.manifest().map_or(0, |m| m.items.len())))?;
+        .map_err(|_| output_failure(&raw, case.manifest().map_or(0, |m| m.items.len()), profile))?;
     println!(
         "{}",
         serde_json::json!({"result":result,"endpoint":target.endpoint(),"model":target.model(),
@@ -134,25 +151,34 @@ mod tests {
     #[test]
     fn invalid_output_diagnostics_emit_only_fixed_codes() {
         assert_eq!(
-            output_failure("private diagnostic must not escape", 2),
+            output_failure("private diagnostic must not escape", 2, "local-rss-v1"),
             "BENCH_FAILURE=output_json"
         );
         assert_eq!(
-            output_failure("{\"items\":[]}", 2),
+            output_failure("{\"items\":[]}", 2, "local-rss-v1"),
             "BENCH_FAILURE=output_count"
         );
         assert_eq!(
-            output_failure(r#"{"items":[{"id":0,"score":0,"reason":"x"}]}"#, 1),
+            output_failure(
+                r#"{"items":[{"id":0,"score":0,"reason":"x"}]}"#,
+                1,
+                "local-rss-v1"
+            ),
             "BENCH_FAILURE=output_ids"
         );
         assert_eq!(
-            output_failure(r#"{"items":[{"id":1,"score":0,"reason":""}]}"#, 1),
+            output_failure(
+                r#"{"items":[{"id":1,"score":0,"reason":""}]}"#,
+                1,
+                "local-rss-v1"
+            ),
             "BENCH_FAILURE=output_reason"
         );
         assert_eq!(
             output_failure(
                 r#"{"items":[{"id":1,"score":0,"reason":"x","extra":"secret"}]}"#,
-                1
+                1,
+                "local-rss-v1"
             ),
             "BENCH_FAILURE=output_schema"
         );
@@ -167,12 +193,12 @@ mod tests {
             "--use-local-benchmark".into(),
         ];
         assert!(target(&args).is_ok());
-        assert!(select(&args[1]).is_ok());
+        assert!(select(&args[1], "local-rss-v1").is_ok());
         args[4] = "--use-local".into();
         assert!(target(&args).is_err());
         args[4] = "--use-local-benchmark".into();
         args[2] = "https://remote.example".into();
         assert!(target(&args).is_err());
-        assert!(select("user-request").is_err());
+        assert!(select("user-request", "local-rss-v1").is_err());
     }
 }

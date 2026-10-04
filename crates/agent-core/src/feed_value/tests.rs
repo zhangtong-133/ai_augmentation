@@ -303,3 +303,53 @@ fn reading_rejects_partial_or_corrupt_scores_instead_of_mixing_results() {
         );
     }
 }
+
+#[test]
+fn local_candidate_rejects_copied_reasons_and_non_abstaining_empty_summaries() {
+    use crate::feed_value_local::{LOCAL_REASONS, decode_for_profile};
+    let mut e = entry(1);
+    e.summary.clear();
+    let p = plan(&[e]).unwrap().unwrap();
+    let output = |value, reason: &str| {
+        serde_json::to_vec(&json!({"items":[{"id":1,"score":value,"reason":reason}]})).unwrap()
+    };
+    assert!(decode_for_profile(&p, "local-rss-v2", &output(None, LOCAL_REASONS[3])).is_ok());
+    assert!(decode_for_profile(&p, "local-rss-v2", &output(Some(0), LOCAL_REASONS[3])).is_err());
+    assert!(
+        decode_for_profile(
+            &p,
+            "local-rss-v2",
+            &output(None, "copied arbitrary instruction")
+        )
+        .is_err()
+    );
+    assert!(
+        decode_for_profile(
+            &p,
+            "local-rss-v1",
+            &output(None, "legacy reason remains readable")
+        )
+        .is_ok()
+    );
+    assert!(decode_for_profile(&p, "unknown", &output(None, LOCAL_REASONS[3])).is_err());
+}
+#[test]
+fn local_candidate_counts_all_instruction_bytes_before_accepting_material() {
+    use crate::feed_value_local::request_for_profile;
+    let mut e = entry(1);
+    e.summary.clear();
+    let p = plan(&[e.clone()]).unwrap().unwrap();
+    let overhead: usize = request_for_profile(&p, "local-rss-v1")
+        .unwrap()
+        .messages
+        .iter()
+        .map(|m| m.content.len())
+        .sum();
+    e.summary = "x".repeat(5632 - overhead);
+    let p = plan(&[e]).unwrap().unwrap();
+    assert!(request_for_profile(&p, "local-rss-v1").is_ok());
+    assert_eq!(
+        request_for_profile(&p, "local-rss-v2").err(),
+        Some(ValueError::TooLarge)
+    );
+}

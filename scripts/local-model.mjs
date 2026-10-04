@@ -109,11 +109,11 @@ async function runReview(probe = false, scoring = false) {
 }
 async function benchmarkCase() {
   const args = process.argv.slice(3);
-  if (args.length !== 1 || !/^[a-z0-9_]{1,40}$/.test(args[0])) throw new Error("用法：benchmark-case 固定语料键");
+  if (![1, 2].includes(args.length) || !/^[a-z0-9_]{1,40}$/.test(args[0]) || (args[1] && !["local-rss-v1", "local-rss-v2"].includes(args[1]))) throw new Error("用法：benchmark-case 固定语料键");
   const state = await owner(); if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
   await readyToSend();
   // Group runner builds this binary before any request; do not inherit DB/API credentials.
-  const child = spawn(join(root, "target/debug/local-value-benchmark"), ["case", args[0], endpoint, model, "--use-local-benchmark"],
+  const child = spawn(join(root, "target/debug/local-value-benchmark"), ["case", args[0], endpoint, model, "--use-local-benchmark", ...(args[1] ? ["--profile", args[1]] : [])],
     { cwd: root, env: { PATH: process.env.PATH, HOME: process.env.HOME }, stdio: "inherit" });
   const halt = () => child.kill("SIGTERM"); process.on("SIGINT", halt); process.on("SIGTERM", halt);
   try { const [code] = await once(child, "close"); if (code !== 0) throw new Error("固定基准执行未确认，不自动重试"); }

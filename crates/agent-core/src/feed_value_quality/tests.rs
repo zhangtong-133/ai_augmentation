@@ -45,6 +45,36 @@ fn corpus_fingerprint_changes_when_only_quality_criteria_change() {
     assert_eq!(before.request_sha256, after.request_sha256);
 }
 #[test]
+fn candidate_preserves_quoted_data_and_criteria_but_changes_exact_request_fingerprint() {
+    let old = cases_for_profile("local-rss-v1").unwrap();
+    let new = cases_for_profile("local-rss-v2").unwrap();
+    for (old, new) in old.iter().zip(&new) {
+        let old_request = old.request().unwrap();
+        let new_request = new.request().unwrap();
+        let old_data: serde_json::Value =
+            serde_json::from_str(&old_request.messages[1].content).unwrap();
+        let new_data: serde_json::Value =
+            serde_json::from_str(new_request.messages[1].content.lines().nth(1).unwrap()).unwrap();
+        assert_eq!(old_data, new_data);
+        assert!(!new_request.messages[1].content.contains("<system>"));
+        assert_eq!(
+            old.manifest().unwrap().corpus_sha256,
+            new.manifest().unwrap().corpus_sha256
+        );
+        assert_eq!(
+            old.manifest().unwrap().input_digest,
+            new.manifest().unwrap().input_digest
+        );
+        assert_ne!(
+            old.manifest().unwrap().request_sha256,
+            new.manifest().unwrap().request_sha256
+        );
+        assert!(new.manifest().unwrap().prompt_bytes <= 5632);
+        assert_eq!(new_request.max_output_tokens, Some(2048));
+    }
+    assert!(cases_for_profile("unknown").is_err());
+}
+#[test]
 fn protocol_valid_output_can_fail_relevance_abstention_and_injection_separately() {
     for case in cases().unwrap() {
         let poor = case

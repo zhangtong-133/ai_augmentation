@@ -26,7 +26,7 @@ export async function runCases(manifests, target, send) {
   for (const manifest of manifests) {
     try { results.push(verifyCase(await send(manifest.id), manifest, target)); }
     catch (error) {
-      const known = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_strict"];
+      const known = ["transport", "output_json", "output_schema", "output_count", "output_ids", "output_score", "output_reason", "output_reason_category", "output_strict"];
       return { complete: false, failure: known.includes(error.benchmarkFailure) ? error.benchmarkFailure : "case_execution_or_protocol_unconfirmed", failed_case: manifest.id, results, exit_code: 1 };
     }
   }

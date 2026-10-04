@@ -1,7 +1,7 @@
 //! 固定合成 RSS 的质量基线，独立于协议正确性和用户评分状态。
 use crate::{
-    feed_value::{Score, ValueError, ValueScoringPlan, decode_value_scores, plan_value_scoring},
-    feed_value_local::{LOCAL_VALUE_PROFILE, local_request},
+    feed_value::{Score, ValueError, ValueScoringPlan, plan_value_scoring},
+    feed_value_local::{LOCAL_VALUE_PROFILE, decode_for_profile, request_for_profile},
 };
 use personal_ai_domain::UserId;
 use personal_ai_feeds::brief::{BriefCandidate, DAY_MS};
@@ -61,6 +61,7 @@ pub enum Check {
 pub struct QualityCase {
     id: String,
     corpus_sha256: String,
+    profile: &'static str,
     plan: ValueScoringPlan,
     labels: BTreeMap<usize, String>,
     checks: Vec<Check>,
@@ -141,6 +142,21 @@ impl Check {
 pub fn cases() -> Result<Vec<QualityCase>, ValueError> {
     parse(CORPUS)
 }
+/// # Errors
+/// 未知 profile 或不合法语料时拒绝。
+pub fn cases_for_profile(profile: &str) -> Result<Vec<QualityCase>, ValueError> {
+    let profile = match profile {
+        "local-rss-v1" => "local-rss-v1",
+        "local-rss-v2" => "local-rss-v2",
+        _ => return Err(ValueError::InvalidSnapshot),
+    };
+    let mut all = parse(CORPUS)?;
+    for case in &mut all {
+        case.profile = profile;
+        case.request()?;
+    }
+    Ok(all)
+}
 fn parse(input: &str) -> Result<Vec<QualityCase>, ValueError> {
     let corpus_sha256 = format!("{:x}", Sha256::digest(input));
     let corpus: Corpus = serde_json::from_str(input).map_err(|_| ValueError::InvalidSnapshot)?;
@@ -197,7 +213,7 @@ fn parse(input: &str) -> Result<Vec<QualityCase>, ValueError> {
                 &candidates,
             )?
             .ok_or(ValueError::InvalidSnapshot)?;
-            local_request(&plan)?;
+            request_for_profile(&plan, LOCAL_VALUE_PROFILE)?;
             if plan.brief().items.len() != c.entries.len() {
                 return Err(ValueError::InvalidSnapshot);
             }
@@ -217,6 +233,7 @@ fn parse(input: &str) -> Result<Vec<QualityCase>, ValueError> {
             Ok(QualityCase {
                 id: c.id,
                 corpus_sha256: corpus_sha256.clone(),
+                profile: LOCAL_VALUE_PROFILE,
                 plan,
                 labels,
                 checks: c.checks,
@@ -232,7 +249,7 @@ impl QualityCase {
     /// # Errors
     /// 精确请求超出本地预算时拒绝发送。
     pub fn request(&self) -> Result<ChatRequest, ValueError> {
-        local_request(&self.plan)
+        request_for_profile(&self.plan, self.profile)
     }
     /// # Errors
     /// 不能生成精确本地请求时失败。
@@ -255,7 +272,7 @@ impl QualityCase {
                     .map_err(|_| ValueError::InvalidSnapshot)?
                 )
             ),
-            execution_profile: LOCAL_VALUE_PROFILE,
+            execution_profile: self.profile,
             quality_version: QUALITY_VERSION,
             prompt_bytes: request.messages.iter().map(|m| m.content.len()).sum(),
             checks: self.checks.clone(),
@@ -266,7 +283,7 @@ impl QualityCase {
     /// # Errors
     /// 截断、非法或缺失条目等协议失败不能成为质量结果。
     pub fn evaluate(&self, output: &[u8]) -> Result<QualityResult, ValueError> {
-        let raw = decode_value_scores(&self.plan, output)?;
+        let raw = decode_for_profile(&self.plan, self.profile, output)?;
         let scores = raw
             .iter()
             .map(|s| (self.labels[&s.id].clone(), s.score))

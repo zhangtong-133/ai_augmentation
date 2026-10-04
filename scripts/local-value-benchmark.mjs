@@ -13,12 +13,16 @@ const base = join(root, ".local-model");
 const binary = join(root, "target/debug/local-value-benchmark");
 const env = { PATH: process.env.PATH, HOME: process.env.HOME, ...(process.env.RUSTUP_TOOLCHAIN ? { RUSTUP_TOOLCHAIN: process.env.RUSTUP_TOOLCHAIN } : {}) };
 const args = process.argv.slice(2);
+let profile;
+if (args.length >= 2 && args.at(-2) === "--profile") { profile = args.pop(); args.pop(); }
+const profileArgs = profile ? ["--profile", profile] : [];
 async function hashFile(path) {
   const hash = createHash("sha256");
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest("hex");
 }
 async function run() {
+  if (profile && !["local-rss-v1", "local-rss-v2"].includes(profile)) throw new Error("invalid profile");
   if (args.length === 1 && args[0] === "--help") {
     console.log("用法：make local-value-benchmark-preview CASE=rust_preference | make local-value-benchmark\n先显式启动本项目模型；四组固定合成语料各发送一次。退出 0 全通过，2 质量失败，1 执行/协议未确认；报告存项目私有目录，不自动重试。"); return;
   }
@@ -45,16 +49,16 @@ async function run() {
         launcher_sha256: await hashFile(join(base, "llama-server")),
         model_sha256: modelSha, model_revision: config.model.revision,
         endpoint: config.endpoint, model_alias: config.model_alias };
-      const { stdout } = await execute(binary, ["manifest"], { cwd: root, env, timeout: 10000, signal: abort.signal, maxBuffer: 65536 });
+      const { stdout } = await execute(binary, ["manifest", ...profileArgs], { cwd: root, env, timeout: 10000, signal: abort.signal, maxBuffer: 65536 });
       const manifests = JSON.parse(stdout);
       const started = new Date().toISOString();
       const outcome = await runCases(manifests, config, async id => {
         try {
-          const result = await execute(process.execPath, [join(root, "scripts/local-model.mjs"), "benchmark-case", id],
+          const result = await execute(process.execPath, [join(root, "scripts/local-model.mjs"), "benchmark-case", id, ...(profile ? [profile] : [])],
             { cwd: root, env, timeout: 90000, signal: abort.signal, maxBuffer: 65536 });
           return JSON.parse(result.stdout);
         } catch (error) {
-          const fixed = /^BENCH_FAILURE=(transport|output_json|output_schema|output_count|output_ids|output_score|output_reason|output_strict)$/m.exec(error.stderr ?? "");
+          const fixed = /^BENCH_FAILURE=(transport|output_json|output_schema|output_count|output_ids|output_score|output_reason|output_reason_category|output_strict)$/m.exec(error.stderr ?? "");
           throw Object.assign(new Error("benchmark unconfirmed"), { benchmarkFailure: fixed?.[1] });
         }
       });
@@ -66,7 +70,7 @@ async function run() {
       process.exitCode = report.exit_code;
     } else {
       await execute("cargo", ["build", "--locked", "--offline", "-p", "api-server", "--bin", "local-value-benchmark"], { cwd: root, env, timeout: 180000, signal: abort.signal, maxBuffer: 65536 });
-      const { stdout } = await execute(binary, ["preview", args[1]], { cwd: root, env, timeout: 10000, signal: abort.signal, maxBuffer: 65536 });
+      const { stdout } = await execute(binary, ["preview", args[1], ...profileArgs], { cwd: root, env, timeout: 10000, signal: abort.signal, maxBuffer: 65536 });
       process.stdout.write(stdout);
     }
   } finally {
