@@ -50,6 +50,8 @@ struct MemoryStore {
     sessions: Mutex<HashMap<String, String>>,
     users: Mutex<HashMap<String, User>>,
     unavailable: bool,
+    document_reads: std::sync::atomic::AtomicUsize,
+    fail_document_read_at: std::sync::atomic::AtomicUsize,
 }
 
 impl personal_ai_storage::conversations::ConversationStore for MemoryStore {
@@ -809,6 +811,20 @@ async fn login_attempt_budget_is_enforced() {
     );
 }
 impl DocumentStore for MemoryStore {
+    fn get_document_text(
+        &self,
+        owner: &UserId,
+        id: &str,
+    ) -> BoxFuture<'_, StorageResult<StoredDocument>> {
+        use std::sync::atomic::Ordering;
+        let read = self.document_reads.fetch_add(1, Ordering::SeqCst) + 1;
+        if read == self.fail_document_read_at.load(Ordering::SeqCst) {
+            return Box::pin(async {
+                Err(StorageError::Unavailable("private backend detail".into()))
+            });
+        }
+        self.get_document(owner, id)
+    }
     fn document_stats(
         &self,
         owner: &UserId,
@@ -2365,3 +2381,6 @@ mod learning_tests;
 
 #[path = "subscription_connection_tests.rs"]
 mod subscription_connection_tests;
+
+#[path = "answer_tests.rs"]
+mod answer_tests;

@@ -6,7 +6,10 @@ use axum::{
     response::IntoResponse,
     routing::post,
 };
+use personal_ai_domain::UserId;
+use personal_ai_knowledge::retrieval::SearchHit;
 use personal_ai_llm::{AnswerProvider, LlmError};
+use personal_ai_storage::StorageError;
 use serde::Deserialize;
 use std::{sync::Arc, time::Duration};
 
@@ -45,6 +48,38 @@ pub(super) fn routes() -> Router<AppState> {
 struct AnswerRequest {
     query: String,
 }
+// Recheck every supplied source: an answer may depend on uncited evidence too.
+async fn revalidate(
+    state: &AppState,
+    headers: &HeaderMap,
+    owner: &UserId,
+    hits: &[SearchHit],
+) -> Result<(), ApiError> {
+    for hit in hits {
+        let document = state
+            .documents
+            .get_document_text(owner, &hit.document_id)
+            .await
+            .map_err(|error| match error {
+                StorageError::NotFound => ApiError(StatusCode::CONFLICT, "answer_evidence_changed"),
+                _ => ApiError(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "answer_evidence_unavailable",
+                ),
+            })?;
+        if document.summary.id != hit.document_id
+            || document.summary.title != hit.title
+            || document.summary.source != hit.source
+            || document.chunks.get(hit.ordinal) != Some(&hit.text)
+        {
+            return Err(ApiError(StatusCode::CONFLICT, "answer_evidence_changed"));
+        }
+    }
+    if auth::current_user(state, headers).await?.id != *owner {
+        return Err(ApiError(StatusCode::UNAUTHORIZED, "unauthorized"));
+    }
+    Ok(())
+}
 async fn answer(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -75,15 +110,21 @@ async fn answer(
         .await
         .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "retrieval_timeout"))?
         .map_err(|e| retrieval::error(&e))?;
-        personal_ai_knowledge::answer::answer(provider.as_ref(), &input.query, &hits)
-            .await
-            .map_err(|error| match error {
-                LlmError::RateLimited => {
-                    ApiError(StatusCode::TOO_MANY_REQUESTS, "answer_rate_limited")
-                }
-                LlmError::InvalidResponse(_) => ApiError(StatusCode::BAD_GATEWAY, "invalid_answer"),
-                _ => ApiError(StatusCode::BAD_GATEWAY, "answer_unavailable"),
-            })
+        revalidate(&state, &headers, &user.id, &hits).await?;
+        let response =
+            personal_ai_knowledge::answer::answer(provider.as_ref(), &input.query, &hits)
+                .await
+                .map_err(|error| match error {
+                    LlmError::RateLimited => {
+                        ApiError(StatusCode::TOO_MANY_REQUESTS, "answer_rate_limited")
+                    }
+                    LlmError::InvalidResponse(_) => {
+                        ApiError(StatusCode::BAD_GATEWAY, "invalid_answer")
+                    }
+                    _ => ApiError(StatusCode::BAD_GATEWAY, "answer_unavailable"),
+                })?;
+        revalidate(&state, &headers, &user.id, &hits).await?;
+        Ok::<_, ApiError>(response)
     })
     .await
     .map_err(|_| ApiError(StatusCode::GATEWAY_TIMEOUT, "answer_timeout"))??;
