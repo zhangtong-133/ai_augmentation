@@ -160,3 +160,8 @@ recovery-acceptance: ## 在一次性 PostgreSQL 中验收真实备份及恢复�
 recovery-acceptance-local: ## 用合成证据验收受显存保护的真实本地模型、建议保存及恢复后不重发
 	cargo build --locked -p api-server --bin api-server --bin local-review
 	node scripts/recovery-acceptance.mjs --local-model
+
+.PHONY: recovery-acceptance-objects
+recovery-acceptance-objects: ## 在一次性 PostgreSQL/MinIO 中验收数据库与外部原文完整恢复
+	cargo build --locked -p api-server --bin api-server --bin local-review --bin original-archive
+	node scripts/recovery-acceptance.mjs --objects

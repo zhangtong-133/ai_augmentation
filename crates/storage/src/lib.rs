@@ -200,6 +200,19 @@ pub trait ObjectStorage: Send + Sync {
     ) -> BoxFuture<'_, StorageResult<()>>;
 
     fn get(&self, key: &str) -> BoxFuture<'_, StorageResult<Vec<u8>>>;
+    /// 仅创建不存在的对象；用于恢复，适配器须以原子条件写入防止覆盖。
+    fn put_new(
+        &self,
+        _key: &str,
+        _bytes: &[u8],
+        _content_type: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        Box::pin(async {
+            Err(StorageError::Unavailable(
+                "conditional object creation unsupported".into(),
+            ))
+        })
+    }
     fn delete(&self, key: &str) -> BoxFuture<'_, StorageResult<()>>;
 }
 

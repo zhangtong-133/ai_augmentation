@@ -24,14 +24,16 @@ jobs:
 
   objects:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:
           node-version: "20.15"
+      - uses: Swatinem/rust-cache@v2
       - run: make smoke-objects
+      - run: make recovery-acceptance-objects
 
   index:
     runs-on: ubuntu-latest

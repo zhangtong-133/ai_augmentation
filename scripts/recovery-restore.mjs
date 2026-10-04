@@ -23,6 +23,12 @@ export async function restore(target) {
   target = parseOptions(["--container", target.container, "--database", target.database, "--directory", target.directory,
     ...(target.externalOriginalsReady ? ["--external-originals-ready", "true"] : [])], "restore");
   const manifest = await verify(target.directory); // no database mutation before validation
+  let referenceCheck = "";
+  if (manifest.originals) {
+    const refs = await readFile(join(target.directory, "originals.json"));
+    if (refs.length !== manifest.originals.bytes || createHash("sha256").update(refs).digest("hex") !== manifest.originals.sha256) throw new Error("原文引用在校验后发生改变");
+    referenceCheck = `OR (SELECT COALESCE(jsonb_agg(jsonb_build_object('key',original_object_key,'sourceType',source_type) ORDER BY original_object_key),'[]'::jsonb) FROM documents WHERE original_object_key IS NOT NULL) IS DISTINCT FROM convert_from(decode('${refs.toString("hex")}','hex'),'UTF8')::jsonb`;
+  }
   if (manifest.externalOriginals && !target.externalOriginalsReady) throw new Error("备份引用外部原文，须先恢复对应 S3 桶并显式指定 --external-originals-ready true");
   await localDocker();
   const quarantine = await readFile(join(root, "infra/postgres/recovery-quarantine.sql"), "utf8");
@@ -70,6 +76,7 @@ DO $$ BEGIN
   FROM _sqlx_migrations WHERE success) IS DISTINCT FROM '${JSON.stringify(manifest.migrations)}'::jsonb
   OR EXISTS(SELECT 1 FROM _sqlx_migrations WHERE NOT success)
   OR (SELECT count(*) FROM documents WHERE original_object_key IS NOT NULL)<>${manifest.externalOriginals}
+  ${referenceCheck}
  THEN RAISE EXCEPTION 'restored metadata mismatch'; END IF;
 END $$;\n`;
     receiver.child.stdin.end(`\n${restoredMetadata}${quarantine}\nCOMMIT;\n`);

@@ -93,12 +93,13 @@ npm --prefix apps/web run build
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |
+| `make recovery-acceptance-objects` | 一次性 PostgreSQL/MinIO 验收原文归档、目标冲突拒绝与应用完整恢复 |
 | `make browser-test-index` | 使用真实 Qdrant 和本地模型夹具验证索引、检索、问答 UI 及用户隔离 |
 | `make browser-test-public` | 额外验证公网网页导入，需要 API 能直连公网 |
 
 自动验收不调用真实付费模型；历史通过记录不代表当前环境或最新 CI 状态。
 
-应用 PostgreSQL 可使用[备份与恢复命令](docs/design/postgres-recovery.md)导出一致性归档、离线校验，并恢复到独立空数据库。恢复会撤销旧会话和待执行授权、停用自动任务，保留正常终态与费用/次数审计；默认不覆盖在线数据库。S3 原文及外部凭据需另行准备。
+应用 PostgreSQL 可使用[备份与恢复命令](docs/design/postgres-recovery.md)导出一致性归档、离线校验，并恢复到独立空数据库。恢复会撤销旧会话和待执行授权、停用自动任务，保留正常终态与费用/次数审计；默认不覆盖在线数据库。[外部原文备份](docs/design/originals-recovery.md)可一并归档引用的 S3/MinIO 原文并逐字节验证目标桶；外部凭据需另行准备。
 
 ## 工程与文档
 

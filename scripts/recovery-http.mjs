@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { root } from "./recovery-lib.mjs";
 const execute = promisify(execFile);
 
-export async function startApplication(database, token) {
+export async function startApplication(database, token, objects = {}) {
   const portServer = createServer();
   await new Promise(resolve => portServer.listen(0, "127.0.0.1", resolve));
   const port = portServer.address().port;
@@ -17,6 +17,7 @@ export async function startApplication(database, token) {
   const child = spawn(join(root, "target/debug/api-server"), [], { cwd: root, stdio: ["ignore", "pipe", "pipe"], env: {
     PATH: process.env.PATH, DATABASE_URL: database, API_AUTH_TOKEN: token, API_HOST: "127.0.0.1", API_PORT: String(port),
     SESSION_COOKIE_SECURE: "false", LEARNING_LOCAL_ENABLED: "true", CONVERSATION_REPLY_MODE: "disabled", RSS_COLLECTION_MODE: "disabled",
+    ...objects,
   } });
   child.stdout.resume(); child.stderr.resume();
   const done = new Promise(resolve => { child.on("close", () => { exited = true; resolve(); }); child.on("error", () => { exited = true; resolve(); }); });

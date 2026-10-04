@@ -1,10 +1,12 @@
 //! `MinIO` / S3 原文适配器；SDK 类型与凭据不进入领域接口。
 use futures::TryStreamExt;
 use object_store::{
-    Attribute, Attributes, ObjectStore, PutOptions, aws::AmazonS3Builder, path::Path,
+    Attribute, Attributes, ObjectStore, PutMode, PutOptions, aws::AmazonS3Builder, path::Path,
 };
 use personal_ai_storage::{BoxFuture, ObjectInfo, ObjectStorage, StorageError, StorageResult};
 use std::time::Duration;
+
+const ORIGINAL_SIZE_LIMIT: usize = 5 * 1024 * 1024;
 
 pub struct S3Store {
     inner: object_store::aws::AmazonS3,
@@ -148,7 +150,52 @@ impl ObjectStorage for S3Store {
         let path = path(key);
         Box::pin(async move {
             let result = self.inner.get(&path?).await.map_err(map_error)?;
-            Ok(result.bytes().await.map_err(map_error)?.to_vec())
+            // 原文协议上限为 5 MiB，HEAD 长度和实际流都必须受限。
+            if result.meta.size > ORIGINAL_SIZE_LIMIT as u64 {
+                return Err(StorageError::InvalidData(
+                    "object exceeds original size limit".into(),
+                ));
+            }
+            let mut stream = result.into_stream();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = stream.try_next().await.map_err(map_error)? {
+                if chunk.len() > ORIGINAL_SIZE_LIMIT.saturating_sub(bytes.len()) {
+                    return Err(StorageError::InvalidData(
+                        "object exceeds original size limit".into(),
+                    ));
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            Ok(bytes)
+        })
+    }
+
+    fn put_new(
+        &self,
+        key: &str,
+        bytes: &[u8],
+        content_type: Option<&str>,
+    ) -> BoxFuture<'_, StorageResult<()>> {
+        let key = path(key);
+        let bytes = bytes.to_vec();
+        let mut attributes = Attributes::new();
+        if let Some(content_type) = content_type {
+            attributes.insert(Attribute::ContentType, content_type.to_owned().into());
+        }
+        Box::pin(async move {
+            self.inner
+                .put_opts(
+                    &key?,
+                    bytes.into(),
+                    PutOptions {
+                        mode: PutMode::Create,
+                        attributes,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .map_err(map_error)?;
+            Ok(())
         })
     }
 

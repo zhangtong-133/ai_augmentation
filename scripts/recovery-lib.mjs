@@ -46,11 +46,12 @@ export function matchingMigrations(actual, expected) {
 }
 export function validateManifest(value) {
   const keys = "createdAt,dump,externalOriginals,format,migrations,postgresMajor";
-  if (!value || Object.keys(value).sort().join(",") !== keys || value.format !== format || value.postgresMajor !== 16 ||
+  if (!value || ![keys, "createdAt,dump,externalOriginals,format,migrations,originals,postgresMajor"].includes(Object.keys(value).sort().join(",")) || value.format !== format || value.postgresMajor !== 16 ||
       typeof value.createdAt !== "string" || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.createdAt) || !Number.isFinite(Date.parse(value.createdAt)) ||
       !Number.isSafeInteger(value.externalOriginals) || value.externalOriginals < 0 || !Array.isArray(value.migrations) || !value.migrations.length ||
       !value.dump || Object.keys(value.dump).sort().join(",") !== "bytes,file,sha256" || value.dump.file !== "database.dump" ||
       !Number.isSafeInteger(value.dump.bytes) || value.dump.bytes <= 0 || !/^[a-f0-9]{64}$/.test(value.dump.sha256)) throw new Error("备份清单格式或版本不支持");
+  if (value.originals && (Object.keys(value.originals).sort().join(",") !== "bytes,file,sha256" || value.originals.file !== "originals.json" || !Number.isSafeInteger(value.originals.bytes) || value.originals.bytes < 1 || value.originals.bytes > 1048576 || !/^[a-f0-9]{64}$/.test(value.originals.sha256))) throw new Error("原文引用清单不合法");
   return value;
 }
 async function regular(path) {
@@ -72,6 +73,10 @@ export async function verify(directory) {
   if (!matchingMigrations(manifest.migrations, await expectedMigrations())) throw new Error("备份迁移与当前代码不同，拒绝恢复");
   const digest = await digestFile(join(directory, "database.dump"));
   if (digest.bytes !== manifest.dump.bytes || digest.sha256 !== manifest.dump.sha256) throw new Error("备份大小或 SHA-256 不匹配");
+  if (manifest.originals) {
+    const refs = await digestFile(join(directory, "originals.json"));
+    if (refs.bytes !== manifest.originals.bytes || refs.sha256 !== manifest.originals.sha256) throw new Error("原文引用大小或 SHA-256 不匹配");
+  }
   return manifest;
 }
 
@@ -107,6 +112,8 @@ export async function pgQuery(target, sql) {
   return output.trim();
 }
 const metadataSql = `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL lock_timeout='5s';
+DO $$ BEGIN PERFORM pg_advisory_xact_lock_shared(7384920617); END $$;
 SELECT jsonb_build_object('snapshot',pg_export_snapshot(),'postgresMajor',current_setting('server_version_num')::int/10000,
  'failedMigrations',(SELECT count(*) FROM _sqlx_migrations WHERE NOT success),
  'migrations',(SELECT jsonb_agg(jsonb_build_object('version',version,'checksum',encode(checksum,'hex')) ORDER BY version) FROM _sqlx_migrations WHERE success),
@@ -131,7 +138,7 @@ async function snapshot(target) {
     return { state, close: async () => { child.stdin.end("ROLLBACK;\n"); await done; } };
   } catch (error) { child.kill("SIGKILL"); await done.catch(() => {}); throw error; }
 }
-export async function backup(target) {
+export async function backup(target, { captureOriginals } = {}) {
   target = parseOptions(["--container", target.container, "--database", target.database, "--directory", target.directory], "backup");
   await localDocker();
   const transaction = await snapshot(target);
@@ -149,6 +156,13 @@ export async function backup(target) {
     const digest = await digestFile(path);
     const manifest = { format, createdAt: new Date().toISOString(), postgresMajor: state.postgresMajor,
       migrations: state.migrations, externalOriginals: state.externalOriginals, dump: { file: "database.dump", ...digest } };
+    if (state.externalOriginals > 1000) throw new Error("原文备份首版最多支持 1000 个引用，拒绝不完整导出");
+    const refs = await pgQuery(target, `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET TRANSACTION SNAPSHOT '${state.snapshot}'; SELECT COALESCE(jsonb_agg(jsonb_build_object('key',original_object_key,'sourceType',source_type) ORDER BY original_object_key),'[]'::jsonb) FROM documents WHERE original_object_key IS NOT NULL; ROLLBACK;`);
+    const entries = JSON.parse(refs);
+    if (!Array.isArray(entries) || entries.length !== state.externalOriginals) throw new Error("原文引用与数据库快照不一致");
+    await writeFile(join(target.directory, "originals.json"), JSON.stringify(entries) + "\n", { flag: "wx", mode: 0o600 });
+    manifest.originals = { file: "originals.json", ...await digestFile(join(target.directory, "originals.json")) };
+    if (captureOriginals) await captureOriginals(target.directory, manifest);
     validateManifest(manifest);
     await writeFile(join(target.directory, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", { flag: "wx", mode: 0o600 });
     await verify(target.directory);
