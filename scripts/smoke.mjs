@@ -230,6 +230,9 @@ try {
   await command("cargo", ["test", "-p", "scheduler", "--test", "process", "--", "--ignored"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });
+  await command("cargo", ["test", "-p", "api-server", "--lib", "answer_authorization_tests", "--", "--ignored"], {
+    TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
+  });
   await command("make", ["test-replies"], {
     TEST_DATABASE_URL: `postgres://smoke:${env.SMOKE_PASSWORD}@${database}/smoke`,
   });

@@ -1,3 +1,5 @@
+#[path = "answer_authorization_tests.rs"]
+mod answer_authorization_tests;
 use super::*;
 use axum::{
     body::{Body, to_bytes},
@@ -443,6 +445,7 @@ fn app() -> Router {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -568,6 +571,7 @@ async fn readiness_checks_storage_but_liveness_does_not() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -951,6 +955,7 @@ async fn documents_are_private_deduplicated_and_validated() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -1164,6 +1169,7 @@ async fn overview_storage_failure_is_not_an_empty_library() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -1250,6 +1256,7 @@ async fn web_import_requires_auth_and_csrf_then_persists_private_content() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -1486,6 +1493,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
         replies: None,
@@ -1616,6 +1624,7 @@ async fn indexing_requires_owner_and_csrf_and_batches_can_be_retried() {
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: None,
         ..state
     });
@@ -1688,6 +1697,7 @@ async fn retrieval_fixture() -> (
         git_tool: None,
         tool_calls: Some(Arc::new(tool_calls::MemoryToolCalls::default())),
         answering: None,
+        answer_authorizations: None,
         indexing: Some(Arc::new(Indexing::new(indexer))),
         messages: Arc::new(MemoryStore::default()),
         replies: None,

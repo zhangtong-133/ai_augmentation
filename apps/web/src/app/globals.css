@@ -204,3 +204,11 @@ footer { display: flex; justify-content: space-between; padding: 35px 0 50px; co
   overflow-wrap: anywhere;
 }
 .retrievalPanel mark { background: #ffe59a; color: #252016; }
+
+.answerAuthorizations { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
+.answerAuthorizations fieldset { display: grid; gap: 12px; min-width: 0; border: 1px solid var(--line); margin: 12px 0; padding: 12px; }
+.answerAuthorizations label { display: grid; gap: 6px; }
+.answerAuthorizations .authorizationChoice { display: flex; align-items: flex-start; gap: 8px; }
+.answerAuthorizations input[type="checkbox"] { width: auto; flex: 0 0 auto; margin-top: 4px; }
+.answerAuthorizations input { max-width: 100%; min-width: 0; }
+.answerAuthorizations button { white-space: normal; overflow-wrap: anywhere; max-width: 100%; }

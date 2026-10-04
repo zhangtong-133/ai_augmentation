@@ -78,6 +78,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             memories: store.clone(),
             indexing,
             answering,
+            answer_authorizations: Some(store.clone()),
             web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
             store: store.clone(),
             documents: store,

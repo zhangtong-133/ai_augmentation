@@ -1,4 +1,5 @@
 mod agent_plans;
+mod answer_authorizations;
 mod model_agent_config;
 mod model_agents;
 pub use model_agents::ModelAgentRuntime;
@@ -103,6 +104,8 @@ pub struct AppState {
     pub message_cache: Option<Arc<dyn personal_ai_storage::messages::MessageCache>>,
     pub conversations: Arc<dyn personal_ai_storage::conversations::ConversationStore>,
     pub memories: Arc<dyn personal_ai_storage::long_memory::LongMemoryStore>,
+    pub answer_authorizations:
+        Option<Arc<dyn personal_ai_storage::answer_authorizations::AnswerAuthorizationStore>>,
     pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
     pub indexing: Option<Arc<Indexing>>,
     pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,
@@ -136,6 +139,7 @@ pub fn router(state: AppState) -> Router {
         .merge(indexing::routes())
         .merge(retrieval::routes())
         .merge(answering::routes())
+        .merge(answer_authorizations::routes())
         .merge(index_jobs::routes())
         .merge(mcp_credentials::routes(tools.clone()))
         .merge(tool_execution::routes(tools.clone()))

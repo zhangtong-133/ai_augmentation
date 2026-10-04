@@ -1,5 +1,6 @@
 "use client";
 
+import { AnswerAuthorizationsPanel } from "./answer-authorizations-panel";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 type Hit = { document_id: string; ordinal: number; title: string; source: string; text: string; score: number };
@@ -136,6 +137,7 @@ export function RetrievalPanel() {
         <ol>{result.citations.map(hit => <Evidence key={hit.id} hit={hit} citation={hit} />)}</ol>
       </>}
     </section>}
-    <small>本页不保存问答历史，刷新、退出或切换账户后清空。答案与来源仅按文本展示。</small>
+    <small>检索与回答在刷新、退出或切换账户后清空。已保存的授权可手动恢复。答案与来源仅按文本展示。</small>
+    <AnswerAuthorizationsPanel key={JSON.stringify(result)} query={result?.query ?? ""} sources={result?.kind === "search" ? result.hits : []} />
   </section>;
 }
