@@ -48,7 +48,7 @@ pub async fn receive(listener: TcpListener, pending: PendingLogin) -> Result<Cod
         .route("/auth/callback", get(callback))
         .with_state(Callback(Arc::new(Mutex::new(Some((pending, sender))))));
     let server = tokio::spawn(async move { axum::serve(listener, router).await });
-    let result = tokio::time::timeout(std::time::Duration::from_secs(300), receiver).await;
+    let result = tokio::time::timeout(std::time::Duration::from_mins(5), receiver).await;
     server.abort();
     let _ = server.await;
     result

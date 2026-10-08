@@ -109,7 +109,7 @@ async fn execute_observed(
         if store.begin_model_review(&claim, &proof).await? {
             publisher.emit(ReviewProgressKind::Sending);
             tokio::time::timeout(
-                Duration::from_secs(60),
+                Duration::from_mins(1),
                 runtime.review_observed(&claim.authorization, &request, publisher),
             )
             .await

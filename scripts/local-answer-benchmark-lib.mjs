@@ -26,7 +26,7 @@ export async function runCases(manifests, target, send) {
     try { results.push(verifyCase(await send(manifest.case.id), manifest, target)); }
     catch (error) {
       return { complete: false, failed_case: manifest.case.id,
-        failure: ["transport", "protocol"].includes(error.answerFailure) ? error.answerFailure : "case_unconfirmed",
+        failure: ["transport", "protocol", "resource", "runtime"].includes(error.answerFailure) ? error.answerFailure : "case_unconfirmed",
         not_run: manifests.slice(results.length + 1).map(m => m.case.id), results, exit_code: 1 };
     }
   }

@@ -23,6 +23,7 @@ make browser-install
 - Docker：先确认 `docker info` 能访问当前 context。沙箱内 socket 权限错误不等于 daemon 停止，不应因此修改 socket 权限或重装 Docker。
 - 网络：网页导入禁用系统代理，API 必须能直连公网 DNS 与 HTTP/HTTPS。模型服务、依赖下载与 Docker 拉取的连通性需分别检查。
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
+- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-quality.md)，使用统一内存估算保护，每题结束卸载模型；尚未接入私有问答或学习/RSS 执行。
 
 ## 最近验收记录
 
@@ -30,6 +31,7 @@ make browser-install
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-08，macOS ARM64 / OrbStack | Rust 1.96.1 完整检查（308 项测试）、前端检查/构建、284 项真实服务集成与 index smoke、4 项授权 UI；已有 Ollama 0.40.1 / Qwen3.5-9B 的真实双轮评估 | 基准两轮 7/7、独立挑战两轮 7/8，质量门槛失败，私有执行仍关闭；未重跑全量 UI、MinIO、公网导入，未验游戏并行/vLLM |
 | 2026-09-21，macOS / OrbStack | Rust、前端检查及 `make browser-test-index`，16 项 UI 测试 | 索引/检索/引用问答、真实 PostgreSQL/Qdrant、本地模型夹具；一次服务错误重跑未复现，详见检索问答记录 |
 | 2026-09-20，macOS / OrbStack | Rust 检查、前端 lint/typecheck/build、完整 `make smoke-objects` | 含事务锁竞争回归、真实 PostgreSQL/MinIO 和重启持久化；未重跑浏览器、Qdrant 专项或真实模型 |
 | 2026-09-19，WSL / Docker | 检索/问答检查及 `make smoke-index` | 真实 Qdrant、本地 Embedding/聊天夹具；不验证付费模型质量 |

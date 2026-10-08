@@ -185,7 +185,7 @@ pub async fn execute_local_value(
     let output = if let Some(chat) = chat.filter(|_| bound) {
         if store.begin_local_value(&claim, target).await? {
             tokio::time::timeout(
-                Duration::from_secs(60),
+                Duration::from_mins(1),
                 runtime.infer(target, &chat, &IgnoreTextDeltas),
             )
             .await

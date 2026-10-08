@@ -70,7 +70,7 @@ async fn execute(
         if store.begin_local_review(&claim, target).await? {
             publisher.emit(ReviewProgressKind::Sending);
             tokio::time::timeout(
-                Duration::from_secs(60),
+                Duration::from_mins(1),
                 runtime.infer(target, &chat, publisher),
             )
             .await

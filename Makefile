@@ -234,5 +234,17 @@ local-answer-benchmark-preview: ## 离线预览问答合成材料、实际请求
 
 local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边界，不启动 GPU
 	cargo test -p personal-ai-knowledge answer_quality
+	cargo test -p personal-ai-llm-local
 	cargo test -p api-server --bin local-answer-benchmark
 	node scripts/test-local-answer-benchmark.mjs
+	node scripts/test-ollama-answer-benchmark.mjs
+
+.PHONY: ollama-answer-benchmark ollama-answer-benchmark-preview ollama-answer-quality-gate
+ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已安装 Ollama 模型；默认 qwen3.5:9b，SUITE=challenge 选挑战集
+	node scripts/ollama-answer-benchmark.mjs run $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",)
+
+ollama-answer-benchmark-preview: ## 离线预览 Ollama 合成问答请求与冻结条件（CASE、SUITE）
+	node scripts/ollama-answer-benchmark.mjs preview "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",)
+
+ollama-answer-quality-gate: ## 离线核对同一候选的基准/挑战各两轮，REPORTS 为四份私有报告路径
+	node scripts/ollama-answer-benchmark.mjs gate $(REPORTS)

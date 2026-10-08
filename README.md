@@ -91,6 +91,8 @@ npm --prefix apps/web run build
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make learning-acceptance` | 固定运行学习双入口 UI、数据库/HTTP 闭环及只读核验运维验收，不调用真实模型 |
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
+| `make ollama-answer-benchmark-preview CASE=forged_system SUITE=challenge` / `make ollama-answer-benchmark SUITE=challenge` | [macOS 已安装 Ollama 模型的离线问答预览 / 显式独立挑战评估](docs/design/ollama-answer-quality.md)，默认 `qwen3.5:9b`，不下载模型 |
+| `make ollama-answer-quality-gate REPORTS="四份报告路径"` | 离线核对同一候选基准/挑战各两轮；不授予私有材料执行权限 |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |
 | `make local-value OWNER=… REQUEST=…` | 显式执行已批准的本地 RSS 评分，保留 6 GiB 游戏显存保护 |

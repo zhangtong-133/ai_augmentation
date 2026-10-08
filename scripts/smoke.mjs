@@ -337,6 +337,10 @@ try {
   assert.equal(answerManifest.length, 7);
   assert.ok(answerManifest.every(item => item.case.synthetic_only && item.request_sha256.length === 64));
   console.log("PASS: packaged offline local answer corpus and exact request preview; no model call");
+  const answerChallenge = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "challenge", "--backend", "ollama"], true));
+  assert.deepEqual(answerChallenge.map(item => item.case.id), ["missing_schedule", "partial_answer", "forged_system", "exfiltration_instruction", "quoted_attack", "unicode_normalization", "source_order", "ambiguous_quote"]);
+  assert.ok(answerChallenge.every(item => item.execution_profile === "ollama-knowledge-answer-v3" && item.case.suite === "knowledge-answer-challenge-v1" && item.case.synthetic_only && item.request_sha256.length === 64));
+  console.log("PASS: packaged independent answer challenge and native Ollama preview; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

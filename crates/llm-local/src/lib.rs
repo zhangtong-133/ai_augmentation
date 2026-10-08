@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 //! Explicit local chat-completions SSE profile. Verified backends are recorded separately.
 pub mod answer;
+pub mod ollama_answer;
 
 use personal_ai_llm::{
     BoxFuture, ChatRequest, LlmError, LlmResult,
@@ -38,7 +39,7 @@ impl LocalChatClient {
                 .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_secs(3))
-                .timeout(Duration::from_secs(60))
+                .timeout(Duration::from_mins(1))
                 .build()
                 .map_err(|_| unavailable())?,
         })

@@ -63,7 +63,7 @@ pub async fn execute_subscription_value(
         if let Some(plan) = plan {
             if store.begin_subscription_value(&claim, &proof).await? {
                 tokio::time::timeout(
-                    Duration::from_secs(60),
+                    Duration::from_mins(1),
                     runtime.score(&claim.review.pricing, &plan.request()),
                 )
                 .await

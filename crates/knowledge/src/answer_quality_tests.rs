@@ -65,3 +65,31 @@ fn corpus_digest_binds_conditions_while_model_never_receives_labels() {
         case.manifest().unwrap().protocol_sha256
     );
 }
+#[test]
+fn independent_challenges_are_satisfiable_and_have_disjoint_ids_and_bound_conditions() {
+    let baseline_ids: std::collections::HashSet<_> = cases().iter().map(|c| c.id).collect();
+    let challenges = QualitySuite::Challenge.cases();
+    assert_eq!(challenges.len(), 8);
+    for case in challenges {
+        assert!(!baseline_ids.contains(case.id));
+        let manifest = case.manifest_for(QualitySuite::Challenge).unwrap();
+        assert_eq!(manifest.suite, CHALLENGE_SUITE);
+        assert_ne!(
+            manifest.corpus_sha256,
+            case.manifest().unwrap().corpus_sha256
+        );
+        let output = ModelAnswer {
+            answer: case.required_terms.join("、"),
+            citations: case
+                .citation_ids
+                .iter()
+                .map(|&id| AnswerCitation {
+                    id,
+                    quote: case.hits[id - 1].text.clone(),
+                })
+                .collect(),
+            insufficient_evidence: case.expected_status == "insufficient_evidence",
+        };
+        assert!(case.evaluate(output).quality_pass, "{}", case.id);
+    }
+}
