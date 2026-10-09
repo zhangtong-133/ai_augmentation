@@ -35,6 +35,7 @@ test("local metadata rejects redirects, invalid JSON, overflow and continuous re
 test("only exact local installed models, supported thinking control and canonical loopback are accepted", () => {
   assert.equal(runtime().execution_profile, PROFILE);
   assert.equal(parseOptions(["--suite", "challenge"]).model, "qwen3.5:9b");
+  assert.equal(parseOptions(["--suite", "coverage"]).suite, "coverage");
   for (const options of [
     ["--endpoint", "https://example.com"], ["--endpoint", "http://localhost:11434"],
     ["--endpoint", "http://127.0.0.1:11434/path"], ["--endpoint", "http://127.0.0.1:011434"],
@@ -94,7 +95,7 @@ test("monitor stops before the final pressure confirmation so a late sample cann
 });
 function fixtures() {
   const expected = Object.fromEntries(Object.entries(SUITES).map(([suite, version]) => [suite, [{ execution_profile: PROFILE, request_sha256: "b".repeat(64), case: { id: suite, suite: version, synthetic_only: true } }]]));
-  const reports = ["baseline", "baseline", "challenge", "challenge"].map((suite, index) => ({
+  const reports = ["baseline", "baseline", "challenge", "challenge", "coverage", "coverage"].map((suite, index) => ({
     schema: REPORT_SCHEMA, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
     runtime: { ...runtime(), platform: "darwin", arch: "arm64", resource_policy: RESOURCE_POLICY, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
     resources: { preload_checks: 1, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0 },
@@ -108,13 +109,17 @@ test("two rounds of each unchanged suite are required; failures stay failures an
   const { expected, reports } = fixtures();
   const passed = qualityGate(reports, expected);
   assert.equal(passed.passed, true); assert.equal(passed.private_execution_authorized, false);
-  const failure = reports[3]; failure.results[0].checks[1].passed = false; failure.results[0].quality_pass = false; failure.passed_cases = 0; failure.exit_code = 2;
+  assert.equal(passed.schema, "ollama-answer-quality-gate-v2");
+  assert.equal(passed.evaluated_cases, 6);
+  const failure = reports[5]; failure.results[0].checks[1].passed = false; failure.results[0].quality_pass = false; failure.passed_cases = 0; failure.exit_code = 2;
   const failed = qualityGate(reports, expected);
   assert.equal(failed.passed, false); assert.equal(failed.failed_cases.length, 1);
 });
 test("duplicate, incomplete, overlapping, reordered, relabelled and different runtime reports cannot pass", () => {
   for (const mutate of [
     reports => reports.pop(), reports => reports[1] = structuredClone(reports[0]),
+    reports => reports.splice(4), reports => reports[5].suite = "challenge",
+    reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v3"),
     reports => reports[1].runtime.version = "0.40.2", reports => reports[1].runtime.model_digest = "c".repeat(64),
     reports => reports[1].runtime.model_metadata_sha256 = "d".repeat(64),
     reports => reports[1].manifests[0].request_sha256 = "e".repeat(64),
@@ -135,4 +140,6 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     const { reports, expected } = fixtures(); mutate(reports);
     assert.throws(() => qualityGate(reports, expected));
   }
+  const { reports, expected } = fixtures(); delete expected.coverage;
+  assert.throws(() => qualityGate(reports, expected));
 });

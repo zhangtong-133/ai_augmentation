@@ -73,14 +73,13 @@ fn native_stream_requires_matching_model_clean_eof_and_no_reasoning_or_tools() {
         assert!(Parser::new("fixture").push(&data).is_err());
     }
 }
-#[tokio::test]
-async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_input() {
-    for (status, content_type, body, valid) in [
+fn native_responses() -> [(u16, &'static str, String, bool); 8] {
+    [
         (
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}"#,
+                r#"{"requirements":[{"requirement":"所需信息","evidence":[{"id":1,"quote":"唯一🙂证据"}]}],"response":{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}}"#,
                 true,
             )),
             true,
@@ -89,10 +88,28 @@ async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_inpu
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"answer":"","citations":[],"insufficient_evidence":true}"#,
+                r#"{"requirements":[{"requirement":"未提供的信息","evidence":[]}],"response":{"answer":"","citations":[],"insufficient_evidence":true}}"#,
                 true,
             )),
             true,
+        ),
+        (
+            200,
+            "application/x-ndjson",
+            line(&record(
+                r#"{"requirements":[{"requirement":"未提供的信息","evidence":[]}],"response":{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}}"#,
+                true,
+            )),
+            false,
+        ),
+        (
+            200,
+            "application/x-ndjson",
+            line(&record(
+                r#"{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}"#,
+                true,
+            )),
+            false,
         ),
         (
             200,
@@ -103,7 +120,11 @@ async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_inpu
         (200, "application/json", line(&record("{}", true)), false),
         (429, "application/x-ndjson", "secret".into(), false),
         (307, "application/x-ndjson", "secret".into(), false),
-    ] {
+    ]
+}
+#[tokio::test]
+async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_input() {
+    for (status, content_type, body, valid) in native_responses() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target = LocalTarget::new(
             &format!("http://{}", listener.local_addr().unwrap()),
@@ -160,7 +181,7 @@ async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_inpu
     }
 }
 #[test]
-fn preview_binds_runner_parameters_and_the_existing_answer_contract_in_both_messages_and_format() {
+fn preview_binds_runner_parameters_coverage_review_and_response_contract_in_messages_and_format() {
     let target = LocalTarget::new("http://127.0.0.1:11434", "fixture").unwrap();
     let expected = preview(&target, "question", &sources()).unwrap();
     assert_eq!(expected.body()["think"], false);
@@ -171,17 +192,27 @@ fn preview_binds_runner_parameters_and_the_existing_answer_contract_in_both_mess
     assert_eq!(expected.body()["options"]["num_ctx"], 8192);
     assert_eq!(expected.body()["options"]["num_predict"], 2048);
     let schema = &expected.body()["format"];
+    assert_eq!(schema["properties"]["requirements"]["minItems"], 1);
+    assert_eq!(schema["properties"]["requirements"]["maxItems"], 8);
+    assert_eq!(schema["additionalProperties"], false);
+    let response = &schema["properties"]["response"];
     assert_eq!(
-        schema["oneOf"][0]["properties"]["insufficient_evidence"]["const"],
+        response["oneOf"][0]["properties"]["insufficient_evidence"]["const"],
         false
     );
-    assert_eq!(schema["oneOf"][0]["properties"]["citations"]["minItems"], 1);
     assert_eq!(
-        schema["oneOf"][1]["properties"]["insufficient_evidence"]["const"],
+        response["oneOf"][0]["properties"]["citations"]["minItems"],
+        1
+    );
+    assert_eq!(
+        response["oneOf"][1]["properties"]["insufficient_evidence"]["const"],
         true
     );
-    assert_eq!(schema["oneOf"][1]["properties"]["answer"]["const"], "");
-    assert_eq!(schema["oneOf"][1]["properties"]["citations"]["maxItems"], 0);
+    assert_eq!(response["oneOf"][1]["properties"]["answer"]["const"], "");
+    assert_eq!(
+        response["oneOf"][1]["properties"]["citations"]["maxItems"],
+        0
+    );
     let in_prompt = expected.body()["messages"][0]["content"]
         .as_str()
         .unwrap()

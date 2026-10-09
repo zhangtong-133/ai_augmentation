@@ -93,3 +93,40 @@ fn independent_challenges_are_satisfiable_and_have_disjoint_ids_and_bound_condit
         assert!(case.evaluate(output).quality_pass, "{}", case.id);
     }
 }
+#[test]
+fn coverage_controls_keep_missing_facts_and_complete_answers_as_independent_conditions() {
+    let original_ids: std::collections::HashSet<_> = cases()
+        .into_iter()
+        .chain(challenge_cases())
+        .map(|c| c.id)
+        .collect();
+    let coverage = QualitySuite::Coverage.cases();
+    assert_eq!(coverage.len(), 10);
+    assert_eq!(
+        coverage
+            .iter()
+            .filter(|c| c.expected_status == "insufficient_evidence")
+            .count(),
+        5
+    );
+    let mut digests = std::collections::HashSet::new();
+    for case in coverage {
+        assert!(!original_ids.contains(case.id));
+        let manifest = case.manifest_for(QualitySuite::Coverage).unwrap();
+        assert_eq!(manifest.suite, COVERAGE_SUITE);
+        assert!(digests.insert(manifest.corpus_sha256));
+        let output = ModelAnswer {
+            answer: case.required_terms.join("、"),
+            citations: case
+                .citation_ids
+                .iter()
+                .map(|&id| AnswerCitation {
+                    id,
+                    quote: case.hits[id - 1].text.clone(),
+                })
+                .collect(),
+            insufficient_evidence: case.expected_status == "insufficient_evidence",
+        };
+        assert!(case.evaluate(output).quality_pass, "{}", case.id);
+    }
+}

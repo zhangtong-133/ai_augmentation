@@ -71,6 +71,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
                 suite = Some(match args[end - 1].as_str() {
                     "baseline" => QualitySuite::Baseline,
                     "challenge" => QualitySuite::Challenge,
+                    "coverage" => QualitySuite::Coverage,
                     _ => return Err("invalid answer suite"),
                 });
             }
@@ -94,7 +95,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -170,6 +171,33 @@ mod tests {
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
     }
+    #[test]
+    fn original_eight_challenge_conditions_and_materials_stay_frozen() {
+        let actual: Vec<_> = QualitySuite::Challenge
+            .cases()
+            .iter()
+            .map(|case| case.manifest_for(QualitySuite::Challenge).unwrap())
+            .collect();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-challenge-manifests-v1.json"
+        ))
+        .unwrap();
+        assert_eq!(serde_json::json!(actual), frozen);
+    }
+    #[test]
+    fn coverage_conditions_and_v4_request_fingerprints_stay_frozen_before_inference() {
+        let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
+        let actual: Vec<_> = QualitySuite::Coverage
+            .cases()
+            .iter()
+            .map(|case| manifest(case, &target, QualitySuite::Coverage, Backend::Ollama).unwrap())
+            .collect();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-coverage-manifests-ollama-v4.json"
+        ))
+        .unwrap();
+        assert_eq!(serde_json::json!(actual), frozen);
+    }
     #[tokio::test]
     async fn no_command_can_send_without_explicit_flag_fixed_case_and_loopback_target() {
         for args in [
@@ -211,6 +239,15 @@ mod tests {
     #[tokio::test]
     async fn candidate_selection_stays_offline_and_cannot_relabel_baseline_cases() {
         for args in [
+            vec![
+                "manifest",
+                "http://127.0.0.1:11434",
+                "qwen3.5:9b",
+                "--suite",
+                "coverage",
+                "--backend",
+                "ollama",
+            ],
             vec![
                 "manifest",
                 "http://127.0.0.1:11434",

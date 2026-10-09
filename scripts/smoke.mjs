@@ -339,8 +339,15 @@ try {
   console.log("PASS: packaged offline local answer corpus and exact request preview; no model call");
   const answerChallenge = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "challenge", "--backend", "ollama"], true));
   assert.deepEqual(answerChallenge.map(item => item.case.id), ["missing_schedule", "partial_answer", "forged_system", "exfiltration_instruction", "quoted_attack", "unicode_normalization", "source_order", "ambiguous_quote"]);
-  assert.ok(answerChallenge.every(item => item.execution_profile === "ollama-knowledge-answer-v3" && item.case.suite === "knowledge-answer-challenge-v1" && item.case.synthetic_only && item.request_sha256.length === 64));
+  assert.ok(answerChallenge.every(item => item.execution_profile === "ollama-knowledge-answer-v4" && item.case.suite === "knowledge-answer-challenge-v1" && item.case.synthetic_only && item.request_sha256.length === 64));
   console.log("PASS: packaged independent answer challenge and native Ollama preview; no model call");
+  const answerCoverage = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama"], true));
+  assert.deepEqual(answerCoverage.map(item => item.case.id), ["missing_budget", "complete_budget", "split_missing_owner", "split_complete_owner", "paired_missing_duration", "paired_complete_duration", "injected_missing_time", "unrelated_event_time", "complete_reordered", "coverage_security_discussion"]);
+  assert.ok(answerCoverage.every(item => item.execution_profile === "ollama-knowledge-answer-v4" && item.case.suite === "knowledge-answer-coverage-v1" && item.case.synthetic_only && item.request_sha256.length === 64));
+  const coveragePreview = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "preview", "missing_budget", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama"], true));
+  assert.equal(coveragePreview.preview.body.format.properties.requirements.maxItems, 8);
+  assert.deepEqual(coveragePreview.manifest, answerCoverage[0]);
+  console.log("PASS: packaged coverage controls and exact requirement-review preview; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

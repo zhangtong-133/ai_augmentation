@@ -8,7 +8,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
 import { runCases } from "./local-answer-benchmark-lib.mjs";
-import { availableMemory, digest, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REPORT_SCHEMA, RESOURCE_POLICY, RUNNER } from "./ollama-answer-benchmark-lib.mjs";
+import { availableMemory, digest, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REPORT_SCHEMA, RESOURCE_POLICY, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -45,7 +45,7 @@ async function manifests(target, suite, signal) {
   return cli(["manifest", target.endpoint, target.model_alias, "--suite", suite, "--backend", "ollama"], signal);
 }
 async function gate(files, signal) {
-  assert.equal(files.length, 4);
+  assert.equal(files.length, 6);
   const seen = new Set(), reports = [];
   const allowed = await realpath(join(base, "quality"));
   for (const file of files) {
@@ -56,14 +56,14 @@ async function gate(files, signal) {
   const target = reports[0].runtime;
   parseOptions(["--endpoint", target.endpoint, "--model", target.model_alias]);
   const expected = {};
-  for (const suite of ["baseline", "challenge"]) expected[suite] = await manifests(target, suite, signal);
+  for (const suite of Object.keys(SUITES)) expected[suite] = await manifests(target, suite, signal);
   const result = qualityGate(reports, expected);
   console.log(JSON.stringify(result)); process.exitCode = result.passed ? 0 : 2;
 }
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2\npreview/gate 离线，不发起模型推理；run 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2\npreview/gate 离线，不发起模型推理；run 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(command === "run" || command === "gate" || command === "preview" && /^[a-z0-9_]{1,40}$/.test(args[1] ?? ""));

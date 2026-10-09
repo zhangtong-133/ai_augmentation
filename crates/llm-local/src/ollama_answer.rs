@@ -2,14 +2,16 @@
 use crate::{LocalChatClient, MAX_LINE, MAX_OUTPUT, MAX_WIRE, invalid, unavailable};
 use personal_ai_llm::{
     AnswerProvider, AnswerSource, BoxFuture, LlmResult, ModelAnswer,
-    answer::{decode, prepare},
+    answer::prepare,
     local::{CONTEXT_TOKENS, LocalTarget, OUTPUT_TOKENS, wire_payload},
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "ollama-knowledge-answer-v3";
+pub const PROFILE: &str = "ollama-knowledge-answer-v4";
 pub const RUNNER: &str = "llamacpp";
+#[path = "ollama_answer_contract.rs"]
+mod contract;
 #[derive(Debug, Serialize)]
 pub struct OllamaAnswerPreview {
     profile: &'static str,
@@ -38,9 +40,9 @@ pub fn preview(
     sources: &[AnswerSource],
 ) -> LlmResult<OllamaAnswerPreview> {
     let prompt = prepare(question, sources)?;
-    let schema = contract_schema(prompt.schema(), sources.len());
+    let schema = contract::schema(prompt.schema(), sources.len());
     let mut request = prompt.request();
-    request.messages[0].content.push_str("\nDecide whether the evidence supports every requested part before writing the answer. If any required part is missing, use the insufficient branch: answer must be exactly the empty string and citations exactly the empty array. Do not put explanations in that branch.\nRequired JSON schema:\n");
+    request.messages[0].content.push_str(contract::INSTRUCTION);
     request.messages[0].content.push_str(&schema.to_string());
     let validated = wire_payload(target, &request)?;
     Ok(OllamaAnswerPreview {
@@ -57,23 +59,6 @@ pub fn preview(
         }),
     })
 }
-// Encode the existing production contract, without passing any quality labels to the model.
-fn contract_schema(shared: &serde_json::Value, source_count: usize) -> serde_json::Value {
-    let mut answered = shared.clone();
-    answered["properties"]["insufficient_evidence"] = serde_json::json!({"const": false});
-    answered["properties"]["answer"] =
-        serde_json::json!({"type": "string", "minLength": 1, "maxLength": 4000});
-    answered["properties"]["citations"]["minItems"] = serde_json::json!(1);
-    answered["properties"]["citations"]["maxItems"] = serde_json::json!(source_count);
-    answered["properties"]["citations"]["items"]["properties"]["quote"] =
-        serde_json::json!({"type": "string", "minLength": 1, "maxLength": 400});
-    let mut insufficient = shared.clone();
-    insufficient["properties"]["insufficient_evidence"] = serde_json::json!({"const": true});
-    insufficient["properties"]["answer"] = serde_json::json!({"const": ""});
-    insufficient["properties"]["citations"]["maxItems"] = serde_json::json!(0);
-    serde_json::json!({"oneOf": [answered, insufficient]})
-}
-
 pub struct OllamaAnswers {
     target: LocalTarget,
     client: LocalChatClient,
@@ -87,7 +72,11 @@ impl OllamaAnswers {
             client: LocalChatClient::new()?,
         })
     }
-    async fn send(&self, preview: OllamaAnswerPreview) -> LlmResult<ModelAnswer> {
+    async fn send(
+        &self,
+        preview: OllamaAnswerPreview,
+        sources: &[AnswerSource],
+    ) -> LlmResult<ModelAnswer> {
         let mut response = self
             .client
             .client
@@ -111,7 +100,7 @@ impl OllamaAnswers {
         while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
             parser.push(&chunk)?;
         }
-        decode(&parser.finish()?)
+        contract::decode(&parser.finish()?, sources)
     }
 }
 impl AnswerProvider for OllamaAnswers {
@@ -120,8 +109,11 @@ impl AnswerProvider for OllamaAnswers {
         question: &str,
         sources: &[AnswerSource],
     ) -> BoxFuture<'_, LlmResult<ModelAnswer>> {
-        let preview = preview(&self.target, question, sources);
-        Box::pin(async move { self.send(preview?).await })
+        let request = preview(&self.target, question, sources).map(|v| (v, sources.to_vec()));
+        Box::pin(async move {
+            let (preview, sources) = request?;
+            self.send(preview, &sources).await
+        })
     }
 }
 
