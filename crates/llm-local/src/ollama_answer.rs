@@ -8,8 +8,22 @@ use personal_ai_llm::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "ollama-knowledge-answer-v4";
+pub const PROFILE: &str = "ollama-knowledge-answer-v5";
 pub const RUNNER: &str = "llamacpp";
+pub const PROTOCOL_STAGES: &[&str] = &[
+    "native_stream",
+    "native_completion",
+    "review_fields",
+    "review_json",
+    "review_contract",
+    "review_quote",
+    "review_source",
+    "review_support",
+    "review_requirements",
+];
+fn protocol_error(stage: &'static str) -> personal_ai_llm::LlmError {
+    personal_ai_llm::LlmError::InvalidResponse(format!("ollama answer protocol: {stage}"))
+}
 #[path = "ollama_answer_contract.rs"]
 mod contract;
 #[derive(Debug, Serialize)]
@@ -98,9 +112,14 @@ impl OllamaAnswers {
         }
         let mut parser = Parser::new(self.target.model());
         while let Some(chunk) = response.chunk().await.map_err(|_| unavailable())? {
-            parser.push(&chunk)?;
+            parser
+                .push(&chunk)
+                .map_err(|_| protocol_error("native_stream"))?;
         }
-        contract::decode(&parser.finish()?, sources)
+        let completed = parser
+            .finish()
+            .map_err(|_| protocol_error("native_completion"))?;
+        contract::decode(&completed, sources)
     }
 }
 impl AnswerProvider for OllamaAnswers {

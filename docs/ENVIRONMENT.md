@@ -31,6 +31,7 @@ make browser-install
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-09，macOS ARM64 / OrbStack | 317 项 Rust 测试与完整检查、前端检查/构建、12 项问答 Node 测试、284 项真实服务/index smoke、4 项授权 UI；修复 RSS 测试夹具并行争用两个名额 | Ollama v5 原 `partial_answer` 双轮通过，但基准双轮首题协议失败、挑战双轮 6/8、新覆盖双轮 9/10；质量门槛未通过，私有执行保持关闭；未重跑全量 UI/MinIO/公网，未验游戏并行/vLLM |
 | 2026-10-08，macOS ARM64 / OrbStack | Rust 1.96.1 完整检查（308 项测试）、前端检查/构建、284 项真实服务集成与 index smoke、4 项授权 UI；已有 Ollama 0.40.1 / Qwen3.5-9B 的真实双轮评估 | 基准两轮 7/7、独立挑战两轮 7/8，质量门槛失败，私有执行仍关闭；未重跑全量 UI、MinIO、公网导入，未验游戏并行/vLLM |
 | 2026-09-21，macOS / OrbStack | Rust、前端检查及 `make browser-test-index`，16 项 UI 测试 | 索引/检索/引用问答、真实 PostgreSQL/Qdrant、本地模型夹具；一次服务错误重跑未复现，详见检索问答记录 |
 | 2026-09-20，macOS / OrbStack | Rust 检查、前端 lint/typecheck/build、完整 `make smoke-objects` | 含事务锁竞争回归、真实 PostgreSQL/MinIO 和重启持久化；未重跑浏览器、Qdrant 专项或真实模型 |

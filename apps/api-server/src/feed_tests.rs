@@ -7,6 +7,10 @@ use personal_ai_storage::{
 use personal_ai_storage_postgres::PostgresStore;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+// Enabled fixtures share FeedExecutor's two process slots; unrelated HTTP tests
+// must not consume each other's capacity while checking a successful confirmation.
+static EXECUTION_FIXTURE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Default)]
 struct Transport {
     calls: AtomicUsize,
@@ -32,9 +36,15 @@ struct Fixture {
     cookie: String,
     other_cookie: String,
     transport: Arc<Transport>,
+    _execution_guard: Option<tokio::sync::MutexGuard<'static, ()>>,
 }
 impl Fixture {
     async fn new(enabled: bool) -> Self {
+        let execution_guard = if enabled {
+            Some(EXECUTION_FIXTURE.lock().await)
+        } else {
+            None
+        };
         let (mut state, sessions, _, owner, cookie, _) = retrieval_fixture().await;
         let url = std::env::var("TEST_DATABASE_URL").unwrap();
         let store = Arc::new(PostgresStore::connect(&url).await.unwrap());
@@ -68,6 +78,7 @@ impl Fixture {
             cookie,
             other_cookie: format!("personal_ai_session_v2={token}"),
             transport,
+            _execution_guard: execution_guard,
         }
     }
     async fn send(

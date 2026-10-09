@@ -120,6 +120,7 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     reports => reports.pop(), reports => reports[1] = structuredClone(reports[0]),
     reports => reports.splice(4), reports => reports[5].suite = "challenge",
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v3"),
+    reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v4"),
     reports => reports[1].runtime.version = "0.40.2", reports => reports[1].runtime.model_digest = "c".repeat(64),
     reports => reports[1].runtime.model_metadata_sha256 = "d".repeat(64),
     reports => reports[1].manifests[0].request_sha256 = "e".repeat(64),
@@ -134,6 +135,8 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     reports => reports[1].resources.preload_checks = 0,
     reports => reports[1].resources.minimum_inflight_available_bytes = RESERVE_BYTES - 1,
     reports => reports[1].answer = "unexpected model text",
+    reports => reports[1].failure_stage = "review_quote",
+    reports => reports[1].diagnostic_only = true,
     reports => reports.forEach(report => report.runtime.version = "0.39.0"),
     reports => reports.forEach(report => report.runtime.resource_policy = "unprotected"),
   ]) {

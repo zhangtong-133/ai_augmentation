@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 const names = ["expected_status", "required_terms", "expected_citations", "forbidden_terms"];
+export const PROTOCOL_STAGES = ["native_stream", "native_completion", "review_fields", "review_json", "review_contract", "review_quote", "review_source", "review_support", "review_requirements"];
 export function verifyCase(raw, manifest, target) {
   assert.deepEqual(Object.keys(raw).sort(), ["elapsed_ms", "endpoint", "evaluation", "manifest", "model", "protocol_valid", "synthetic_only"]);
   assert.deepEqual(raw.manifest, manifest);
@@ -27,6 +28,7 @@ export async function runCases(manifests, target, send) {
     catch (error) {
       return { complete: false, failed_case: manifest.case.id,
         failure: ["transport", "protocol", "resource", "runtime"].includes(error.answerFailure) ? error.answerFailure : "case_unconfirmed",
+        ...(error.answerFailure === "protocol" && PROTOCOL_STAGES.includes(error.answerFailureStage) ? { failure_stage: error.answerFailureStage } : {}),
         not_run: manifests.slice(results.length + 1).map(m => m.case.id), results, exit_code: 1 };
     }
   }

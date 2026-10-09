@@ -138,7 +138,15 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         .answer(case.question, &case.sources())
         .await
         .map_err(|e| match e {
-            LlmError::InvalidResponse(_) => "ANSWER_FAILURE=protocol",
+            LlmError::InvalidResponse(reason) => {
+                if let Some(stage) = reason
+                    .strip_prefix("ollama answer protocol: ")
+                    .filter(|stage| ollama_answer::PROTOCOL_STAGES.contains(stage))
+                {
+                    eprintln!("ANSWER_PROTOCOL_STAGE={stage}");
+                }
+                "ANSWER_FAILURE=protocol"
+            }
             _ => "ANSWER_FAILURE=transport",
         })?;
     println!(
@@ -185,7 +193,26 @@ mod tests {
         assert_eq!(serde_json::json!(actual), frozen);
     }
     #[test]
-    fn coverage_conditions_and_v4_request_fingerprints_stay_frozen_before_inference() {
+    fn new_candidate_keeps_coverage_conditions_frozen_before_the_first_v4_inference() {
+        let actual: Vec<_> = QualitySuite::Coverage
+            .cases()
+            .iter()
+            .map(|case| case.manifest_for(QualitySuite::Coverage).unwrap())
+            .collect();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-coverage-manifests-ollama-v4.json"
+        ))
+        .unwrap();
+        let conditions: Vec<_> = frozen
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| &item["case"])
+            .collect();
+        assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
+    }
+    #[test]
+    fn v5_request_fingerprints_stay_frozen_and_cannot_reuse_v4_reports() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let actual: Vec<_> = QualitySuite::Coverage
             .cases()
@@ -193,10 +220,20 @@ mod tests {
             .map(|case| manifest(case, &target, QualitySuite::Coverage, Backend::Ollama).unwrap())
             .collect();
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-coverage-manifests-ollama-v4.json"
+            "../../tests/fixtures/answer-coverage-manifests-ollama-v5.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
+        let previous: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-coverage-manifests-ollama-v4.json"
+        ))
+        .unwrap();
+        for (index, manifest) in actual.iter().enumerate() {
+            assert_ne!(
+                manifest["request_sha256"],
+                previous[index]["request_sha256"]
+            );
+        }
     }
     #[tokio::test]
     async fn no_command_can_send_without_explicit_flag_fixed_case_and_loopback_target() {

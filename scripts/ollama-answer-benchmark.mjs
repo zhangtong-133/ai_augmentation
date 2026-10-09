@@ -7,7 +7,7 @@ import { join, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
-import { runCases } from "./local-answer-benchmark-lib.mjs";
+import { runCases, PROTOCOL_STAGES } from "./local-answer-benchmark-lib.mjs";
 import { availableMemory, digest, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REPORT_SCHEMA, RESOURCE_POLICY, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
 
 const execute = promisify(execFile);
@@ -63,10 +63,10 @@ async function gate(files, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2\npreview/gate 离线，不发起模型推理；run 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
-  assert.ok(command === "run" || command === "gate" || command === "preview" && /^[a-z0-9_]{1,40}$/.test(args[1] ?? ""));
+  assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,40}$/.test(args[1] ?? ""));
   const target = command === "gate" ? null : parseOptions(args.slice(command === "run" ? 1 : 2));
   const abort = new AbortController(); const halt = () => abort.abort();
   process.on("SIGINT", halt); process.on("SIGTERM", halt);
@@ -94,7 +94,9 @@ async function run() {
     stage = "idle_runtime";
     await idle(runtime, abort.signal);
     stage = "frozen_manifest";
-    const frozen = await manifests(target, target.suite, abort.signal);
+    const all = await manifests(target, target.suite, abort.signal);
+    const frozen = command === "diagnose" ? all.filter(item => item.case.id === args[1]) : all;
+    assert.ok(frozen.length > 0);
     const started = new Date().toISOString();
     const resources = { preload_checks: 0, inflight_checks: 0, minimum_preload_available_bytes: null, minimum_inflight_available_bytes: null, settle_wait_ms: 0 };
     stage = "synthetic_cases";
@@ -126,15 +128,17 @@ async function run() {
         return raw;
       } catch (error) {
         const fixed = /^ANSWER_FAILURE=(transport|protocol)$/m.exec(error.stderr ?? "");
-        throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1] });
+        const protocolStage = /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
+        throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1], answerFailureStage: PROTOCOL_STAGES.includes(protocolStage) ? protocolStage : undefined });
       }
     });
     const report = { schema: REPORT_SCHEMA, run_id: randomUUID(), synthetic_only: true, suite: target.suite,
+      ...(command === "diagnose" ? { diagnostic_only: true } : {}),
       started_at: started, ended_at: new Date().toISOString(), runtime, resources, manifests: frozen, ...outcome,
       passed_cases: outcome.results.filter(result => result.quality_pass).length, total_cases: frozen.length };
     stage = "write_report";
     console.log(JSON.stringify({ report: await writeReport(directory, report), complete: report.complete,
-      passed_cases: report.passed_cases, total_cases: report.total_cases, failure: report.failure, exit_code: report.exit_code }));
+      passed_cases: report.passed_cases, total_cases: report.total_cases, failure: report.failure, failure_stage: report.failure_stage, diagnostic_only: report.diagnostic_only, exit_code: report.exit_code }));
     process.exitCode = report.exit_code;
   } finally {
     process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt);

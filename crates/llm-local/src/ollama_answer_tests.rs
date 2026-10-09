@@ -79,7 +79,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"所需信息","evidence":[{"id":1,"quote":"唯一🙂证据"}]}],"response":{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}}"#,
+                r#"{"requirements":[{"requirement":"所需信息","support":{"evidence":[{"id":1,"quote":"唯一🙂证据"}],"text":"唯一证据"}}]}"#,
                 true,
             )),
             true,
@@ -88,7 +88,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"未提供的信息","evidence":[]}],"response":{"answer":"","citations":[],"insufficient_evidence":true}}"#,
+                r#"{"requirements":[{"requirement":"未提供的信息","support":{"evidence":[],"text":""}}]}"#,
                 true,
             )),
             true,
@@ -97,7 +97,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"未提供的信息","evidence":[]}],"response":{"answer":"唯一证据","citations":[{"id":1,"quote":"唯一🙂证据"}],"insufficient_evidence":false}}"#,
+                r#"{"requirements":[{"requirement":"未提供的信息","support":{"evidence":[],"text":"唯一证据"}}]}"#,
                 true,
             )),
             false,
@@ -181,7 +181,7 @@ async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_inpu
     }
 }
 #[test]
-fn preview_binds_runner_parameters_coverage_review_and_response_contract_in_messages_and_format() {
+fn preview_binds_runner_parameters_and_each_requirement_support_in_messages_and_format() {
     let target = LocalTarget::new("http://127.0.0.1:11434", "fixture").unwrap();
     let expected = preview(&target, "question", &sources()).unwrap();
     assert_eq!(expected.body()["think"], false);
@@ -195,24 +195,12 @@ fn preview_binds_runner_parameters_coverage_review_and_response_contract_in_mess
     assert_eq!(schema["properties"]["requirements"]["minItems"], 1);
     assert_eq!(schema["properties"]["requirements"]["maxItems"], 8);
     assert_eq!(schema["additionalProperties"], false);
-    let response = &schema["properties"]["response"];
-    assert_eq!(
-        response["oneOf"][0]["properties"]["insufficient_evidence"]["const"],
-        false
-    );
-    assert_eq!(
-        response["oneOf"][0]["properties"]["citations"]["minItems"],
-        1
-    );
-    assert_eq!(
-        response["oneOf"][1]["properties"]["insufficient_evidence"]["const"],
-        true
-    );
-    assert_eq!(response["oneOf"][1]["properties"]["answer"]["const"], "");
-    assert_eq!(
-        response["oneOf"][1]["properties"]["citations"]["maxItems"],
-        0
-    );
+    assert!(schema["properties"].get("response").is_none());
+    let support = &schema["properties"]["requirements"]["items"]["properties"]["support"];
+    assert_eq!(support["oneOf"][0]["properties"]["evidence"]["minItems"], 1);
+    assert_eq!(support["oneOf"][0]["properties"]["text"]["minLength"], 1);
+    assert_eq!(support["oneOf"][1]["properties"]["evidence"]["maxItems"], 0);
+    assert_eq!(support["oneOf"][1]["properties"]["text"]["const"], "");
     let in_prompt = expected.body()["messages"][0]["content"]
         .as_str()
         .unwrap()
