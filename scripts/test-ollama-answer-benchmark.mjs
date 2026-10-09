@@ -123,6 +123,7 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v3"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v4"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v5"),
+    reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v6"),
     reports => reports.splice(6), reports => reports[7].suite = "coverage",
     reports => reports[1].runtime.version = "0.40.2", reports => reports[1].runtime.model_digest = "c".repeat(64),
     reports => reports[1].runtime.model_metadata_sha256 = "d".repeat(64),

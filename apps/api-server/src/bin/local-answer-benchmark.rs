@@ -213,7 +213,7 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v6_request_fingerprints_stay_frozen_and_cannot_reuse_v5_reports() {
+    fn v7_request_fingerprints_stay_frozen_and_cannot_reuse_v6_reports() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let mut actual = serde_json::Map::new();
         for (name, suite) in [
@@ -230,20 +230,22 @@ mod tests {
             actual.insert(name.into(), serde_json::json!(manifests));
         }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-extractive-manifests-ollama-v6.json"
+            "../../tests/fixtures/answer-extractive-manifests-ollama-v7.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-coverage-manifests-ollama-v5.json"
+            "../../tests/fixtures/answer-extractive-manifests-ollama-v6.json"
         ))
         .unwrap();
-        for (index, manifest) in actual["coverage"].as_array().unwrap().iter().enumerate() {
-            assert_eq!(manifest["case"], previous[index]["case"]);
-            assert_ne!(
-                manifest["request_sha256"],
-                previous[index]["request_sha256"]
-            );
+        for (suite, manifests) in &actual {
+            for (index, manifest) in manifests.as_array().unwrap().iter().enumerate() {
+                assert_eq!(manifest["case"], previous[suite][index]["case"]);
+                assert_ne!(
+                    manifest["request_sha256"],
+                    previous[suite][index]["request_sha256"]
+                );
+            }
         }
     }
     #[tokio::test]

@@ -23,7 +23,7 @@ make browser-install
 - Docker：先确认 `docker info` 能访问当前 context。沙箱内 socket 权限错误不等于 daemon 停止，不应因此修改 socket 权限或重装 Docker。
 - 网络：网页导入禁用系统代理，API 必须能直连公网 DNS 与 HTTP/HTTPS。模型服务、依赖下载与 Docker 拉取的连通性需分别检查。
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
-- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-coverage.md)，使用统一内存估算保护，每题结束卸载模型；尚未接入私有问答或学习/RSS 执行。
+- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-extraction.md)，使用统一内存估算保护，每题结束卸载模型；尚未接入私有问答或学习/RSS 执行。
 
 ## 最近验收记录
 
@@ -31,6 +31,7 @@ make browser-install
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-09，macOS ARM64，Ollama v7 | 321 项 Rust 测试与完整检查、12 项问答 Node，前端检查/构建及 11 项单元测试；66 次原生协议/生产引用完成，挑战双轮 8/8 | 基准双轮 6/7、覆盖 6/10、原文对照 4/8，48/66 质量通过，门槛退出 2，私有执行关闭；未跑 Docker/服务/UI/MinIO/公网、游戏压力/vLLM |
 | 2026-10-09，macOS ARM64 | 321 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；33 个 v6 离线请求预先冻结 | 原文选择候选首轮前四题通过、注入题分类/选择矛盾协议拒绝，2 题未发送；完整质量门槛未完成，私有执行关闭；该快照未跑 Docker/服务/UI/MinIO/公网、游戏并行/vLLM |
 | 2026-10-09，macOS ARM64 / OrbStack | 317 项 Rust 测试与完整检查、前端检查/构建、12 项问答 Node 测试、284 项真实服务/index smoke、4 项授权 UI；修复 RSS 测试夹具并行争用两个名额 | Ollama v5 原 `partial_answer` 双轮通过，但基准双轮首题协议失败、挑战双轮 6/8、新覆盖双轮 9/10；质量门槛未通过，私有执行保持关闭；未重跑全量 UI/MinIO/公网，未验游戏并行/vLLM |
 | 2026-10-08，macOS ARM64 / OrbStack | Rust 1.96.1 完整检查（308 项测试）、前端检查/构建、284 项真实服务集成与 index smoke、4 项授权 UI；已有 Ollama 0.40.1 / Qwen3.5-9B 的真实双轮评估 | 基准两轮 7/7、独立挑战两轮 7/8，质量门槛失败，私有执行仍关闭；未重跑全量 UI、MinIO、公网导入，未验游戏并行/vLLM |

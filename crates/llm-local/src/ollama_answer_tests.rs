@@ -78,19 +78,13 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
         (
             200,
             "application/x-ndjson",
-            line(&record(
-                r#"{"coverage":"complete","excerpts":["s1u1"]}"#,
-                true,
-            )),
+            line(&record(r#"{"excerpts":["s1u1"]}"#, true)),
             true,
         ),
         (
             200,
             "application/x-ndjson",
-            line(&record(
-                r#"{"coverage":"insufficient","excerpts":[]}"#,
-                true,
-            )),
+            line(&record(r#"{"excerpts":[]}"#, true)),
             true,
         ),
         (
@@ -192,10 +186,9 @@ fn preview_binds_runner_parameters_and_frozen_excerpt_selection_in_messages_and_
     assert_eq!(expected.body()["options"]["num_ctx"], 8192);
     assert_eq!(expected.body()["options"]["num_predict"], 2048);
     let schema = &expected.body()["format"];
-    assert_eq!(
-        schema["properties"]["coverage"]["enum"],
-        json!(["complete", "insufficient"])
-    );
+    assert_eq!(schema["required"], json!(["excerpts"]));
+    assert_eq!(schema["properties"].as_object().unwrap().len(), 1);
+    assert!(schema["properties"].get("coverage").is_none());
     assert_eq!(schema["properties"]["excerpts"]["maxItems"], 1);
     assert_eq!(schema["properties"]["excerpts"]["uniqueItems"], true);
     assert_eq!(

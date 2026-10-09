@@ -9,7 +9,7 @@ fn select(text: &str, sources: &[AnswerSource]) -> LlmResult<ModelAnswer> {
     decode(text, sources, &catalog(sources).unwrap())
 }
 fn complete(keys: &[&str]) -> String {
-    json!({"coverage":"complete", "excerpts":keys}).to_string()
+    json!({"excerpts":keys}).to_string()
 }
 
 #[test]
@@ -38,9 +38,9 @@ fn selecting_precomputed_spans_copies_exact_unicode_and_orders_sources_not_model
 }
 
 #[test]
-fn unsupported_questions_are_empty_and_contradictory_selections_are_rejected() {
+fn application_derives_status_from_selection_and_rejects_model_classification_fields() {
     let sources = sources("图书馆只提供书籍介绍。");
-    let answer = select(r#"{"coverage":"insufficient","excerpts":[]}"#, &sources).unwrap();
+    let answer = select(r#"{"excerpts":[]}"#, &sources).unwrap();
     assert!(answer.insufficient_evidence);
     assert_eq!(answer.answer, "");
     assert!(answer.citations.is_empty());
@@ -52,7 +52,7 @@ fn unsupported_questions_are_empty_and_contradictory_selections_are_rejected() {
             select(text, &sources)
                 .unwrap_err()
                 .to_string()
-                .contains("selection_coverage")
+                .contains("selection_fields")
         );
     }
 }
@@ -61,17 +61,17 @@ fn unsupported_questions_are_empty_and_contradictory_selections_are_rejected() {
 fn model_cannot_add_free_prose_labels_quotes_ids_or_duplicate_and_unknown_keys() {
     let sources = sources("唯一事实。");
     for text in [
-        r#"{"coverage":"complete","excerpts":["s1u1"],"answer":"secret"}"#,
-        r#"{"coverage":"complete","excerpts":["s1u1"],"requirements":[]}"#,
-        r#"{"coverage":"complete","excerpts":[{"id":1,"quote":"secret"}]}"#,
-        r#"{"coverage":"complete","excerpts":["s1u1","s1u1"]}"#,
-        r#"{"coverage":"complete","excerpts":["s1u2"]}"#,
-        r#"{"coverage":"complete","excerpts":["s2u1"]}"#,
-        r#"{"coverage":"complete","excerpts":["s1u1"],"excerpts":[]}"#,
-        r#"{"coverage":"complete","coverage":"insufficient","excerpts":[]}"#,
-        r#"{"coverage":"complete","excerpts":["s1u1"]}{}"#,
-        r#"{"coverage":true,"excerpts":[]}"#,
-        r#"{"coverage":"partial","excerpts":[]}"#,
+        r#"{"excerpts":["s1u1"],"answer":"secret"}"#,
+        r#"{"excerpts":["s1u1"],"requirements":[]}"#,
+        r#"{"excerpts":[{"id":1,"quote":"secret"}]}"#,
+        r#"{"excerpts":["s1u1","s1u1"]}"#,
+        r#"{"excerpts":["s1u2"]}"#,
+        r#"{"excerpts":["s2u1"]}"#,
+        r#"{"excerpts":["s1u1"],"excerpts":[]}"#,
+        r#"{"coverage":"insufficient","excerpts":[]}"#,
+        r#"{"excerpts":["s1u1"]}{}"#,
+        r#"{"excerpts":null}"#,
+        r#"{"excerpts":[1]}"#,
     ] {
         let error = select(text, &sources).unwrap_err().to_string();
         assert!(!error.contains("secret"));
@@ -149,12 +149,9 @@ fn fixed_failure_categories_never_echo_model_content() {
         (r#"{"secret":true}"#, "selection_fields"),
         (
             r#"{"coverage":"complete","excerpts":[]}"#,
-            "selection_coverage",
+            "selection_fields",
         ),
-        (
-            r#"{"coverage":"complete","excerpts":["secret"]}"#,
-            "selection_evidence",
-        ),
+        (r#"{"excerpts":["secret"]}"#, "selection_evidence"),
     ] {
         let error = select(text, &sources).unwrap_err().to_string();
         assert!(error.contains(stage));

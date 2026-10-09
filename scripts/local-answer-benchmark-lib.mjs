@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 const names = ["expected_status", "required_terms", "expected_citations", "forbidden_terms"];
-export const PROTOCOL_STAGES = ["native_stream", "native_completion", "selection_fields", "selection_json", "selection_coverage", "selection_evidence", "selection_quote", "selection_bounds"];
+export const PROTOCOL_STAGES = ["native_stream", "native_completion", "selection_fields", "selection_json", "selection_evidence", "selection_quote", "selection_bounds"];
 export function verifyCase(raw, manifest, target) {
   assert.deepEqual(Object.keys(raw).sort(), ["elapsed_ms", "endpoint", "evaluation", "manifest", "model", "protocol_valid", "synthetic_only"]);
   assert.deepEqual(raw.manifest, manifest);
