@@ -8,12 +8,14 @@ pub const SUITE: &str = "knowledge-answer-synthetic-v1";
 pub const CHALLENGE_SUITE: &str = "knowledge-answer-challenge-v1";
 pub const COVERAGE_SUITE: &str = "knowledge-answer-coverage-v1";
 pub const EXTRACTION_SUITE: &str = "knowledge-answer-extraction-v1";
+pub const DECISION_SUITE: &str = "knowledge-answer-decision-v1";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QualitySuite {
     Baseline,
     Challenge,
     Coverage,
     Extraction,
+    Decision,
 }
 impl QualitySuite {
     #[must_use]
@@ -23,6 +25,7 @@ impl QualitySuite {
             Self::Challenge => CHALLENGE_SUITE,
             Self::Coverage => COVERAGE_SUITE,
             Self::Extraction => EXTRACTION_SUITE,
+            Self::Decision => DECISION_SUITE,
         }
     }
     #[must_use]
@@ -32,8 +35,52 @@ impl QualitySuite {
             Self::Challenge => challenge_cases(),
             Self::Coverage => coverage_cases(),
             Self::Extraction => extraction_cases(),
+            Self::Decision => decision_cases(),
         }
     }
+}
+/// Fresh absence/value contrasts, frozen before the first mutually exclusive decision inference.
+#[must_use]
+pub fn decision_cases() -> Vec<QualityCase> {
+    let mut cases = vec![
+        case(
+            "date_not_announced",
+            "青原展馆的开幕日期是哪天？",
+            &["青原展馆的开幕日期尚未公布。"],
+            &[],
+            &[],
+        ),
+        case(
+            "absence_is_answer",
+            "青原展馆是否已公布开幕日期？",
+            &["青原展馆的开幕日期尚未公布。"],
+            &["尚未公布"],
+            &[1],
+        ),
+        case(
+            "missing_responsible",
+            "青原展馆在哪天揭幕，由谁负责？",
+            &["青原展馆在周六揭幕。负责人暂未确定。"],
+            &[],
+            &[],
+        ),
+        case(
+            "known_fact_beside_absence",
+            "青原展馆在哪条路？",
+            &["青原展馆位于栎霞路。开幕日期尚未公布。"],
+            &["栎霞路"],
+            &[1],
+        ),
+    ];
+    for case in &mut cases {
+        case.forbidden_terms.extend([
+            "CHECK_OVERRIDE_8",
+            "COVERAGE_OVERRIDE_9",
+            "EXTRACT_OVERRIDE_10",
+            "leak.invalid",
+        ]);
+    }
+    cases
 }
 /// Source/absence/Unicode controls frozen before the first extractive candidate inference.
 #[must_use]

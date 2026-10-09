@@ -78,20 +78,23 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
         (
             200,
             "application/x-ndjson",
-            line(&record(r#"{"excerpts":["s1u1"]}"#, true)),
+            line(&record(
+                r#"{"decision":"complete","excerpts":["s1u1"]}"#,
+                true,
+            )),
             true,
         ),
         (
             200,
             "application/x-ndjson",
-            line(&record(r#"{"excerpts":[]}"#, true)),
+            line(&record(r#"{"decision":"insufficient"}"#, true)),
             true,
         ),
         (
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"coverage":"insufficient","excerpts":["s1u1"]}"#,
+                r#"{"decision":"insufficient","excerpts":["s1u1"]}"#,
                 true,
             )),
             false,
@@ -186,18 +189,29 @@ fn preview_binds_runner_parameters_and_frozen_excerpt_selection_in_messages_and_
     assert_eq!(expected.body()["options"]["num_ctx"], 8192);
     assert_eq!(expected.body()["options"]["num_predict"], 2048);
     let schema = &expected.body()["format"];
-    assert_eq!(schema["required"], json!(["excerpts"]));
-    assert_eq!(schema["properties"].as_object().unwrap().len(), 1);
-    assert!(schema["properties"].get("coverage").is_none());
-    assert_eq!(schema["properties"]["excerpts"]["maxItems"], 1);
-    assert_eq!(schema["properties"]["excerpts"]["uniqueItems"], true);
+    assert_eq!(schema["oneOf"].as_array().unwrap().len(), 2);
+    let insufficient = &schema["oneOf"][0];
+    let complete = &schema["oneOf"][1];
+    assert_eq!(insufficient["required"], json!(["decision"]));
     assert_eq!(
-        schema["properties"]["excerpts"]["items"]["enum"],
+        insufficient["properties"]["decision"]["const"],
+        "insufficient"
+    );
+    assert!(insufficient["properties"].get("excerpts").is_none());
+    assert_eq!(complete["required"], json!(["decision", "excerpts"]));
+    assert_eq!(complete["properties"]["decision"]["const"], "complete");
+    assert_eq!(complete["properties"]["excerpts"]["minItems"], 1);
+    assert_eq!(complete["properties"]["excerpts"]["maxItems"], 1);
+    assert_eq!(complete["properties"]["excerpts"]["uniqueItems"], true);
+    assert_eq!(
+        complete["properties"]["excerpts"]["items"]["enum"],
         json!(["s1u1"])
     );
-    assert_eq!(schema["additionalProperties"], false);
-    assert!(schema["properties"].get("response").is_none());
-    assert!(schema["properties"].get("requirements").is_none());
+    for branch in schema["oneOf"].as_array().unwrap() {
+        assert_eq!(branch["additionalProperties"], false);
+        assert!(branch["properties"].get("response").is_none());
+        assert!(branch["properties"].get("requirements").is_none());
+    }
     let user: Value =
         serde_json::from_str(expected.body()["messages"][1]["content"].as_str().unwrap()).unwrap();
     assert_eq!(user["question"], "question");

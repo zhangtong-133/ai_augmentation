@@ -183,3 +183,51 @@ fn extractive_controls_are_source_blind_conditions_without_answer_labels_in_the_
         assert!(case.evaluate(output).quality_pass, "{}", case.id);
     }
 }
+
+#[test]
+fn new_decision_controls_distinguish_missing_values_from_explicit_availability_questions() {
+    let old_ids: std::collections::HashSet<_> = cases()
+        .into_iter()
+        .chain(challenge_cases())
+        .chain(coverage_cases())
+        .chain(extraction_cases())
+        .map(|case| case.id)
+        .collect();
+    let controls = QualitySuite::Decision.cases();
+    assert_eq!(controls.len(), 4);
+    assert_eq!(controls[0].hits[0].text, controls[1].hits[0].text);
+    assert_ne!(controls[0].question, controls[1].question);
+    assert_eq!(
+        controls
+            .iter()
+            .filter(|c| c.expected_status == "insufficient_evidence")
+            .count(),
+        2
+    );
+    let mut digests = std::collections::HashSet::new();
+    for case in controls {
+        assert!(!old_ids.contains(case.id));
+        let manifest = case.manifest_for(QualitySuite::Decision).unwrap();
+        assert_eq!(manifest.suite, DECISION_SUITE);
+        assert!(digests.insert(manifest.corpus_sha256));
+        let output = ModelAnswer {
+            answer: case.required_terms.join("、"),
+            citations: case
+                .citation_ids
+                .iter()
+                .map(|&id| AnswerCitation {
+                    id,
+                    quote: case.hits[id - 1].text.clone(),
+                })
+                .collect(),
+            insufficient_evidence: case.expected_status == "insufficient_evidence",
+        };
+        assert!(case.evaluate(output).quality_pass, "{}", case.id);
+        assert!(
+            !prepare(case.question, &case.sources())
+                .unwrap()
+                .user()
+                .contains("expected_status")
+        );
+    }
+}

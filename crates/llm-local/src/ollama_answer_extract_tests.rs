@@ -9,7 +9,7 @@ fn select(text: &str, sources: &[AnswerSource]) -> LlmResult<ModelAnswer> {
     decode(text, sources, &catalog(sources).unwrap())
 }
 fn complete(keys: &[&str]) -> String {
-    json!({"excerpts":keys}).to_string()
+    json!({"decision":"complete", "excerpts":keys}).to_string()
 }
 
 #[test]
@@ -38,15 +38,30 @@ fn selecting_precomputed_spans_copies_exact_unicode_and_orders_sources_not_model
 }
 
 #[test]
-fn application_derives_status_from_selection_and_rejects_model_classification_fields() {
+fn mutually_exclusive_decisions_require_exact_shapes_without_null_or_empty_repairs() {
     let sources = sources("图书馆只提供书籍介绍。");
-    let answer = select(r#"{"excerpts":[]}"#, &sources).unwrap();
+    let answer = select(r#"{"decision":"insufficient"}"#, &sources).unwrap();
     assert!(answer.insufficient_evidence);
     assert_eq!(answer.answer, "");
     assert!(answer.citations.is_empty());
     for text in [
-        r#"{"coverage":"complete","excerpts":[]}"#,
-        r#"{"coverage":"insufficient","excerpts":["s1u1"]}"#,
+        r#"{"decision":"complete"}"#,
+        r#"{"decision":"complete","excerpts":[]}"#,
+        r#"{"decision":"insufficient","excerpts":[]}"#,
+        r#"{"decision":"insufficient","excerpts":["s1u1"]}"#,
+    ] {
+        assert!(
+            select(text, &sources)
+                .unwrap_err()
+                .to_string()
+                .contains("selection_decision")
+        );
+    }
+    for text in [
+        r#"{"decision":"insufficient","excerpts":null}"#,
+        r#"{"decision":"complete","excerpts":null}"#,
+        r#"{"decision":"insufficient","decision":"complete","excerpts":["s1u1"]}"#,
+        r#"{"excerpts":[]}"#,
     ] {
         assert!(
             select(text, &sources)
@@ -61,17 +76,17 @@ fn application_derives_status_from_selection_and_rejects_model_classification_fi
 fn model_cannot_add_free_prose_labels_quotes_ids_or_duplicate_and_unknown_keys() {
     let sources = sources("唯一事实。");
     for text in [
-        r#"{"excerpts":["s1u1"],"answer":"secret"}"#,
-        r#"{"excerpts":["s1u1"],"requirements":[]}"#,
-        r#"{"excerpts":[{"id":1,"quote":"secret"}]}"#,
-        r#"{"excerpts":["s1u1","s1u1"]}"#,
-        r#"{"excerpts":["s1u2"]}"#,
-        r#"{"excerpts":["s2u1"]}"#,
-        r#"{"excerpts":["s1u1"],"excerpts":[]}"#,
+        r#"{"decision":"complete","excerpts":["s1u1"],"answer":"secret"}"#,
+        r#"{"decision":"complete","excerpts":["s1u1"],"requirements":[]}"#,
+        r#"{"decision":"complete","excerpts":[{"id":1,"quote":"secret"}]}"#,
+        r#"{"decision":"complete","excerpts":["s1u1","s1u1"]}"#,
+        r#"{"decision":"complete","excerpts":["s1u2"]}"#,
+        r#"{"decision":"complete","excerpts":["s2u1"]}"#,
+        r#"{"decision":"complete","excerpts":["s1u1"],"excerpts":[]}"#,
         r#"{"coverage":"insufficient","excerpts":[]}"#,
-        r#"{"excerpts":["s1u1"]}{}"#,
-        r#"{"excerpts":null}"#,
-        r#"{"excerpts":[1]}"#,
+        r#"{"decision":"complete","excerpts":["s1u1"]}{}"#,
+        r#"{"decision":"complete","excerpts":null}"#,
+        r#"{"decision":"complete","excerpts":[1]}"#,
     ] {
         let error = select(text, &sources).unwrap_err().to_string();
         assert!(!error.contains("secret"));
@@ -148,10 +163,13 @@ fn fixed_failure_categories_never_echo_model_content() {
         ("secret model text", "selection_json"),
         (r#"{"secret":true}"#, "selection_fields"),
         (
-            r#"{"coverage":"complete","excerpts":[]}"#,
-            "selection_fields",
+            r#"{"decision":"complete","excerpts":[]}"#,
+            "selection_decision",
         ),
-        (r#"{"excerpts":["secret"]}"#, "selection_evidence"),
+        (
+            r#"{"decision":"complete","excerpts":["secret"]}"#,
+            "selection_evidence",
+        ),
     ] {
         let error = select(text, &sources).unwrap_err().to_string();
         assert!(error.contains(stage));
