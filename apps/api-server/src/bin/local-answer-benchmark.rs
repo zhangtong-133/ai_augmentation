@@ -72,6 +72,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
                     "baseline" => QualitySuite::Baseline,
                     "challenge" => QualitySuite::Challenge,
                     "coverage" => QualitySuite::Coverage,
+                    "extraction" => QualitySuite::Extraction,
                     _ => return Err("invalid answer suite"),
                 });
             }
@@ -95,7 +96,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage|extraction --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -212,23 +213,33 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v5_request_fingerprints_stay_frozen_and_cannot_reuse_v4_reports() {
+    fn v6_request_fingerprints_stay_frozen_and_cannot_reuse_v5_reports() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
-        let actual: Vec<_> = QualitySuite::Coverage
-            .cases()
-            .iter()
-            .map(|case| manifest(case, &target, QualitySuite::Coverage, Backend::Ollama).unwrap())
-            .collect();
+        let mut actual = serde_json::Map::new();
+        for (name, suite) in [
+            ("baseline", QualitySuite::Baseline),
+            ("challenge", QualitySuite::Challenge),
+            ("coverage", QualitySuite::Coverage),
+            ("extraction", QualitySuite::Extraction),
+        ] {
+            let manifests: Vec<_> = suite
+                .cases()
+                .iter()
+                .map(|case| manifest(case, &target, suite, Backend::Ollama).unwrap())
+                .collect();
+            actual.insert(name.into(), serde_json::json!(manifests));
+        }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-coverage-manifests-ollama-v5.json"
+            "../../tests/fixtures/answer-extractive-manifests-ollama-v6.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-coverage-manifests-ollama-v4.json"
+            "../../tests/fixtures/answer-coverage-manifests-ollama-v5.json"
         ))
         .unwrap();
-        for (index, manifest) in actual.iter().enumerate() {
+        for (index, manifest) in actual["coverage"].as_array().unwrap().iter().enumerate() {
+            assert_eq!(manifest["case"], previous[index]["case"]);
             assert_ne!(
                 manifest["request_sha256"],
                 previous[index]["request_sha256"]
@@ -276,6 +287,15 @@ mod tests {
     #[tokio::test]
     async fn candidate_selection_stays_offline_and_cannot_relabel_baseline_cases() {
         for args in [
+            vec![
+                "manifest",
+                "http://127.0.0.1:11434",
+                "qwen3.5:9b",
+                "--suite",
+                "extraction",
+                "--backend",
+                "ollama",
+            ],
             vec![
                 "manifest",
                 "http://127.0.0.1:11434",

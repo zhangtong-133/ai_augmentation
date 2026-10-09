@@ -8,23 +8,22 @@ use personal_ai_llm::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "ollama-knowledge-answer-v5";
+pub const PROFILE: &str = "ollama-knowledge-answer-v6";
 pub const RUNNER: &str = "llamacpp";
 pub const PROTOCOL_STAGES: &[&str] = &[
     "native_stream",
     "native_completion",
-    "review_fields",
-    "review_json",
-    "review_contract",
-    "review_quote",
-    "review_source",
-    "review_support",
-    "review_requirements",
+    "selection_fields",
+    "selection_json",
+    "selection_coverage",
+    "selection_evidence",
+    "selection_quote",
+    "selection_bounds",
 ];
 fn protocol_error(stage: &'static str) -> personal_ai_llm::LlmError {
     personal_ai_llm::LlmError::InvalidResponse(format!("ollama answer protocol: {stage}"))
 }
-#[path = "ollama_answer_contract.rs"]
+#[path = "ollama_answer_extract.rs"]
 mod contract;
 #[derive(Debug, Serialize)]
 pub struct OllamaAnswerPreview {
@@ -54,10 +53,15 @@ pub fn preview(
     sources: &[AnswerSource],
 ) -> LlmResult<OllamaAnswerPreview> {
     let prompt = prepare(question, sources)?;
-    let schema = contract::schema(prompt.schema(), sources.len());
+    let catalog = contract::catalog(sources)?;
+    let schema = contract::schema(&catalog);
     let mut request = prompt.request();
-    request.messages[0].content.push_str(contract::INSTRUCTION);
+    request.messages[0].content = contract::INSTRUCTION.into();
     request.messages[0].content.push_str(&schema.to_string());
+    // The original question and every source byte remain in the untrusted data envelope.
+    let mut user: serde_json::Value = serde_json::from_str(prompt.user()).map_err(|_| invalid())?;
+    user["exact_excerpts"] = serde_json::to_value(&catalog).map_err(|_| invalid())?;
+    request.messages[1].content = user.to_string();
     let validated = wire_payload(target, &request)?;
     Ok(OllamaAnswerPreview {
         profile: PROFILE,
@@ -119,7 +123,8 @@ impl OllamaAnswers {
         let completed = parser
             .finish()
             .map_err(|_| protocol_error("native_completion"))?;
-        contract::decode(&completed, sources)
+        // Rebuild from the same frozen source snapshot, never from model output.
+        contract::decode(&completed, sources, &contract::catalog(sources)?)
     }
 }
 impl AnswerProvider for OllamaAnswers {

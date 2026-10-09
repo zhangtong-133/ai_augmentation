@@ -79,7 +79,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"所需信息","support":{"evidence":[{"id":1,"quote":"唯一🙂证据"}],"text":"唯一证据"}}]}"#,
+                r#"{"coverage":"complete","excerpts":["s1u1"]}"#,
                 true,
             )),
             true,
@@ -88,7 +88,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"未提供的信息","support":{"evidence":[],"text":""}}]}"#,
+                r#"{"coverage":"insufficient","excerpts":[]}"#,
                 true,
             )),
             true,
@@ -97,7 +97,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"requirements":[{"requirement":"未提供的信息","support":{"evidence":[],"text":"唯一证据"}}]}"#,
+                r#"{"coverage":"insufficient","excerpts":["s1u1"]}"#,
                 true,
             )),
             false,
@@ -181,7 +181,7 @@ async fn exact_native_preview_is_sent_once_without_credentials_or_oversized_inpu
     }
 }
 #[test]
-fn preview_binds_runner_parameters_and_each_requirement_support_in_messages_and_format() {
+fn preview_binds_runner_parameters_and_frozen_excerpt_selection_in_messages_and_format() {
     let target = LocalTarget::new("http://127.0.0.1:11434", "fixture").unwrap();
     let expected = preview(&target, "question", &sources()).unwrap();
     assert_eq!(expected.body()["think"], false);
@@ -192,15 +192,27 @@ fn preview_binds_runner_parameters_and_each_requirement_support_in_messages_and_
     assert_eq!(expected.body()["options"]["num_ctx"], 8192);
     assert_eq!(expected.body()["options"]["num_predict"], 2048);
     let schema = &expected.body()["format"];
-    assert_eq!(schema["properties"]["requirements"]["minItems"], 1);
-    assert_eq!(schema["properties"]["requirements"]["maxItems"], 8);
+    assert_eq!(
+        schema["properties"]["coverage"]["enum"],
+        json!(["complete", "insufficient"])
+    );
+    assert_eq!(schema["properties"]["excerpts"]["maxItems"], 1);
+    assert_eq!(schema["properties"]["excerpts"]["uniqueItems"], true);
+    assert_eq!(
+        schema["properties"]["excerpts"]["items"]["enum"],
+        json!(["s1u1"])
+    );
     assert_eq!(schema["additionalProperties"], false);
     assert!(schema["properties"].get("response").is_none());
-    let support = &schema["properties"]["requirements"]["items"]["properties"]["support"];
-    assert_eq!(support["oneOf"][0]["properties"]["evidence"]["minItems"], 1);
-    assert_eq!(support["oneOf"][0]["properties"]["text"]["minLength"], 1);
-    assert_eq!(support["oneOf"][1]["properties"]["evidence"]["maxItems"], 0);
-    assert_eq!(support["oneOf"][1]["properties"]["text"]["const"], "");
+    assert!(schema["properties"].get("requirements").is_none());
+    let user: Value =
+        serde_json::from_str(expected.body()["messages"][1]["content"].as_str().unwrap()).unwrap();
+    assert_eq!(user["question"], "question");
+    assert_eq!(user["evidence"], json!([{"id":1,"text":"唯一🙂证据"}]));
+    assert_eq!(
+        user["exact_excerpts"],
+        json!([{"key":"s1u1","id":1,"quote":"唯一🙂证据"}])
+    );
     let in_prompt = expected.body()["messages"][0]["content"]
         .as_str()
         .unwrap()

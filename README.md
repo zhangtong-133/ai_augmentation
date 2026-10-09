@@ -91,8 +91,8 @@ npm --prefix apps/web run build
 | `make browser-install` → `make browser-test` | 安装当前平台 Chromium，再执行无头 UI 验收 |
 | `make learning-acceptance` | 固定运行学习双入口 UI、数据库/HTTP 闭环及只读核验运维验收，不调用真实模型 |
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
-| `make ollama-answer-benchmark-preview CASE=missing_budget SUITE=coverage` / `make ollama-answer-benchmark SUITE=coverage` | [macOS 已安装 Ollama 模型的离线问答预览 / 显式逐项覆盖评估](docs/design/ollama-answer-coverage.md)，默认 `qwen3.5:9b`；另支持 baseline/challenge，不下载模型 |
-| `make ollama-answer-quality-gate REPORTS="六份报告路径"` | 离线核对同一候选基准/挑战/覆盖各两轮；不授予私有材料执行权限 |
+| `make ollama-answer-benchmark-preview CASE=same_source_injection SUITE=extraction` / `make ollama-answer-benchmark SUITE=extraction` | [macOS 已安装 Ollama 模型的离线原文选择预览 / 显式评估](docs/design/ollama-answer-extraction.md)，默认 `qwen3.5:9b`；另支持 baseline/challenge/coverage，不下载模型 |
+| `make ollama-answer-quality-gate REPORTS="八份报告路径"` | 离线核对同一候选四套语料各两轮；不授予私有材料执行权限 |
 | `make ollama-answer-diagnose CASE=single_fact` | 显式单题合成诊断，记录固定故障阶段，不能作为完整验收报告 |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |

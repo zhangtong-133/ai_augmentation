@@ -4,10 +4,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import http from "node:http";
 import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
-export const PROFILE = "ollama-knowledge-answer-v5";
+export const PROFILE = "ollama-knowledge-answer-v6";
 export const RUNNER = "llamacpp";
 export const REPORT_SCHEMA = "ollama-answer-quality-report-v1";
-export const SUITES = { baseline: "knowledge-answer-synthetic-v1", challenge: "knowledge-answer-challenge-v1", coverage: "knowledge-answer-coverage-v1" };
+export const SUITES = { baseline: "knowledge-answer-synthetic-v1", challenge: "knowledge-answer-challenge-v1", coverage: "knowledge-answer-coverage-v1", extraction: "knowledge-answer-extraction-v1" };
 const GiB = 1024 ** 3;
 export const RESERVE_BYTES = 6 * GiB + 512 * 1024 ** 2;
 export const RESOURCE_POLICY = "macos-pressure-reserve-6gib-buffer-512mib-load-1.5x-v1";
@@ -133,9 +133,9 @@ export async function guardedSend(send, check, signal, intervalMs = 500) {
 
 // A local audit gate, not a signed attestation or private execution authorization.
 export function qualityGate(reports, expected) {
-  assert.equal(reports.length, 6, "requires two reports of baseline, challenge and coverage");
+  assert.equal(reports.length, Object.keys(SUITES).length * 2, "requires two reports of each of the four frozen suites");
   assert.deepEqual(Object.keys(expected).sort(), Object.keys(SUITES).sort());
-  const rounds = { baseline: [], challenge: [], coverage: [] }, ids = new Set();
+  const rounds = Object.fromEntries(Object.keys(SUITES).map(suite => [suite, []])), ids = new Set();
   const runtime = reports[0].runtime;
   assert.deepEqual(Object.keys(runtime).sort(), ["arch", "endpoint", "engine", "execution_profile", "model_alias", "model_digest", "model_metadata_sha256", "model_size", "platform", "resource_policy", "runner", "total_memory", "version"]);
   assert.equal(runtime.engine, "ollama"); assert.equal(runtime.execution_profile, PROFILE);
@@ -188,7 +188,7 @@ export function qualityGate(reports, expected) {
     }
   }
   const failed = reports.flatMap(report => report.results.filter(result => !result.quality_pass).map(result => ({ suite: report.suite, run_id: report.run_id, id: result.id })));
-  return { schema: "ollama-answer-quality-gate-v2", synthetic_only: true, runtime,
+  return { schema: "ollama-answer-quality-gate-v3", synthetic_only: true, runtime,
     reports_sha256: reports.map(digest), manifests_sha256: digest(expected),
     rounds_per_suite: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
     passed: failed.length === 0, failed_cases: failed, private_execution_authorized: false };

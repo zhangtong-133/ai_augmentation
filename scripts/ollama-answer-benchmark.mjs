@@ -45,7 +45,7 @@ async function manifests(target, suite, signal) {
   return cli(["manifest", target.endpoint, target.model_alias, "--suite", suite, "--backend", "ollama"], signal);
 }
 async function gate(files, signal) {
-  assert.equal(files.length, 6);
+  assert.equal(files.length, Object.keys(SUITES).length * 2);
   const seen = new Set(), reports = [];
   const allowed = await realpath(join(base, "quality"));
   for (const file of files) {
@@ -63,7 +63,7 @@ async function gate(files, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,40}$/.test(args[1] ?? ""));

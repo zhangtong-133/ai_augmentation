@@ -33,7 +33,7 @@ test("citation failures cannot masquerade as content checks that passed", () => 
   assert.equal(verifyCase(raw, manifest, target).citation_valid, false);
 });
 test("protocol diagnostics contain only fixed stages and never provider messages", async () => {
-  for (const [failure, stage, expected] of [["protocol", "review_fields", "review_fields"], ["protocol", "secret model text", undefined], ["transport", "review_fields", undefined]]) {
+  for (const [failure, stage, expected] of [["protocol", "selection_fields", "selection_fields"], ["protocol", "secret model text", undefined], ["transport", "selection_fields", undefined]]) {
     const report = await runCases([manifest], target, async () => { throw Object.assign(new Error("secret model text"), { answerFailure: failure, answerFailureStage: stage }); });
     assert.equal(report.failure_stage, expected);
     assert.ok(!JSON.stringify(report).includes("secret"));
