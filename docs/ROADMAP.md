@@ -103,6 +103,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 - [x] 清理 scheduler 的 Redis 启动依赖和未使用环境变量，将仅供测试的依赖移至 dev-dependencies；移除环境检查中未使用的 pnpm、just、protoc 提示。
 
 - [x] 清理 API、MCP、Qdrant 和 S3 的六条未使用直接依赖声明，同步锁文件并逐 crate 验证构建；适配 Rust 1.99 的空集合断言检查，修复 CI 的 Clippy 失败。
+- [x] 修复后续 Ollama 测试新增的空集合断言 Clippy 错误；统一 smoke/index 浏览器安装，替换阻塞的 Azure APT 镜像并限制下载/安装等待，排查记录见[开发环境](ENVIRONMENT.md#ci-故障排查)。
 
 - [x] 清理无调用方的早期通用 Agent/LLM 协议、闲置领域状态和阶段占位测试；修正浏览器退出后立即刷新造成的请求竞争。
 

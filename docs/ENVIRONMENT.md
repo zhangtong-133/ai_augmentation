@@ -25,6 +25,14 @@ make browser-install
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
 - 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-extraction.md)，使用统一内存估算保护，每题结束卸载模型；尚未接入私有问答或学习/RSS 执行。
 
+## CI 故障排查
+
+GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Clippy 错误时先比较日志中的 `rustc`/Clippy 版本；本机较旧版本通过不能证明当前 CI 通过。2026-10-09 的 [失败构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37893764769) 使用 Rust 1.99，新的 `assert_is_empty` 检查拒绝了 Ollama 测试中的布尔空集合断言。当前测试改为比较带元素类型的空数组，保留原断言并输出失败时的实际引用列表。
+
+同一次构建的 smoke 在 Playwright 安装系统依赖时，卡住于 `http://azure.archive.ubuntu.com` 的 APT 索引下载，项目 smoke 尚未启动。smoke/index 现共用 [浏览器安装 action](../.github/actions/setup-browser/action.yml)：将 runner 的 APT 镜像列表替换为 Ubuntu 官方 HTTPS archive，设置每次连接 30 秒超时、最多 3 次重试，索引更新错误直接失败；Chromium 安装步骤最多 10 分钟，字体安装最多 5 分钟，原有作业 60 分钟限时保持不变。这些系统配置仅写入临时 GitHub runner，本机 `make browser-install` 的行为保持不变。
+
+本次修复在 macOS / Rust 1.96.1 下通过 `make check`（322 项通过、286 项需真实服务的测试忽略）、前端 lint/typecheck/build；工作流与 composite action 的 YAML/脚本语法另行检查。APT 安装和 Rust 1.99 的结果需以推送后 Ubuntu runner 的实际运行确认。
+
 ## 最近验收记录
 
 以下为历史记录，不代表当前机器已重新检查；命令和范围见 [项目 README](../README.md)。

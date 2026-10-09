@@ -1,0 +1,32 @@
+name: Set up acceptance browser
+description: Install locked Chromium and Chinese fonts with bounded Ubuntu package downloads.
+runs:
+  using: composite
+  steps:
+    - name: Install browser test dependencies
+      shell: bash
+      run: timeout --kill-after=30s 5m npm --prefix tests/browser ci
+    - name: Configure Ubuntu package downloads
+      shell: bash
+      run: |
+        # Hosted runners prefer Azure over the Ubuntu archive; a stalled package
+        # download can survive mirror failover and consume the entire job.
+        sudo tee /etc/apt/apt-mirrors.txt >/dev/null <<'EOF'
+        https://archive.ubuntu.com/ubuntu/
+        EOF
+        # Playwright invokes apt through sudo, so keep these bounds in apt's
+        # configuration instead of environment variables lost by sudo.
+        sudo tee /etc/apt/apt.conf.d/99-personal-ai-ci-network >/dev/null <<'EOF'
+        Acquire::Retries "3";
+        Acquire::http::Timeout "30";
+        Acquire::https::Timeout "30";
+        APT::Update::Error-Mode "any";
+        EOF
+    - name: Install Chromium and system dependencies
+      shell: bash
+      env:
+        PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: "60000"
+      run: timeout --kill-after=30s 10m npm --prefix tests/browser run install-browser -- --with-deps
+    - name: Install Chinese fonts
+      shell: bash
+      run: sudo timeout --kill-after=30s 5m apt-get install -y fonts-noto-cjk

@@ -43,7 +43,7 @@ fn mutually_exclusive_decisions_require_exact_shapes_without_null_or_empty_repai
     let answer = select(r#"{"decision":"insufficient"}"#, &sources).unwrap();
     assert!(answer.insufficient_evidence);
     assert_eq!(answer.answer, "");
-    assert!(answer.citations.is_empty());
+    assert_eq!(answer.citations, [] as [AnswerCitation; 0]);
     for text in [
         r#"{"decision":"complete"}"#,
         r#"{"decision":"complete","excerpts":[]}"#,
