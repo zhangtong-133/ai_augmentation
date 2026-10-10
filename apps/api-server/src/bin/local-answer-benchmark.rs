@@ -75,6 +75,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
                     "extraction" => QualitySuite::Extraction,
                     "decision" => QualitySuite::Decision,
                     "mixed" => QualitySuite::Mixed,
+                    "availability" => QualitySuite::Availability,
                     _ => return Err("invalid answer suite"),
                 });
             }
@@ -98,7 +99,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -215,7 +216,7 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v9_requests_and_mixed_controls_are_frozen_without_relabelling_v8_conditions() {
+    fn v10_requests_and_availability_controls_are_frozen_without_relabelling_v9_conditions() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let mut actual = serde_json::Map::new();
         for (name, suite) in [
@@ -225,6 +226,7 @@ mod tests {
             ("extraction", QualitySuite::Extraction),
             ("decision", QualitySuite::Decision),
             ("mixed", QualitySuite::Mixed),
+            ("availability", QualitySuite::Availability),
         ] {
             let manifests: Vec<_> = suite
                 .cases()
@@ -234,16 +236,16 @@ mod tests {
             actual.insert(name.into(), serde_json::json!(manifests));
         }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-mixed-manifests-ollama-v9.json"
+            "../../tests/fixtures/answer-availability-manifests-ollama-v10.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-decision-manifests-ollama-v8.json"
+            "../../tests/fixtures/answer-mixed-manifests-ollama-v9.json"
         ))
         .unwrap();
         for (suite, manifests) in &actual {
-            if suite == "mixed" {
+            if suite == "availability" {
                 continue;
             }
             for (index, manifest) in manifests.as_array().unwrap().iter().enumerate() {

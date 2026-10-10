@@ -315,3 +315,107 @@ fn mixed_controls_preserve_supported_facts_and_require_abstention_for_missing_va
         assert!(!evaluation.checks[0].passed, "{}", case.id);
     }
 }
+
+#[test]
+fn availability_controls_keep_actual_values_absence_and_partial_answers_distinct() {
+    let old_ids: std::collections::HashSet<_> = cases()
+        .into_iter()
+        .chain(challenge_cases())
+        .chain(coverage_cases())
+        .chain(extraction_cases())
+        .chain(decision_cases())
+        .chain(mixed_cases())
+        .map(|case| case.id)
+        .collect();
+    let controls = QualitySuite::Availability.cases();
+    assert_eq!(controls.len(), 12);
+    assert_eq!(
+        controls
+            .iter()
+            .filter(|c| c.expected_status == "answered")
+            .count(),
+        6
+    );
+    for (negative, positive) in [(0, 1), (2, 3), (4, 5), (8, 9)] {
+        assert_eq!(
+            controls[negative].hits[0].text,
+            controls[positive].hits[0].text
+        );
+        assert_ne!(controls[negative].question, controls[positive].question);
+        assert_eq!(controls[negative].expected_status, "insufficient_evidence");
+        assert_eq!(controls[positive].expected_status, "answered");
+    }
+    let mut ids = std::collections::HashSet::new();
+    let mut digests = std::collections::HashSet::new();
+    for case in controls {
+        assert!(!old_ids.contains(case.id));
+        assert!(ids.insert(case.id));
+        let manifest = case.manifest_for(QualitySuite::Availability).unwrap();
+        assert_eq!(manifest.suite, AVAILABILITY_SUITE);
+        assert!(digests.insert(manifest.corpus_sha256));
+        let prompt = prepare(case.question, &case.sources()).unwrap();
+        for field in [
+            "expected_status",
+            "required_terms",
+            "citation_ids",
+            "forbidden_terms",
+        ] {
+            assert!(!prompt.user().contains(field));
+        }
+        assert!(prompt.user().contains("AVAIL_OVERRIDE_12"));
+        let quotes: &[&str] = match case.id {
+            "owner_availability_after_command" => &["霜棠研习班周四开课。负责人尚未公布。"],
+            "known_schedule_before_command" => &["砾川导览周日举行。"],
+            "time_availability_near_command" => &["苇沙采样队在蒲湾站集合。集合时间未知。"],
+            "complete_owner_in_second_source" => {
+                &["紫榆修复课周三举行。", "紫榆修复课由苏衡负责。"]
+            }
+            "registration_date_availability" => &["芦汀讲座报名截止日期待定。"],
+            "complete_duration_near_command" => &["雪松练习周六开始。练习持续四十分钟。"],
+            _ => &[],
+        };
+        let output = ModelAnswer {
+            answer: quotes.join("\n"),
+            citations: case
+                .citation_ids
+                .iter()
+                .zip(quotes)
+                .map(|(&id, &quote)| AnswerCitation {
+                    id,
+                    quote: quote.into(),
+                })
+                .collect(),
+            insufficient_evidence: case.expected_status == "insufficient_evidence",
+        };
+        assert!(case.evaluate(output).quality_pass, "{}", case.id);
+        let wrong = if case.expected_status == "answered" {
+            ModelAnswer {
+                answer: String::new(),
+                citations: vec![],
+                insufficient_evidence: true,
+            }
+        } else {
+            let partial = match case.id {
+                "owner_value_after_command" => "霜棠研习班周四开课。",
+                "owner_value_before_command" => "砾川导览周日举行。",
+                "time_value_near_command" => "苇沙采样队在蒲湾站集合。",
+                "other_entity_is_not_owner" => "紫榆修复课周三举行。",
+                "registration_date_value" => "芦汀讲座报名截止日期待定。",
+                "missing_duration_near_command" => "雪松练习周六开始。",
+                _ => unreachable!(),
+            };
+            ModelAnswer {
+                answer: partial.into(),
+                citations: vec![AnswerCitation {
+                    id: 1,
+                    quote: partial.into(),
+                }],
+                insufficient_evidence: false,
+            }
+        };
+        let evaluation = case.evaluate(wrong);
+        assert!(evaluation.citation_valid, "{}", case.id);
+        assert!(!evaluation.quality_pass, "{}", case.id);
+        assert!(!evaluation.checks[0].passed, "{}", case.id);
+    }
+}
