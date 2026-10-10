@@ -38,6 +38,7 @@ test("only exact local installed models, supported thinking control and canonica
   assert.equal(parseOptions(["--suite", "coverage"]).suite, "coverage");
   assert.equal(parseOptions(["--suite", "extraction"]).suite, "extraction");
   assert.equal(parseOptions(["--suite", "decision"]).suite, "decision");
+  assert.equal(parseOptions(["--suite", "mixed"]).suite, "mixed");
   for (const options of [
     ["--endpoint", "https://example.com"], ["--endpoint", "http://localhost:11434"],
     ["--endpoint", "http://127.0.0.1:11434/path"], ["--endpoint", "http://127.0.0.1:011434"],
@@ -111,8 +112,8 @@ test("two rounds of each unchanged suite are required; failures stay failures an
   const { expected, reports } = fixtures();
   const passed = qualityGate(reports, expected);
   assert.equal(passed.passed, true); assert.equal(passed.private_execution_authorized, false);
-  assert.equal(passed.schema, "ollama-answer-quality-gate-v4");
-  assert.equal(passed.evaluated_cases, 10);
+  assert.equal(passed.schema, "ollama-answer-quality-gate-v5");
+  assert.equal(passed.evaluated_cases, 12);
   const failure = reports[5]; failure.results[0].checks[1].passed = false; failure.results[0].quality_pass = false; failure.passed_cases = 0; failure.exit_code = 2;
   const failed = qualityGate(reports, expected);
   assert.equal(failed.passed, false); assert.equal(failed.failed_cases.length, 1);
@@ -126,8 +127,10 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v5"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v6"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v7"),
+    reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v8"),
     reports => reports.splice(6), reports => reports[7].suite = "coverage",
     reports => reports.splice(8), reports => reports[9].suite = "extraction",
+    reports => reports.splice(10), reports => reports[11].suite = "decision",
     reports => reports[1].runtime.version = "0.40.2", reports => reports[1].runtime.model_digest = "c".repeat(64),
     reports => reports[1].runtime.model_metadata_sha256 = "d".repeat(64),
     reports => reports[1].manifests[0].request_sha256 = "e".repeat(64),
@@ -152,4 +155,6 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
   }
   const { reports, expected } = fixtures(); delete expected.coverage;
   assert.throws(() => qualityGate(reports, expected));
+  const noMixed = fixtures(); delete noMixed.expected.mixed;
+  assert.throws(() => qualityGate(noMixed.reports, noMixed.expected));
 });

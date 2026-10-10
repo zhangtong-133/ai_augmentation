@@ -1,6 +1,6 @@
 # macOS Ollama 问答候选与独立质量挑战
 
-本页保留 v3 协议和 2026-10-08 的失败验收记录。v4/v5 的逐项证据核对见[覆盖设计](ollama-answer-coverage.md)，当前 v8 互斥决策/原文选择及五套双轮门槛见[后续设计](ollama-answer-extraction.md)；旧报告不用于新候选门槛。
+本页保留 v3 协议和 2026-10-08 的失败验收记录。v4/v5 的逐项证据核对见[覆盖设计](ollama-answer-coverage.md)，当前 v9 互斥决策/原文选择及六套双轮门槛见[后续设计](ollama-answer-extraction.md)；旧报告不用于新候选门槛。
 
 ## 范围与兼容
 

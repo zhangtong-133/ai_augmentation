@@ -31,7 +31,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 同一次构建的 smoke 在 Playwright 安装系统依赖时，卡住于 `http://azure.archive.ubuntu.com` 的 APT 索引下载，项目 smoke 尚未启动。smoke/index 现共用 [浏览器安装 action](../.github/actions/setup-browser/action.yml)：将 runner 的 APT 镜像列表替换为 Ubuntu 官方 HTTPS archive，设置每次连接 30 秒超时、最多 3 次重试，索引更新错误直接失败；Chromium 安装步骤最多 10 分钟，字体安装最多 5 分钟，原有作业 60 分钟限时保持不变。这些系统配置仅写入临时 GitHub runner，本机 `make browser-install` 的行为保持不变。
 
-本次修复在 macOS / Rust 1.96.1 下通过 `make check`（322 项通过、286 项需真实服务的测试忽略）、前端 lint/typecheck/build；工作流与 composite action 的 YAML/脚本语法另行检查。APT 安装和 Rust 1.99 的结果需以推送后 Ubuntu runner 的实际运行确认。
+本次修复在 macOS / Rust 1.96.1 下通过 `make check`（322 项通过、286 项需真实服务的测试忽略）、前端 lint/typecheck/build；工作流与 composite action 的 YAML/脚本语法另行检查。推送后的 [CI 37903618314](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37903618314) 五个作业全部通过，确认 Ubuntu runner 的 Rust 1.99 检查和 APT 安装成功；smoke/index 浏览器安装分别约 26/31 秒。
 
 ## 最近验收记录
 
@@ -39,6 +39,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v9 | 324 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像六套 47 道清单逐字段核对 | 同运行时 v8 仍 70/74；v9 原五套双轮 74/74，新混合资料双轮 9/10，共 92/94；缺负责人且旁有诱导仍误答，门槛退出 2、私有执行未接入；测试栈已清空，未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-09，macOS ARM64 / OrbStack，Ollama v8 | 322 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；284 项真实服务/index smoke、4 项授权 UI、生产镜像五套离线预览 | 74 次协议/生产引用完成、70 次质量通过；基准/覆盖/新决策双轮 7/7、10/10、4/4，两道诱导材料题各两轮误弃权；门槛退出 2，私有执行关闭；测试栈已清空，未跑全量 UI/MinIO/公网、游戏并行/vLLM |
 | 2026-10-09，macOS ARM64，Ollama v7 | 321 项 Rust 测试与完整检查、12 项问答 Node，前端检查/构建及 11 项单元测试；66 次原生协议/生产引用完成，挑战双轮 8/8 | 基准双轮 6/7、覆盖 6/10、原文对照 4/8，48/66 质量通过，门槛退出 2，私有执行关闭；未跑 Docker/服务/UI/MinIO/公网、游戏压力/vLLM |
 | 2026-10-09，macOS ARM64 | 321 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；33 个 v6 离线请求预先冻结 | 原文选择候选首轮前四题通过、注入题分类/选择矛盾协议拒绝，2 题未发送；完整质量门槛未完成，私有执行关闭；该快照未跑 Docker/服务/UI/MinIO/公网、游戏并行/vLLM |
