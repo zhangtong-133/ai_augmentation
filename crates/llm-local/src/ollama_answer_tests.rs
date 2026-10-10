@@ -79,7 +79,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"checks":[{"kind":"fact","evidence":["s1u1"],"support":"stated"}]}"#,
+                r#"{"evidence":["s1u1"],"requirements":[{"kind":"fact","support":"stated"}]}"#,
                 true,
             )),
             true,
@@ -88,7 +88,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"checks":[{"kind":"value","evidence":[],"support":"unsupported"}]}"#,
+                r#"{"evidence":[],"requirements":[{"kind":"value","support":"unsupported"}]}"#,
                 true,
             )),
             true,
@@ -97,7 +97,7 @@ fn native_responses() -> [(u16, &'static str, String, bool); 8] {
             200,
             "application/x-ndjson",
             line(&record(
-                r#"{"checks":[{"kind":"value","evidence":["s1u1"],"support":"unsupported"}]}"#,
+                r#"{"evidence":["s1u1"],"requirements":[{"kind":"value","support":"unsupported"}]}"#,
                 true,
             )),
             true,
@@ -193,21 +193,28 @@ fn preview_binds_runner_parameters_and_frozen_excerpt_selection_in_messages_and_
     assert_eq!(expected.body()["options"]["num_predict"], 2048);
     let schema = &expected.body()["format"];
     assert_eq!(schema["type"], "object");
-    assert_eq!(schema["required"], json!(["checks"]));
+    assert_eq!(schema["required"], json!(["evidence", "requirements"]));
     assert_eq!(schema["additionalProperties"], false);
-    let checks = &schema["properties"]["checks"];
+    assert_eq!(
+        schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["evidence", "requirements"]
+    );
+    let evidence = &schema["properties"]["evidence"];
+    assert_eq!(evidence["minItems"], 0);
+    assert_eq!(evidence["maxItems"], 1);
+    assert_eq!(evidence["uniqueItems"], true);
+    assert_eq!(evidence["items"]["enum"], json!(["s1u1"]));
+    let checks = &schema["properties"]["requirements"];
     assert_eq!(checks["minItems"], 1);
     assert_eq!(checks["maxItems"], 12);
     let item = &checks["items"];
     assert_eq!(item["additionalProperties"], false);
-    assert_eq!(item["required"], json!(["evidence", "kind", "support"]));
-    assert_eq!(item["properties"]["evidence"]["minItems"], 0);
-    assert_eq!(item["properties"]["evidence"]["maxItems"], 1);
-    assert_eq!(item["properties"]["evidence"]["uniqueItems"], true);
-    assert_eq!(
-        item["properties"]["evidence"]["items"]["enum"],
-        json!(["s1u1"])
-    );
+    assert_eq!(item["required"], json!(["kind", "support"]));
     assert_eq!(
         item["properties"]["kind"]["enum"],
         json!(["value", "availability", "fact"])
@@ -223,7 +230,7 @@ fn preview_binds_runner_parameters_and_frozen_excerpt_selection_in_messages_and_
             .keys()
             .map(String::as_str)
             .collect::<Vec<_>>(),
-        ["evidence", "kind", "support"]
+        ["kind", "support"]
     );
     let user: Value =
         serde_json::from_str(expected.body()["messages"][1]["content"].as_str().unwrap()).unwrap();
@@ -281,7 +288,7 @@ fn mixed_source_preview_keeps_commands_and_facts_without_filtering_reference_dat
             .find(|entry| entry["quote"] == "标签为枫桥🙂 e\u{301}。")
             .unwrap();
         let answer = contract::decode(
-            &json!({"checks":[{"kind":"fact", "evidence":[selected["key"]], "support":"stated"}]})
+            &json!({"evidence":[selected["key"]], "requirements":[{"kind":"fact", "support":"stated"}]})
                 .to_string(),
             &sources,
             &catalog,

@@ -217,7 +217,7 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v12_support_requests_are_frozen_without_relabelling_any_v11_conditions() {
+    fn v13_evidence_first_requests_preserve_all_v12_conditions() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let mut actual = serde_json::Map::new();
         for (name, suite) in [
@@ -238,18 +238,19 @@ mod tests {
             actual.insert(name.into(), serde_json::json!(manifests));
         }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-support-manifests-ollama-v12.json"
+            "../../tests/fixtures/answer-evidence-first-manifests-ollama-v13.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-selection-manifests-ollama-v11.json"
+            "../../tests/fixtures/answer-support-manifests-ollama-v12.json"
         ))
         .unwrap();
         for (suite, manifests) in &actual {
-            if suite == "support" {
-                continue;
-            }
+            assert_eq!(
+                manifests.as_array().unwrap().len(),
+                previous[suite].as_array().unwrap().len()
+            );
             for (index, manifest) in manifests.as_array().unwrap().iter().enumerate() {
                 assert_eq!(manifest["case"], previous[suite][index]["case"]);
                 assert_ne!(

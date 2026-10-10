@@ -1,6 +1,6 @@
 # macOS Ollama 问答候选与独立质量挑战
 
-本页保留 v3 协议和 2026-10-08 的失败验收记录。v4/v5 的逐项证据核对见[覆盖设计](ollama-answer-coverage.md)，v11 候选证据/整问核对见[原文选择设计](ollama-answer-extraction.md)，当前 v12 逐项问题类型/证据状态及八套双轮门槛见[后续设计](ollama-answer-support.md)；旧报告不用于新候选门槛。按 2026-10-10 用户明确的资源优先级，PC 保留至少 6 GiB 显存预算，游戏并行实测为可选观察。
+本页保留 v3 协议和 2026-10-08 的失败验收记录。v4/v5 的逐项证据核对见[覆盖设计](ollama-answer-coverage.md)，v11 候选证据/整问核对见[原文选择设计](ollama-answer-extraction.md)，v12 逐项问题类型/证据状态见[支持状态设计](ollama-answer-support.md)，当前 v13 整问证据选择/逐项核对及八套双轮门槛见[后续设计](ollama-answer-evidence-first.md)；旧报告不用于新候选门槛。按 2026-10-10 用户明确的资源优先级，PC 保留至少 6 GiB 显存预算，游戏并行实测为可选观察。
 
 ## 范围与兼容
 
