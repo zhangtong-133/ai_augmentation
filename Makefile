@@ -240,7 +240,7 @@ local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边
 	node scripts/test-ollama-answer-benchmark.mjs
 
 .PHONY: ollama-answer-benchmark ollama-answer-benchmark-preview ollama-answer-diagnose ollama-answer-quality-gate
-ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已安装 Ollama 模型；SUITE=challenge/coverage/extraction/decision/mixed/availability 选独立语料
+ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已安装 Ollama 模型；SUITE=challenge/coverage/extraction/decision/mixed/availability/support 选独立语料
 	node scripts/ollama-answer-benchmark.mjs run $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",)
 
 ollama-answer-benchmark-preview: ## 离线预览 Ollama 合成问答请求与冻结条件（CASE、SUITE）
@@ -249,5 +249,5 @@ ollama-answer-benchmark-preview: ## 离线预览 Ollama 合成问答请求与冻
 ollama-answer-diagnose: ## 显式诊断一题合成请求，只记录固定故障阶段；不能计入质量门槛（CASE、SUITE）
 	node scripts/ollama-answer-benchmark.mjs diagnose "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",)
 
-ollama-answer-quality-gate: ## 离线核对同一候选的七套语料各两轮，REPORTS 为十四份私有报告路径
+ollama-answer-quality-gate: ## 离线核对同一候选的八套语料各两轮，REPORTS 为十六份私有报告路径
 	node scripts/ollama-answer-benchmark.mjs gate $(REPORTS)

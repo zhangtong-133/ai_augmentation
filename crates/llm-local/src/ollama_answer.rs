@@ -8,7 +8,7 @@ use personal_ai_llm::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "ollama-knowledge-answer-v11";
+pub const PROFILE: &str = "ollama-knowledge-answer-v12";
 pub const RUNNER: &str = "llamacpp";
 pub const PROTOCOL_STAGES: &[&str] = &[
     "native_stream",

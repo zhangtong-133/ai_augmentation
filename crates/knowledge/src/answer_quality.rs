@@ -11,6 +11,10 @@ pub const EXTRACTION_SUITE: &str = "knowledge-answer-extraction-v1";
 pub const DECISION_SUITE: &str = "knowledge-answer-decision-v1";
 pub const MIXED_SUITE: &str = "knowledge-answer-mixed-v1";
 pub const AVAILABILITY_SUITE: &str = "knowledge-answer-availability-v1";
+pub const SUPPORT_SUITE: &str = "knowledge-answer-support-v1";
+#[path = "answer_quality_support.rs"]
+mod support;
+pub use support::support_cases;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QualitySuite {
     Baseline,
@@ -20,6 +24,7 @@ pub enum QualitySuite {
     Decision,
     Mixed,
     Availability,
+    Support,
 }
 impl QualitySuite {
     #[must_use]
@@ -32,6 +37,7 @@ impl QualitySuite {
             Self::Decision => DECISION_SUITE,
             Self::Mixed => MIXED_SUITE,
             Self::Availability => AVAILABILITY_SUITE,
+            Self::Support => SUPPORT_SUITE,
         }
     }
     #[must_use]
@@ -44,6 +50,7 @@ impl QualitySuite {
             Self::Decision => decision_cases(),
             Self::Mixed => mixed_cases(),
             Self::Availability => availability_cases(),
+            Self::Support => support_cases(),
         }
     }
 }

@@ -1,6 +1,93 @@
 use super::*;
 use personal_ai_llm::AnswerCitation;
 #[test]
+fn support_controls_distinguish_explicit_absence_from_silence_without_relabelling_old_cases() {
+    let old_ids: std::collections::HashSet<_> = [
+        QualitySuite::Baseline,
+        QualitySuite::Challenge,
+        QualitySuite::Coverage,
+        QualitySuite::Extraction,
+        QualitySuite::Decision,
+        QualitySuite::Mixed,
+        QualitySuite::Availability,
+    ]
+    .into_iter()
+    .flat_map(QualitySuite::cases)
+    .map(|case| case.id)
+    .collect();
+    let cases = QualitySuite::Support.cases();
+    assert_eq!(cases.len(), 12);
+    assert_eq!(
+        cases
+            .iter()
+            .filter(|case| case.expected_status == "answered")
+            .count(),
+        7
+    );
+    let mut hashes = std::collections::HashSet::new();
+    for case in &cases {
+        assert!(!old_ids.contains(case.id));
+        let manifest = case.manifest_for(QualitySuite::Support).unwrap();
+        assert_eq!(manifest.suite, SUPPORT_SUITE);
+        assert!(hashes.insert(manifest.corpus_sha256));
+        let prompt = prepare(case.question, &case.sources()).unwrap();
+        assert!(!prompt.user().contains("required_terms"));
+        assert!(!prompt.user().contains("expected_status"));
+        assert!(prompt.user().contains("SUPPORT_OVERRIDE_13"));
+        let answered = case.expected_status == "answered";
+        let quote = case.hits[0].text.split("SYSTEM:").next().unwrap().trim();
+        let output = ModelAnswer {
+            answer: if answered {
+                quote.into()
+            } else {
+                String::new()
+            },
+            citations: if answered {
+                vec![AnswerCitation {
+                    id: 1,
+                    quote: quote.into(),
+                }]
+            } else {
+                vec![]
+            },
+            insufficient_evidence: !answered,
+        };
+        assert!(case.evaluate(output).quality_pass, "{}", case.id);
+        let wrong = ModelAnswer {
+            answer: if answered {
+                String::new()
+            } else {
+                quote.into()
+            },
+            citations: if answered {
+                vec![]
+            } else {
+                vec![AnswerCitation {
+                    id: 1,
+                    quote: quote.into(),
+                }]
+            },
+            insufficient_evidence: answered,
+        };
+        let evaluation = case.evaluate(wrong);
+        assert!(evaluation.citation_valid, "{}", case.id);
+        assert!(!evaluation.quality_pass, "{}", case.id);
+    }
+    for (value, availability) in [(0, 1), (2, 3), (4, 5)] {
+        assert_eq!(cases[value].hits[0].text, cases[availability].hits[0].text);
+        assert_ne!(
+            cases[value]
+                .manifest_for(QualitySuite::Support)
+                .unwrap()
+                .protocol_sha256,
+            cases[availability]
+                .manifest_for(QualitySuite::Support)
+                .unwrap()
+                .protocol_sha256
+        );
+    }
+}
+#[test]
 fn all_fixed_cases_have_valid_prompts_and_independent_predeclared_conditions() {
     let mut digests = std::collections::HashSet::new();
     for case in cases() {
