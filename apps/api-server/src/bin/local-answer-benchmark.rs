@@ -216,7 +216,7 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v10_requests_and_availability_controls_are_frozen_without_relabelling_v9_conditions() {
+    fn v11_selection_requests_are_frozen_without_relabelling_any_v10_conditions() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let mut actual = serde_json::Map::new();
         for (name, suite) in [
@@ -236,18 +236,15 @@ mod tests {
             actual.insert(name.into(), serde_json::json!(manifests));
         }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-availability-manifests-ollama-v10.json"
+            "../../tests/fixtures/answer-selection-manifests-ollama-v11.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-mixed-manifests-ollama-v9.json"
+            "../../tests/fixtures/answer-availability-manifests-ollama-v10.json"
         ))
         .unwrap();
         for (suite, manifests) in &actual {
-            if suite == "availability" {
-                continue;
-            }
             for (index, manifest) in manifests.as_array().unwrap().iter().enumerate() {
                 assert_eq!(manifest["case"], previous[suite][index]["case"]);
                 assert_ne!(

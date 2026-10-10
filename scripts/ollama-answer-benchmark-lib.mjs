@@ -4,7 +4,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import http from "node:http";
 import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
-export const PROFILE = "ollama-knowledge-answer-v10";
+export const PROFILE = "ollama-knowledge-answer-v11";
 export const RUNNER = "llamacpp";
 export const REPORT_SCHEMA = "ollama-answer-quality-report-v1";
 export const SUITES = { baseline: "knowledge-answer-synthetic-v1", challenge: "knowledge-answer-challenge-v1", coverage: "knowledge-answer-coverage-v1", extraction: "knowledge-answer-extraction-v1", decision: "knowledge-answer-decision-v1", mixed: "knowledge-answer-mixed-v1", availability: "knowledge-answer-availability-v1" };
