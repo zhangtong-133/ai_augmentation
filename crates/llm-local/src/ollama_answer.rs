@@ -8,9 +8,10 @@ use personal_ai_llm::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-pub const PROFILE: &str = "ollama-knowledge-answer-v13";
+pub const PROFILE: &str = "ollama-knowledge-answer-v14";
 pub const RUNNER: &str = "llamacpp";
 pub const PROTOCOL_STAGES: &[&str] = &[
+    "native_guard",
     "native_stream",
     "native_completion",
     "selection_fields",
@@ -19,6 +20,12 @@ pub const PROTOCOL_STAGES: &[&str] = &[
     "selection_evidence",
     "selection_quote",
     "selection_bounds",
+    "verification_fields",
+    "verification_json",
+    "verification_decision",
+    "verification_evidence",
+    "verification_quote",
+    "verification_bounds",
 ];
 fn protocol_error(stage: &'static str) -> personal_ai_llm::LlmError {
     personal_ai_llm::LlmError::InvalidResponse(format!("ollama answer protocol: {stage}"))
@@ -31,11 +38,16 @@ pub struct OllamaAnswerPreview {
     endpoint: String,
     protocol_sha256: String,
     body: serde_json::Value,
+    verification_body: serde_json::Value,
 }
 impl OllamaAnswerPreview {
     #[must_use]
     pub fn body(&self) -> &serde_json::Value {
         &self.body
+    }
+    #[must_use]
+    pub fn verification_body(&self) -> &serde_json::Value {
+        &self.verification_body
     }
     /// # Errors
     /// Rejects serialization failures. This digest does not grant private execution consent.
@@ -54,40 +66,73 @@ pub fn preview(
 ) -> LlmResult<OllamaAnswerPreview> {
     let prompt = prepare(question, sources)?;
     let catalog = contract::catalog(sources)?;
-    let schema = contract::schema(&catalog);
-    let mut request = prompt.request();
-    request.messages[0].content = contract::INSTRUCTION.into();
-    request.messages[0].content.push_str(&schema.to_string());
-    // The original question and every source byte remain in the untrusted data envelope.
+    // Both inputs are frozen before the first inference. The verifier never sees selection output.
     let mut user: serde_json::Value = serde_json::from_str(prompt.user()).map_err(|_| invalid())?;
     user["exact_excerpts"] = serde_json::to_value(&catalog).map_err(|_| invalid())?;
-    request.messages[1].content = user.to_string();
-    let validated = wire_payload(target, &request)?;
-    Ok(OllamaAnswerPreview {
-        profile: PROFILE,
-        endpoint: format!("{}/api/chat", target.endpoint()),
-        protocol_sha256: prompt.fingerprint()?,
-        body: serde_json::json!({
+    let build = |instruction: &str, schema: serde_json::Value| -> LlmResult<serde_json::Value> {
+        let mut request = prompt.request();
+        request.messages[0].content = format!("{instruction}{schema}");
+        request.messages[1].content = user.to_string();
+        let validated = wire_payload(target, &request)?;
+        Ok(serde_json::json!({
             "model": target.model(), "runner": RUNNER, "messages": validated["messages"],
             "format": schema, "stream": true, "think": false, "keep_alive": 0,
             "truncate": false, "shift": false,
             "options": { "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS,
                 "temperature": 0, "seed": 0, "top_k": 1, "top_p": 1,
                 "repeat_penalty": 1, "presence_penalty": 0, "frequency_penalty": 0 }
-        }),
+        }))
+    };
+    let body = build(
+        contract::SELECT_INSTRUCTION,
+        contract::selection_schema(&catalog),
+    )?;
+    let verification_body = build(
+        contract::VERIFY_INSTRUCTION,
+        contract::verification_schema(&catalog),
+    )?;
+    Ok(OllamaAnswerPreview {
+        profile: PROFILE,
+        endpoint: format!("{}/api/chat", target.endpoint()),
+        protocol_sha256: prompt.fingerprint()?,
+        body,
+        verification_body,
     })
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AnswerStage {
+    Select,
+    Verify,
+}
+impl AnswerStage {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Select => "select",
+            Self::Verify => "verify",
+        }
+    }
+}
+/// The application must confirm identity, idle state and resource reserve for each native call.
+pub trait NativeStageGuard: Send + Sync {
+    fn permit(&self, stage: AnswerStage) -> BoxFuture<'_, LlmResult<()>>;
 }
 pub struct OllamaAnswers {
     target: LocalTarget,
     client: LocalChatClient,
+    guard: std::sync::Arc<dyn NativeStageGuard>,
 }
 impl OllamaAnswers {
     /// # Errors
     /// Rejects unavailable HTTP client initialization. No model is pulled or loaded here.
-    pub fn new(target: LocalTarget) -> LlmResult<Self> {
+    pub fn new(
+        target: LocalTarget,
+        guard: std::sync::Arc<dyn NativeStageGuard>,
+    ) -> LlmResult<Self> {
         Ok(Self {
             target,
             client: LocalChatClient::new()?,
+            guard,
         })
     }
     async fn send(
@@ -95,11 +140,22 @@ impl OllamaAnswers {
         preview: OllamaAnswerPreview,
         sources: &[AnswerSource],
     ) -> LlmResult<ModelAnswer> {
+        let catalog = contract::catalog(sources)?;
+        self.guard.permit(AnswerStage::Select).await?;
+        let selected = self.post(&preview.endpoint, preview.body()).await?;
+        let selection = contract::decode_selection(&selected, sources, &catalog)?;
+        self.guard.permit(AnswerStage::Verify).await?;
+        let checks = self
+            .post(&preview.endpoint, preview.verification_body())
+            .await?;
+        contract::decode_verification(&checks, selection, sources, &catalog)
+    }
+    async fn post(&self, endpoint: &str, body: &serde_json::Value) -> LlmResult<String> {
         let mut response = self
             .client
             .client
-            .post(&preview.endpoint)
-            .json(preview.body())
+            .post(endpoint)
+            .json(body)
             .send()
             .await
             .map_err(|_| unavailable())?;
@@ -120,11 +176,9 @@ impl OllamaAnswers {
                 .push(&chunk)
                 .map_err(|_| protocol_error("native_stream"))?;
         }
-        let completed = parser
+        parser
             .finish()
-            .map_err(|_| protocol_error("native_completion"))?;
-        // Rebuild from the same frozen source snapshot, never from model output.
-        contract::decode(&completed, sources, &contract::catalog(sources)?)
+            .map_err(|_| protocol_error("native_completion"))
     }
 }
 impl AnswerProvider for OllamaAnswers {

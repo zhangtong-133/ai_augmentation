@@ -2,8 +2,10 @@
 use personal_ai_knowledge::answer_quality::{QualityCase, QualitySuite};
 use personal_ai_llm::{AnswerProvider, LlmError, local::LocalTarget};
 use personal_ai_llm_local::answer::{LocalAnswers, preview};
-use personal_ai_llm_local::ollama_answer::{self, OllamaAnswers};
-#[derive(Clone, Copy)]
+use personal_ai_llm_local::ollama_answer::{self, AnswerStage, NativeStageGuard, OllamaAnswers};
+use std::sync::Arc;
+use tokio::io::AsyncReadExt;
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Backend {
     LlamaCpp,
     Ollama,
@@ -31,10 +33,44 @@ impl Backend {
                 LocalAnswers::new(target).map(|v| Box::new(v) as Box<dyn AnswerProvider>)
             }
             Self::Ollama => {
-                OllamaAnswers::new(target).map(|v| Box::new(v) as Box<dyn AnswerProvider>)
+                OllamaAnswers::new(target, Arc::new(StdioGuard(tokio::sync::Mutex::new(0))))
+                    .map(|v| Box::new(v) as Box<dyn AnswerProvider>)
             }
         }
         .map_err(|_| "ANSWER_FAILURE=transport")
+    }
+}
+// The host runner confirms each native call separately. No acknowledgment means no request.
+struct StdioGuard(tokio::sync::Mutex<u8>);
+impl NativeStageGuard for StdioGuard {
+    fn permit(
+        &self,
+        stage: AnswerStage,
+    ) -> personal_ai_llm::BoxFuture<'_, personal_ai_llm::LlmResult<()>> {
+        Box::pin(async move {
+            let mut next = self.0.lock().await;
+            if (*next, stage) != (0, AnswerStage::Select)
+                && (*next, stage) != (1, AnswerStage::Verify)
+            {
+                return Err(LlmError::ProviderUnavailable(
+                    "native stage permission unavailable".into(),
+                ));
+            }
+            eprintln!("ANSWER_NATIVE_STAGE={}", stage.as_str());
+            let mut ack = [0; 6];
+            let read = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                tokio::io::stdin().read_exact(&mut ack),
+            )
+            .await;
+            if !matches!(read, Ok(Ok(_))) || &ack != b"allow\n" {
+                return Err(LlmError::ProviderUnavailable(
+                    "native stage permission unavailable".into(),
+                ));
+            }
+            *next += 1;
+            Ok(())
+        })
     }
 }
 fn target(endpoint: &str, model: &str) -> Result<LocalTarget, &'static str> {
@@ -100,7 +136,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -118,8 +154,12 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         );
         return Ok(());
     }
+    let guarded = backend == Backend::Ollama;
     if !(args.len() == 4 && args[0] == "preview"
-        || args.len() == 5 && args[0] == "case" && args[4] == "--use-local-benchmark")
+        || args.len() == if guarded { 6 } else { 5 }
+            && args[0] == "case"
+            && args[4] == "--use-local-benchmark"
+            && (!guarded || args[5] == "--guard-native-stages"))
     {
         return Err("invalid local answer benchmark command; see --help");
     }
@@ -217,7 +257,7 @@ mod tests {
         assert_eq!(serde_json::json!(actual), serde_json::json!(conditions));
     }
     #[test]
-    fn v13_evidence_first_requests_preserve_all_v12_conditions() {
+    fn v14_independent_requests_preserve_all_v13_conditions() {
         let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
         let mut actual = serde_json::Map::new();
         for (name, suite) in [
@@ -238,12 +278,12 @@ mod tests {
             actual.insert(name.into(), serde_json::json!(manifests));
         }
         let frozen: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-evidence-first-manifests-ollama-v13.json"
+            "../../tests/fixtures/answer-independent-manifests-ollama-v14.json"
         ))
         .unwrap();
         assert_eq!(serde_json::json!(actual), frozen);
         let previous: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/fixtures/answer-support-manifests-ollama-v12.json"
+            "../../tests/fixtures/answer-evidence-first-manifests-ollama-v13.json"
         ))
         .unwrap();
         for (suite, manifests) in &actual {
@@ -277,6 +317,25 @@ mod tests {
                 "https://example.com",
                 "m",
                 "--use-local-benchmark",
+            ],
+            vec![
+                "case",
+                "single_fact",
+                "http://127.0.0.1:1",
+                "m",
+                "--use-local-benchmark",
+                "--backend",
+                "ollama",
+            ],
+            vec![
+                "case",
+                "single_fact",
+                "http://127.0.0.1:1",
+                "m",
+                "--use-local-benchmark",
+                "--invalid-guard",
+                "--backend",
+                "ollama",
             ],
             vec!["preview", "single_fact", "http://127.0.0.1:1", "m", "extra"],
         ] {

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { join, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
+import { stagedCli } from "./ollama-answer-stages.mjs";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
 import { runCases, PROTOCOL_STAGES } from "./local-answer-benchmark-lib.mjs";
 import { availableMemory, digest, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REPORT_SCHEMA, RESOURCE_POLICY, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
@@ -63,7 +64,7 @@ async function gate(files, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、空闲 Ollama、至少 6 GiB+512 MiB 内存估计余量。每题两次独立冷请求，分别确认身份、空闲与资源；每次 8192 上下文、2048 输出，think=false、keep_alive=0，无下载/自动重试。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
@@ -102,19 +103,19 @@ async function run() {
     stage = "synthetic_cases";
     const outcome = await runCases(frozen, runtime, async id => {
       try {
-        await idle(runtime, abort.signal);
-        const current = await identity({ endpoint: target.endpoint, model_alias: target.model_alias }, abort.signal);
-        assert.equal(digest(current), digest(currentIdentity(runtime)));
-      } catch { throw Object.assign(new Error("local runtime changed or busy"), { answerFailure: "runtime" }); }
-      try {
-        const ready = await memoryReady(() => available(total), runtime.model_size, abort.signal);
-        resources.preload_checks++;
-        resources.minimum_preload_available_bytes = Math.min(resources.minimum_preload_available_bytes ?? total, ready.available);
-        resources.settle_wait_ms += ready.waited_ms;
-      }
-      catch { throw Object.assign(new Error("local memory reserve unconfirmed"), { answerFailure: "resource" }); }
-      try {
-        const raw = await guardedSend(signal => cli(["case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--suite", target.suite, "--backend", "ollama"], signal),
+        const raw = await guardedSend(signal => stagedCli(binary, ["case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--guard-native-stages", "--suite", target.suite, "--backend", "ollama"], { cwd: root, env },
+          async (nativeStage, bounded) => {
+            try {
+              await idle(runtime, bounded, nativeStage === "verify");
+              assert.equal(digest(await identity({ endpoint: target.endpoint, model_alias: target.model_alias }, bounded)), digest(currentIdentity(runtime)));
+            } catch { throw Object.assign(new Error("local runtime changed or busy"), { answerFailure: "runtime" }); }
+            try {
+              const ready = await memoryReady(() => available(total), runtime.model_size, bounded);
+              resources.preload_checks++;
+              resources.minimum_preload_available_bytes = Math.min(resources.minimum_preload_available_bytes ?? total, ready.available);
+              resources.settle_wait_ms += ready.waited_ms;
+            } catch { throw Object.assign(new Error("local memory reserve unconfirmed"), { answerFailure: "resource" }); }
+          }, signal),
           async () => {
             const free = await available(total); resources.inflight_checks++;
             resources.minimum_inflight_available_bytes = Math.min(resources.minimum_inflight_available_bytes ?? total, free);
@@ -128,7 +129,7 @@ async function run() {
         return raw;
       } catch (error) {
         const fixed = /^ANSWER_FAILURE=(transport|protocol)$/m.exec(error.stderr ?? "");
-        const protocolStage = /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
+        const protocolStage = error.answerFailureStage ?? /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
         throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1], answerFailureStage: PROTOCOL_STAGES.includes(protocolStage) ? protocolStage : undefined });
       }
     });

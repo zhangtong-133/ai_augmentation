@@ -2,6 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as delay } from "node:timers/promises";
 import http from "node:http";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { stagedCli } from "./ollama-answer-stages.mjs";
 import { availableMemory, guardedSend, localMetadata, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, PROFILE, REPORT_SCHEMA, SUITES, RESERVE_BYTES, RESOURCE_POLICY } from "./ollama-answer-benchmark-lib.mjs";
 const target = { endpoint: "http://127.0.0.1:11434", model_alias: "qwen3.5:9b" };
 const version = { version: "0.40.1" };
@@ -103,7 +107,7 @@ function fixtures() {
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
     schema: REPORT_SCHEMA, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
     runtime: { ...runtime(), platform: "darwin", arch: "arm64", resource_policy: RESOURCE_POLICY, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
-    resources: { preload_checks: 1, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0 },
+    resources: { preload_checks: 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0 },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
     results: [{ id: suite, request_sha256: "b".repeat(64), elapsed_ms: 1, protocol_valid: true, citation_valid: true, quality_pass: true,
       checks: ["expected_status", "required_terms", "expected_citations", "forbidden_terms"].map(name => ({ name, passed: true })) }],
@@ -114,8 +118,9 @@ test("two rounds of each unchanged suite are required; failures stay failures an
   const { expected, reports } = fixtures();
   const passed = qualityGate(reports, expected);
   assert.equal(passed.passed, true); assert.equal(passed.private_execution_authorized, false);
-  assert.equal(passed.schema, "ollama-answer-quality-gate-v7");
+  assert.equal(passed.schema, "ollama-answer-quality-gate-v8");
   assert.equal(passed.evaluated_cases, 16);
+  assert.equal(passed.native_requests_per_case, 2);
   const failure = reports[5]; failure.results[0].checks[1].passed = false; failure.results[0].quality_pass = false; failure.passed_cases = 0; failure.exit_code = 2;
   const failed = qualityGate(reports, expected);
   assert.equal(failed.passed, false); assert.equal(failed.failed_cases.length, 1);
@@ -134,6 +139,9 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v10"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v11"),
     reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v12"),
+    reports => reports.forEach(report => report.runtime.execution_profile = "ollama-knowledge-answer-v13"),
+    reports => reports[1].schema = "ollama-answer-quality-report-v1",
+    reports => reports[1].resources.preload_checks = 1,
     reports => reports.splice(6), reports => reports[7].suite = "coverage",
     reports => reports.splice(8), reports => reports[9].suite = "extraction",
     reports => reports.splice(10), reports => reports[11].suite = "decision",
@@ -169,4 +177,62 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
   assert.throws(() => qualityGate(noAvailability.reports, noAvailability.expected));
   const noSupport = fixtures(); delete noSupport.expected.support;
   assert.throws(() => qualityGate(noSupport.reports, noSupport.expected));
+});
+
+const childOptions = { env: {} };
+function childArgs(stages, path) {
+  return ["--input-type=module", "-e", `
+    import { createInterface } from 'node:readline';
+    import { appendFileSync } from 'node:fs';
+    const input = createInterface({input:process.stdin});
+    for (const stage of ${JSON.stringify(stages)}) {
+      process.stderr.write('ANSWER_NATIVE_STAGE='+stage+'\\n');
+      const ack=await new Promise(resolve=>input.once('line',resolve));
+      if (ack!=='allow') process.exit(1);
+      ${path ? `appendFileSync(${JSON.stringify(path)},stage+'\\n',{mode:0o600});` : ""}
+    }
+    process.stdout.write(JSON.stringify({completed:true})); input.close(); process.stdin.destroy();
+  `];
+}
+test("each native request waits for its own confirmed host check in strict stage order", async () => {
+  const seen=[];
+  const raw=await stagedCli(process.execPath,childArgs(["select","verify"]),childOptions,async stage=>{ seen.push(stage); await delay(5); });
+  assert.deepEqual(seen,["select","verify"]); assert.deepEqual(raw,{completed:true});
+});
+test("a failed host check prevents that request and never retries either native stage", async () => {
+  const directory=await mkdtemp(join(tmpdir(),"ollama-stage-test-"));
+  try {
+    for (const blocked of ["select","verify"]) {
+      const path=join(directory,blocked), seen=[];
+      await assert.rejects(stagedCli(process.execPath,childArgs(["select","verify"],path),childOptions,async stage=>{
+        seen.push(stage); if(stage===blocked) throw Object.assign(new Error("reserve unavailable"),{answerFailure:"resource"});
+      }),issue=>issue.answerFailure==="resource");
+      const sent=await readFile(path,"utf8").catch(issue=>{ if(issue.code!=="ENOENT") throw issue; return ""; });
+      assert.equal(sent,blocked==="select"?"":"select\n");
+      assert.deepEqual(seen,blocked==="select"?["select"]:["select","verify"]);
+    }
+  } finally { await rm(directory,{recursive:true,force:true}); }
+});
+test("missing repeated reordered extra or malformed stage markers cannot count as completed", async () => {
+  for (const stages of [[],["select"],["verify"],["select","select"],["select","verify","verify"],["secret"]]) {
+    await assert.rejects(stagedCli(process.execPath,childArgs(stages),childOptions,async()=>{}),issue=>issue.answerFailureStage==="native_guard");
+  }
+});
+test("cancellation and deadline stop a waiting native stage before acknowledgment", async () => {
+  for (const cancel of [true,false]) {
+    const controller=new AbortController(); let checks=0;
+    await assert.rejects(stagedCli(process.execPath,childArgs(["select","verify"]),childOptions,async (_,signal)=>{
+      checks++; if(cancel) controller.abort(); await delay(1000,undefined,{signal});
+    },controller.signal,cancel?5000:100));
+    if (cancel) assert.equal(checks,1);
+    // A deadline can also expire during process startup; neither path may grant permission.
+    else assert.ok(checks <= 1);
+  }
+});
+test("a stalled host check cannot delay cancellation or grant a late permission", async () => {
+  const controller = new AbortController(); let release;
+  await assert.rejects(stagedCli(process.execPath, childArgs(["select", "verify"]), childOptions, async () => {
+    controller.abort(); await new Promise(resolve => { release = resolve; });
+  }, controller.signal, 1000));
+  release();
 });

@@ -4,9 +4,9 @@ import { setTimeout as delay } from "node:timers/promises";
 import http from "node:http";
 import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
-export const PROFILE = "ollama-knowledge-answer-v13";
+export const PROFILE = "ollama-knowledge-answer-v14";
 export const RUNNER = "llamacpp";
-export const REPORT_SCHEMA = "ollama-answer-quality-report-v1";
+export const REPORT_SCHEMA = "ollama-answer-quality-report-v2";
 export const SUITES = { baseline: "knowledge-answer-synthetic-v1", challenge: "knowledge-answer-challenge-v1", coverage: "knowledge-answer-coverage-v1", extraction: "knowledge-answer-extraction-v1", decision: "knowledge-answer-decision-v1", mixed: "knowledge-answer-mixed-v1", availability: "knowledge-answer-availability-v1", support: "knowledge-answer-support-v1" };
 const GiB = 1024 ** 3;
 export const RESERVE_BYTES = 6 * GiB + 512 * 1024 ** 2;
@@ -163,7 +163,7 @@ export function qualityGate(reports, expected) {
     assert.equal(report.exit_code, report.passed_cases === report.total_cases ? 0 : 2);
     assert.deepEqual(Object.keys(report.resources).sort(), ["inflight_checks", "minimum_inflight_available_bytes", "minimum_preload_available_bytes", "preload_checks", "settle_wait_ms"]);
     for (const value of Object.values(report.resources)) assert.ok(Number.isSafeInteger(value) && value >= 0);
-    assert.equal(report.resources.preload_checks, report.total_cases);
+    assert.equal(report.resources.preload_checks, report.total_cases * 2);
     assert.ok(report.resources.inflight_checks >= report.total_cases);
     memoryBudget(report.resources.minimum_preload_available_bytes, runtime.model_size, true);
     memoryBudget(report.resources.minimum_inflight_available_bytes, runtime.model_size, false);
@@ -188,8 +188,8 @@ export function qualityGate(reports, expected) {
     }
   }
   const failed = reports.flatMap(report => report.results.filter(result => !result.quality_pass).map(result => ({ suite: report.suite, run_id: report.run_id, id: result.id })));
-  return { schema: "ollama-answer-quality-gate-v7", synthetic_only: true, runtime,
+  return { schema: "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
     reports_sha256: reports.map(digest), manifests_sha256: digest(expected),
-    rounds_per_suite: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
+    rounds_per_suite: 2, native_requests_per_case: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
     passed: failed.length === 0, failed_cases: failed, private_execution_authorized: false };
 }

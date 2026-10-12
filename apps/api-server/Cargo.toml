@@ -24,7 +24,7 @@ personal-ai-pdf-poppler = { path = "../../crates/pdf-poppler" }
 argon2.workspace = true
 sha2.workspace = true
 axum.workspace = true
-tokio = { workspace = true, features = ["time", "sync"] }
+tokio = { workspace = true, features = ["time", "sync", "io-std", "io-util"] }
 serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true

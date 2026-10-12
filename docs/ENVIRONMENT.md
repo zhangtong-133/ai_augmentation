@@ -29,6 +29,8 @@ make browser-install
 
 GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Clippy 错误时先比较日志中的 `rustc`/Clippy 版本；本机较旧版本通过不能证明当前 CI 通过。2026-10-09 的 [失败构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37893764769) 使用 Rust 1.99，新的 `assert_is_empty` 检查拒绝了 Ollama 测试中的布尔空集合断言。当前测试改为比较带元素类型的空数组，保留原断言并输出失败时的实际引用列表。
 
+2026-10-12 检查[上一轮 v13 构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/38042115645)，其余 smoke、web、index、objects 作业均成功；同一 Rust 1.99 规则再次拒绝新增的 `answer.citations.is_empty()` 断言。v14 测试统一使用带元素类型的空数组比较，继续保留 `-D warnings`，本机默认 1.96 不变。复核时另装指定 Rust 1.99.0 / Clippy 0.1.99，独立构建目录完整 fmt、Clippy `-D warnings` 与 326 项测试通过，直接验证 CI 差异；默认仍为 1.96。
+
 同一次构建的 smoke 在 Playwright 安装系统依赖时，卡住于 `http://azure.archive.ubuntu.com` 的 APT 索引下载，项目 smoke 尚未启动。smoke/index 现共用 [浏览器安装 action](../.github/actions/setup-browser/action.yml)：将 runner 的 APT 镜像列表替换为 Ubuntu 官方 HTTPS archive，设置每次连接 30 秒超时、最多 3 次重试，索引更新错误直接失败；Chromium 安装步骤最多 10 分钟，字体安装最多 5 分钟，原有作业 60 分钟限时保持不变。这些系统配置仅写入临时 GitHub runner，本机 `make browser-install` 的行为保持不变。
 
 本次修复在 macOS / Rust 1.96.1 下通过 `make check`（322 项通过、286 项需真实服务的测试忽略）、前端 lint/typecheck/build；工作流与 composite action 的 YAML/脚本语法另行检查。推送后的 [CI 37903618314](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37903618314) 五个作业全部通过，确认 Ubuntu runner 的 Rust 1.99 检查和 APT 安装成功；smoke/index 浏览器安装分别约 26/31 秒。
@@ -39,6 +41,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-12，macOS ARM64 / OrbStack，Ollama 0.40.3 / v14 | 326 项 Rust 测试与完整检查、17 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke、生产镜像八套 71 道双请求清单逐字段核对 | 先重跑未修改 v13 完整 116/142，v14 完整双轮 130/142，九题各两轮改善、两题各两轮回归；门槛退出 2、私有执行关闭；每题两次资源保护，卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v13 | 331 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像八套 71 道冻结请求逐字段核对 | 完整双轮 116/142，实际值/可用性各轮 12/12、支持对照各轮 10/12；原七套从 v12 的 102/118 降至 96/118，整体质量未改善，门槛退出 2、私有执行关闭；模型卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v12 | 330 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像八套 71 道冻结请求逐字段核对 | 完整双轮 120/142，旧实际值/可用性各轮 12/12；原七套从 v11 的 114/118 降至 102/118，新支持套件各轮 9/12，门槛退出 2、私有执行关闭；模型卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v11 | 327 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像七套 59 道冻结请求逐字段核对 | 最终完整双轮 114/118，原六套 94/94，实际值/可用性各轮 10/12；两题各两轮回归，门槛退出 2、私有执行关闭；一次 Redis 并发失败未复现，独立五次并发/三次全套及最终 smoke 通过，详见[记录](design/ollama-answer-extraction.md#最终严格字符串解析器复评)；测试栈清空，未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
