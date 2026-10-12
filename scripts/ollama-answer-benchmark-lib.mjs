@@ -5,12 +5,22 @@ import http from "node:http";
 import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
 export const PROFILE = "ollama-knowledge-answer-v14";
+export const REUSE_PROFILE = "ollama-knowledge-answer-v15-reuse";
 export const RUNNER = "llamacpp";
 export const REPORT_SCHEMA = "ollama-answer-quality-report-v2";
+export const REUSE_REPORT_SCHEMA = "ollama-answer-quality-report-v3";
 export const SUITES = { baseline: "knowledge-answer-synthetic-v1", challenge: "knowledge-answer-challenge-v1", coverage: "knowledge-answer-coverage-v1", extraction: "knowledge-answer-extraction-v1", decision: "knowledge-answer-decision-v1", mixed: "knowledge-answer-mixed-v1", availability: "knowledge-answer-availability-v1", support: "knowledge-answer-support-v1" };
 const GiB = 1024 ** 3;
 export const RESERVE_BYTES = 6 * GiB + 512 * 1024 ** 2;
 export const RESOURCE_POLICY = "macos-pressure-reserve-6gib-buffer-512mib-load-1.5x-v1";
+export const REUSE_RESOURCE_POLICY = "macos-pressure-reserve-6gib-buffer-512mib-load-1.5x-reuse-1gib-idle-30s-v1";
+export const REUSE_HEADROOM_BYTES = GiB;
+export function residencyPolicy(residency) {
+  assert.ok(["cold", "reuse"].includes(residency));
+  return residency === "cold"
+    ? { profile: PROFILE, report_schema: REPORT_SCHEMA, resource_policy: RESOURCE_POLICY }
+    : { profile: REUSE_PROFILE, report_schema: REUSE_REPORT_SCHEMA, resource_policy: REUSE_RESOURCE_POLICY };
+}
 export function localMetadata(endpoint, path, body, signal) {
   return new Promise((accept, reject) => {
     const bounded = signal ? AbortSignal.any([signal, AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000);
@@ -45,14 +55,15 @@ export function localTarget(endpoint, model) {
   return { endpoint, model_alias: model };
 }
 export function parseOptions(args) {
-  const result = { endpoint: "http://127.0.0.1:11434", model: "qwen3.5:9b", suite: "baseline" };
+  const result = { endpoint: "http://127.0.0.1:11434", model: "qwen3.5:9b", suite: "baseline", residency: "reuse" };
   const seen = new Set();
   for (let i = 0; i < args.length; i += 2) {
     const key = args[i]?.replace(/^--/, "");
-    assert.ok(["endpoint", "model", "suite"].includes(key) && args[i] === `--${key}` && !seen.has(key) && typeof args[i + 1] === "string");
+    assert.ok(["endpoint", "model", "suite", "residency"].includes(key) && args[i] === `--${key}` && !seen.has(key) && typeof args[i + 1] === "string");
     seen.add(key); result[key] = args[i + 1];
   }
   assert.ok(Object.hasOwn(SUITES, result.suite));
+  residencyPolicy(result.residency);
   return { ...result, ...localTarget(result.endpoint, result.model) };
 }
 function supportedVersion(version) {
@@ -75,7 +86,7 @@ export function runtimeIdentity(target, version, tags, show) {
   assert.equal(selected.length, 1); assert.equal(selected[0].runner, RUNNER); assert.equal(selected[0].digest, `sha256:${model.digest}`);
   assert.ok(show.capabilities.includes("completion"));
   if (show.capabilities.includes("thinking")) assert.ok(show.thinking?.values?.includes(false));
-  return { engine: "ollama", runner: RUNNER, version: version.version, execution_profile: PROFILE, endpoint: target.endpoint, model_alias: target.model_alias,
+  return { engine: "ollama", runner: RUNNER, version: version.version, execution_profile: residencyPolicy(target.residency ?? "cold").profile, endpoint: target.endpoint, model_alias: target.model_alias,
     model_digest: model.digest, model_size: model.size, model_metadata_sha256: digest({ details: model.details, show }) };
 }
 export function availableMemory(total, pressure) {
@@ -86,20 +97,21 @@ export function availableMemory(total, pressure) {
   assert.ok(percent <= 100);
   return Math.floor(total * percent / 100);
 }
-export function memoryBudget(available, modelSize, loading) {
+export function memoryBudget(available, modelSize, loading, headroom = 0) {
   assert.ok(Number.isSafeInteger(available) && available >= 0 && Number.isSafeInteger(modelSize) && modelSize > 0);
+  assert.ok(headroom === 0 || headroom === REUSE_HEADROOM_BYTES);
   // Conservative estimate, not a GPU allocation guarantee on Apple unified memory.
-  const required = RESERVE_BYTES + (loading ? Math.ceil(modelSize * 1.5) : 0);
+  const required = RESERVE_BYTES + (loading ? Math.ceil(modelSize * 1.5) : headroom);
   if (available < required) throw Object.assign(new Error("local memory reserve unavailable"), { answerFailure: "resource" });
   return required;
 }
-// Read-only settling after asynchronous model unload; never retries an inference.
-export async function memoryReady(sample, modelSize, signal, settleMs = 15000, intervalMs = 500) {
+// Read-only memory settling; never retries an inference or unloads a shared model.
+export async function memoryReady(sample, modelSize, signal, settleMs = 15000, intervalMs = 500, loading = true) {
   const started = Date.now();
   for (;;) {
     if (signal?.aborted) throw new Error("cancelled before local inference");
     const available = await sample();
-    try { memoryBudget(available, modelSize, true); return { available, waited_ms: Date.now() - started }; }
+    try { memoryBudget(available, modelSize, loading, loading ? 0 : REUSE_HEADROOM_BYTES); return { available, waited_ms: Date.now() - started }; }
     catch (error) {
       if (error.answerFailure !== "resource" || Date.now() - started >= settleMs) throw error;
     }
@@ -137,10 +149,12 @@ export function qualityGate(reports, expected) {
   assert.deepEqual(Object.keys(expected).sort(), Object.keys(SUITES).sort());
   const rounds = Object.fromEntries(Object.keys(SUITES).map(suite => [suite, []])), ids = new Set();
   const runtime = reports[0].runtime;
+  const reuse = runtime.execution_profile === REUSE_PROFILE;
+  const policy = residencyPolicy(reuse ? "reuse" : "cold");
   assert.deepEqual(Object.keys(runtime).sort(), ["arch", "endpoint", "engine", "execution_profile", "model_alias", "model_digest", "model_metadata_sha256", "model_size", "platform", "resource_policy", "runner", "total_memory", "version"]);
-  assert.equal(runtime.engine, "ollama"); assert.equal(runtime.execution_profile, PROFILE);
+  assert.equal(runtime.engine, "ollama"); assert.equal(runtime.execution_profile, policy.profile);
   assert.equal(runtime.runner, RUNNER);
-  assert.equal(runtime.platform, "darwin"); assert.equal(runtime.arch, "arm64"); assert.equal(runtime.resource_policy, RESOURCE_POLICY);
+  assert.equal(runtime.platform, "darwin"); assert.equal(runtime.arch, "arm64"); assert.equal(runtime.resource_policy, policy.resource_policy);
   supportedVersion(runtime.version);
   for (const field of ["model_digest", "model_metadata_sha256"]) assert.match(runtime[field], /^[a-f0-9]{64}$/);
   assert.ok(Number.isSafeInteger(runtime.total_memory) && runtime.total_memory > RESERVE_BYTES);
@@ -148,7 +162,7 @@ export function qualityGate(reports, expected) {
   const intervals = [];
   for (const report of reports) {
     assert.deepEqual(Object.keys(report).sort(), ["complete", "ended_at", "exit_code", "manifests", "not_run", "passed_cases", "resources", "results", "run_id", "runtime", "schema", "started_at", "suite", "synthetic_only", "total_cases"]);
-    assert.equal(report.schema, REPORT_SCHEMA); assert.equal(report.synthetic_only, true);
+    assert.equal(report.schema, policy.report_schema); assert.equal(report.synthetic_only, true);
     assert.match(report.run_id, /^[a-f0-9-]{36}$/); assert.ok(!ids.has(report.run_id)); ids.add(report.run_id);
     assert.deepEqual(report.runtime, runtime);
     assert.ok(Object.hasOwn(rounds, report.suite));
@@ -161,11 +175,24 @@ export function qualityGate(reports, expected) {
     assert.equal(report.complete, true); assert.deepEqual(report.not_run, []);
     assert.equal(report.results.length, report.manifests.length);
     assert.equal(report.exit_code, report.passed_cases === report.total_cases ? 0 : 2);
-    assert.deepEqual(Object.keys(report.resources).sort(), ["inflight_checks", "minimum_inflight_available_bytes", "minimum_preload_available_bytes", "preload_checks", "settle_wait_ms"]);
-    for (const value of Object.values(report.resources)) assert.ok(Number.isSafeInteger(value) && value >= 0);
+    const resourceKeys = ["inflight_checks", "minimum_inflight_available_bytes", "minimum_preload_available_bytes", "preload_checks", "settle_wait_ms"];
+    if (reuse) resourceKeys.push("cold_checks", "reload_checks", "reuse_checks", "minimum_loading_available_bytes", "minimum_reuse_available_bytes");
+    assert.deepEqual(Object.keys(report.resources).sort(), resourceKeys.sort());
+    for (const [key, value] of Object.entries(report.resources)) {
+      if (reuse && ["minimum_loading_available_bytes", "minimum_reuse_available_bytes"].includes(key) && value === null) continue;
+      assert.ok(Number.isSafeInteger(value) && value >= 0);
+    }
     assert.equal(report.resources.preload_checks, report.total_cases * 2);
     assert.ok(report.resources.inflight_checks >= report.total_cases);
-    memoryBudget(report.resources.minimum_preload_available_bytes, runtime.model_size, true);
+    if (reuse) {
+      const resources = report.resources, loadingChecks = resources.cold_checks + resources.reload_checks;
+      assert.equal(loadingChecks + resources.reuse_checks, resources.preload_checks);
+      assert.ok(resources.reuse_checks > 0, "reuse reports must observe actual resident requests");
+      assert.equal(resources.minimum_loading_available_bytes === null, loadingChecks === 0);
+      if (loadingChecks > 0) memoryBudget(resources.minimum_loading_available_bytes, runtime.model_size, true);
+      memoryBudget(resources.minimum_reuse_available_bytes, runtime.model_size, false, REUSE_HEADROOM_BYTES);
+      assert.equal(resources.minimum_preload_available_bytes, Math.min(...[resources.minimum_loading_available_bytes, resources.minimum_reuse_available_bytes].filter(value => value !== null)));
+    } else memoryBudget(report.resources.minimum_preload_available_bytes, runtime.model_size, true);
     memoryBudget(report.resources.minimum_inflight_available_bytes, runtime.model_size, false);
     assert.ok(!Object.hasOwn(report, "failure") && !Object.hasOwn(report, "failed_case"));
     report.results.forEach((result, i) => {
@@ -183,12 +210,12 @@ export function qualityGate(reports, expected) {
     assert.equal(list.length, 2);
     assert.ok(expected[suite].length > 0);
     for (const manifest of expected[suite]) {
-      assert.equal(manifest.execution_profile, PROFILE); assert.equal(manifest.case.suite, SUITES[suite]);
+      assert.equal(manifest.execution_profile, policy.profile); assert.equal(manifest.case.suite, SUITES[suite]);
       assert.equal(manifest.case.synthetic_only, true);
     }
   }
   const failed = reports.flatMap(report => report.results.filter(result => !result.quality_pass).map(result => ({ suite: report.suite, run_id: report.run_id, id: result.id })));
-  return { schema: "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
+  return { schema: reuse ? "ollama-answer-quality-gate-v9" : "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
     reports_sha256: reports.map(digest), manifests_sha256: digest(expected),
     rounds_per_suite: 2, native_requests_per_case: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
     passed: failed.length === 0, failed_cases: failed, private_execution_authorized: false };

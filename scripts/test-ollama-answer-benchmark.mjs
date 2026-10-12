@@ -6,7 +6,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stagedCli } from "./ollama-answer-stages.mjs";
-import { availableMemory, guardedSend, localMetadata, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, PROFILE, REPORT_SCHEMA, SUITES, RESERVE_BYTES, RESOURCE_POLICY } from "./ollama-answer-benchmark-lib.mjs";
+import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
+import { availableMemory, guardedSend, localMetadata, memoryBudget, memoryReady, parseOptions, qualityGate, residencyPolicy, runtimeIdentity, PROFILE, REUSE_PROFILE, REPORT_SCHEMA, SUITES, RESERVE_BYTES, RESOURCE_POLICY, REUSE_HEADROOM_BYTES } from "./ollama-answer-benchmark-lib.mjs";
 const target = { endpoint: "http://127.0.0.1:11434", model_alias: "qwen3.5:9b" };
 const version = { version: "0.40.1" };
 const tags = { models: [{ name: target.model_alias, model: target.model_alias, digest: "a".repeat(64), size: 1000, details: { format: "gguf", runner: "llamacpp" } }] };
@@ -38,6 +39,9 @@ test("local metadata rejects redirects, invalid JSON, overflow and continuous re
 });
 test("only exact local installed models, supported thinking control and canonical loopback are accepted", () => {
   assert.equal(runtime().execution_profile, PROFILE);
+  assert.equal(parseOptions([]).residency, "reuse");
+  assert.equal(parseOptions(["--residency", "cold"]).residency, "cold");
+  assert.equal(runtimeIdentity({ ...target, residency: "reuse" }, version, tags, show).execution_profile, REUSE_PROFILE);
   assert.equal(parseOptions(["--suite", "challenge"]).model, "qwen3.5:9b");
   assert.equal(parseOptions(["--suite", "coverage"]).suite, "coverage");
   assert.equal(parseOptions(["--suite", "extraction"]).suite, "extraction");
@@ -50,6 +54,7 @@ test("only exact local installed models, supported thinking control and canonica
     ["--endpoint", "http://127.0.0.1:11434/path"], ["--endpoint", "http://127.0.0.1:011434"],
     ["--endpoint", "http://127.0.0.1:65536"], ["--model", "remote:cloud"], ["--model", "remote-cloud"],
     ["--model", "m", "--model", "m"], ["--suite", "later"], ["--model"], ["--secret", "x"],
+    ["--residency", "forever"], ["--residency", "reuse", "--residency", "cold"],
   ]) assert.throws(() => parseOptions(options));
   for (const change of [
     (t, s) => t.models[0].remote_model = "cloud", (t, s) => s.remote_host = "https://example.com",
@@ -102,12 +107,14 @@ test("monitor stops before the final pressure confirmation so a late sample cann
   assert.equal(samples, 2);
   await assert.rejects(guardedSend(async () => "completed", async () => { throw new Error("final pressure unavailable"); }), error => error.answerFailure === "resource");
 });
-function fixtures() {
-  const expected = Object.fromEntries(Object.entries(SUITES).map(([suite, version]) => [suite, [{ execution_profile: PROFILE, request_sha256: "b".repeat(64), case: { id: suite, suite: version, synthetic_only: true } }]]));
+function fixtures(residency = "cold") {
+  const policy = residencyPolicy(residency);
+  const expected = Object.fromEntries(Object.entries(SUITES).map(([suite, version]) => [suite, [{ execution_profile: policy.profile, request_sha256: "b".repeat(64), case: { id: suite, suite: version, synthetic_only: true } }]]));
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
-    schema: REPORT_SCHEMA, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
-    runtime: { ...runtime(), platform: "darwin", arch: "arm64", resource_policy: RESOURCE_POLICY, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
-    resources: { preload_checks: 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0 },
+    schema: policy.report_schema, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
+    runtime: { ...runtimeIdentity({ ...target, residency }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
+    resources: { preload_checks: 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
+      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
     results: [{ id: suite, request_sha256: "b".repeat(64), elapsed_ms: 1, protocol_valid: true, citation_valid: true, quality_pass: true,
       checks: ["expected_status", "required_terms", "expected_citations", "forbidden_terms"].map(name => ({ name, passed: true })) }],
@@ -179,6 +186,68 @@ test("duplicate, incomplete, overlapping, reordered, relabelled and different ru
   assert.throws(() => qualityGate(noSupport.reports, noSupport.expected));
 });
 
+function loaded(overrides = {}) {
+  return { models: [{ name: target.model_alias, model: target.model_alias, digest: runtime().model_digest,
+    details: { runner: "llamacpp", format: "gguf" }, size: 3000, size_vram: 2500, context_length: 8192,
+    expires_at: new Date(Date.now() + 30000).toISOString(), ...overrides }] };
+}
+test("only the same resident model, runner and context with a live lease can use the warm budget", () => {
+  assert.deepEqual(residentState(runtime(), { models: [] }), { state: "cold", loading: true });
+  assert.deepEqual(residentState(runtime(), loaded()), { state: "reuse", loading: false });
+  assert.deepEqual(residentState(runtime(), loaded({ runner: "llamacpp", details: { format: "gguf" } })), { state: "reuse", loading: false });
+  for (const state of [loaded({ context_length: 4096 }), loaded({ expires_at: new Date().toISOString() }), loaded({ details: { format: "gguf" } })]) {
+    assert.deepEqual(residentState(runtime(), state), { state: "reload", loading: true });
+  }
+  for (const state of [
+    {}, { models: [loaded().models[0], loaded().models[0]] },
+    loaded({ name: "other" }), loaded({ model: "other" }), loaded({ digest: "b".repeat(64) }),
+    loaded({ details: { format: "gguf", runner: "ggml" } }), loaded({ remote_host: "external" }),
+    loaded({ runner: "ggml" }), loaded({ runner: "llamacpp", details: { format: "gguf", runner: "ggml" } }),
+    loaded({ size: 0 }), loaded({ size_vram: -1 }), loaded({ context_length: 0 }), loaded({ expires_at: "unknown" }),
+  ]) assert.throws(() => residentState(runtime(), state));
+});
+test("warm requests keep generation headroom and a disappearing or replaced model grants no permission", async () => {
+  const model = { ...runtime(), model_size: 4 * 1024 ** 3 }, sufficient = RESERVE_BYTES + REUSE_HEADROOM_BYTES;
+  let queries = 0;
+  const warm = await confirmResidentRequest(model, async () => { queries++; return loaded(); }, async () => sufficient, undefined, 0, 1);
+  assert.equal(warm.state, "reuse"); assert.equal(warm.available, sufficient); assert.equal(queries, 2);
+  // The same free memory cannot pay for a cold load, and resident requests need their extra GiB.
+  await assert.rejects(confirmResidentRequest(model, async () => ({ models: [] }), async () => sufficient, undefined, 0, 1), issue => issue.answerFailure === "resource");
+  await assert.rejects(confirmResidentRequest(model, async () => loaded(), async () => sufficient - 1, undefined, 0, 1), issue => issue.answerFailure === "resource");
+  await assert.rejects(confirmResidentRequest(model, async () => loaded(), async () => { throw new Error("query unavailable"); }), issue => issue.answerFailure === "resource");
+  for (const next of [{ models: [] }, loaded({ digest: "b".repeat(64) }), loaded({ context_length: 4096 })]) {
+    let calls = 0;
+    await assert.rejects(confirmResidentRequest(model, async () => ++calls === 1 ? loaded() : next, async () => sufficient), issue => issue.answerFailure === "runtime");
+    assert.equal(calls, 2);
+  }
+  const abort = new AbortController();
+  await assert.rejects(confirmResidentRequest(model, async () => loaded(), async () => { abort.abort(); return sufficient; }, abort.signal), issue => issue.answerFailure === "runtime");
+});
+test("warm reports bind a new request profile and reserve; cold and warm results cannot be combined", () => {
+  const { reports, expected } = fixtures("reuse");
+  const gate = qualityGate(reports, expected);
+  assert.equal(gate.schema, "ollama-answer-quality-gate-v9");
+  assert.equal(gate.passed, true); assert.equal(gate.private_execution_authorized, false);
+  for (const mutate of [
+    reports => reports[1] = fixtures().reports[1],
+    reports => reports[1].schema = REPORT_SCHEMA,
+    reports => reports[1].resources.reuse_checks = 0,
+    reports => reports[1].resources.cold_checks = 0,
+    reports => reports[1].resources.minimum_loading_available_bytes = null,
+    reports => reports[1].resources.minimum_reuse_available_bytes = RESERVE_BYTES,
+    reports => reports[1].resources.minimum_preload_available_bytes++,
+    reports => reports.forEach(report => report.runtime.resource_policy = RESOURCE_POLICY),
+  ]) {
+    const { reports, expected } = fixtures("reuse"); mutate(reports);
+    assert.throws(() => qualityGate(reports, expected));
+  }
+  assert.throws(() => qualityGate(fixtures().reports, expected));
+  // Starting with an already resident model needs no invented cold-loading observation.
+  for (const report of reports) Object.assign(report.resources, { cold_checks: 0, reuse_checks: 2,
+    minimum_loading_available_bytes: null, minimum_preload_available_bytes: report.resources.minimum_reuse_available_bytes });
+  assert.equal(qualityGate(reports, expected).passed, true);
+});
+
 const childOptions = { env: {} };
 function childArgs(stages, path) {
   return ["--input-type=module", "-e", `
@@ -212,6 +281,25 @@ test("a failed host check prevents that request and never retries either native 
       assert.deepEqual(seen,blocked==="select"?["select"]:["select","verify"]);
     }
   } finally { await rm(directory,{recursive:true,force:true}); }
+});
+test("native handshake can reuse a warm model but never grants its second request below the warm reserve", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ollama-reuse-test-"));
+  const model = { ...runtime(), model_size: 4 * 1024 ** 3 };
+  try {
+    for (const enough of [true, false]) {
+      const path = join(directory, String(enough)), seen = [];
+      const probe = stagedCli(process.execPath, childArgs(["select", "verify"], path), childOptions, async (stage, signal) => {
+        const warm = stage === "verify";
+        const free = warm ? RESERVE_BYTES + REUSE_HEADROOM_BYTES - (enough ? 0 : 1) : RESERVE_BYTES + 6 * 1024 ** 3;
+        const ready = await confirmResidentRequest(model, async () => warm ? loaded({ runner: "llamacpp", details: { format: "gguf" } }) : { models: [] }, async () => free, signal, 0, 1);
+        seen.push(ready.state);
+      });
+      if (enough) assert.deepEqual(await probe, { completed: true });
+      else await assert.rejects(probe, issue => issue.answerFailure === "resource");
+      assert.equal(await readFile(path, "utf8"), enough ? "select\nverify\n" : "select\n");
+      assert.deepEqual(seen, enough ? ["cold", "reuse"] : ["cold"]);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });
 test("missing repeated reordered extra or malformed stage markers cannot count as completed", async () => {
   for (const stages of [[],["select"],["verify"],["select","select"],["select","verify","verify"],["secret"]]) {

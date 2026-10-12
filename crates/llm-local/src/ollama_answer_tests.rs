@@ -165,64 +165,86 @@ fn native_cases() -> [NativeCase; 11] {
 }
 #[tokio::test]
 async fn both_frozen_requests_are_guarded_sent_once_and_invalid_selection_stops_verification() {
-    for (first, second, status, content_type, permits, requests, valid) in native_cases() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let target = LocalTarget::new(
-            &format!("http://{}", listener.local_addr().unwrap()),
-            "fixture",
-        )
-        .unwrap();
-        let preview = preview(&target, "question", &sources()).unwrap();
-        let expected = [preview.body().clone(), preview.verification_body().clone()];
-        let calls = Arc::new(AtomicUsize::new(0));
-        let count = calls.clone();
-        let app = axum::Router::new().route(
-            "/api/chat",
-            axum::routing::post(
-                move |headers: axum::http::HeaderMap, axum::Json(input): axum::Json<Value>| {
-                    let n = count.fetch_add(1, Ordering::SeqCst);
-                    assert!(!headers.contains_key("authorization"));
-                    assert_eq!(input, expected[n]);
-                    let body = line(&record(if n == 0 { first } else { second }, true));
-                    async move {
-                        (
-                            axum::http::StatusCode::from_u16(status).unwrap(),
-                            [
-                                ("content-type", content_type),
-                                ("location", "http://127.0.0.1:1/api/chat"),
-                            ],
-                            body,
-                        )
-                    }
-                },
-            ),
-        );
-        let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        let guard = Arc::new(Guard {
-            permits: AtomicUsize::new(0),
-            limit: permits,
-        });
-        let provider = OllamaAnswers::new(target, guard.clone()).unwrap();
-        let result = provider.answer("question", &sources()).await;
-        assert_eq!(result.is_ok(), valid);
-        if let Err(error) = result {
-            assert!(!error.to_string().contains("secret"));
+    for residency in [Residency::Cold, Residency::Reuse] {
+        for (first, second, status, content_type, permits, requests, valid) in native_cases() {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let target = LocalTarget::new(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture",
+            )
+            .unwrap();
+            let preview =
+                preview_with_residency(&target, "question", &sources(), residency).unwrap();
+            let expected = [preview.body().clone(), preview.verification_body().clone()];
+            let calls = Arc::new(AtomicUsize::new(0));
+            let count = calls.clone();
+            let app = axum::Router::new().route(
+                "/api/chat",
+                axum::routing::post(
+                    move |headers: axum::http::HeaderMap, axum::Json(input): axum::Json<Value>| {
+                        let n = count.fetch_add(1, Ordering::SeqCst);
+                        assert!(!headers.contains_key("authorization"));
+                        assert_eq!(input, expected[n]);
+                        let body = line(&record(if n == 0 { first } else { second }, true));
+                        async move {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                [
+                                    ("content-type", content_type),
+                                    ("location", "http://127.0.0.1:1/api/chat"),
+                                ],
+                                body,
+                            )
+                        }
+                    },
+                ),
+            );
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let guard = Arc::new(Guard {
+                permits: AtomicUsize::new(0),
+                limit: permits,
+            });
+            let provider = OllamaAnswers::with_residency(target, guard.clone(), residency).unwrap();
+            let result = provider.answer("question", &sources()).await;
+            assert_eq!(result.is_ok(), valid);
+            if let Err(error) = result {
+                assert!(!error.to_string().contains("secret"));
+            }
+            assert_eq!(calls.load(Ordering::SeqCst), requests);
+            let seen = guard.permits.load(Ordering::SeqCst);
+            let large: Vec<_> = (1..=5)
+                .map(|id| AnswerSource {
+                    id,
+                    text: "🙂".repeat(1000),
+                })
+                .collect();
+            assert!(provider.answer("question", &large).await.is_err());
+            assert!(provider.answer(" ", &sources()).await.is_err());
+            assert_eq!(calls.load(Ordering::SeqCst), requests);
+            assert_eq!(guard.permits.load(Ordering::SeqCst), seen);
+            server.abort();
         }
-        assert_eq!(calls.load(Ordering::SeqCst), requests);
-        let seen = guard.permits.load(Ordering::SeqCst);
-        let large: Vec<_> = (1..=5)
-            .map(|id| AnswerSource {
-                id,
-                text: "🙂".repeat(1000),
-            })
-            .collect();
-        assert!(provider.answer("question", &large).await.is_err());
-        assert!(provider.answer(" ", &sources()).await.is_err());
-        assert_eq!(calls.load(Ordering::SeqCst), requests);
-        assert_eq!(guard.permits.load(Ordering::SeqCst), seen);
-        server.abort();
+    }
+}
+#[test]
+fn reuse_changes_only_finite_retention_and_binds_both_requests_to_a_new_fingerprint() {
+    let target = LocalTarget::new("http://127.0.0.1:11434", "fixture").unwrap();
+    let cold = preview(&target, "question", &sources()).unwrap();
+    let warm = preview_with_residency(&target, "question", &sources(), Residency::Reuse).unwrap();
+    assert_eq!(cold.profile, PROFILE);
+    assert_eq!(warm.profile, REUSE_PROFILE);
+    assert_ne!(cold.fingerprint().unwrap(), warm.fingerprint().unwrap());
+    for (cold_body, warm_body) in [
+        (cold.body(), warm.body()),
+        (cold.verification_body(), warm.verification_body()),
+    ] {
+        assert_eq!(cold_body["keep_alive"], 0);
+        assert_eq!(warm_body["keep_alive"], 30);
+        let mut expected = cold_body.clone();
+        expected["keep_alive"] = json!(30);
+        assert_eq!(&expected, warm_body);
     }
 }
 #[test]

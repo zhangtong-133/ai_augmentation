@@ -405,6 +405,16 @@ try {
   const packagedOllamaManifests = { baseline: answerNativeBaseline, challenge: answerChallenge, coverage: answerCoverage, extraction: answerExtraction, decision: answerDecision, mixed: answerMixed, availability: answerAvailability, support: answerSupport };
   assert.deepEqual(packagedOllamaManifests, frozenOllamaManifests);
   console.log("PASS: all 71 packaged Ollama requests match the frozen manifests; no model call");
+  const frozenReuse = JSON.parse(await readFile(join(root, "apps/api-server/tests/fixtures/answer-residency-manifests-ollama-v15.json"), "utf8"));
+  for (const [suite, cold] of Object.entries(packagedOllamaManifests)) {
+    const warm = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", suite, "--backend", "ollama", "--residency", "reuse"], true));
+    assert.deepEqual(warm.map(item => item.case), cold.map(item => item.case));
+    assert.ok(warm.every(item => item.execution_profile === frozenReuse.execution_profile));
+    assert.deepEqual(Object.fromEntries(warm.map(item => [item.case.id, item.request_sha256])), frozenReuse.suites[suite]);
+  }
+  const warmPreview = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "preview", "missing_budget", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama", "--residency", "reuse"], true));
+  for (const field of ["body", "verification_body"]) assert.deepEqual(warmPreview.preview[field], { ...coveragePreview.preview[field], keep_alive: 30 });
+  console.log("PASS: all 71 packaged residency requests keep cold conditions and exact finite-retention previews; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

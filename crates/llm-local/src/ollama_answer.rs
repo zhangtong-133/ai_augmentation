@@ -9,7 +9,28 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 pub const PROFILE: &str = "ollama-knowledge-answer-v14";
+pub const REUSE_PROFILE: &str = "ollama-knowledge-answer-v15-reuse";
 pub const RUNNER: &str = "llamacpp";
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Residency {
+    Cold,
+    Reuse,
+}
+impl Residency {
+    #[must_use]
+    pub fn profile(self) -> &'static str {
+        match self {
+            Self::Cold => PROFILE,
+            Self::Reuse => REUSE_PROFILE,
+        }
+    }
+    fn keep_alive(self) -> u32 {
+        match self {
+            Self::Cold => 0,
+            Self::Reuse => 30,
+        }
+    }
+}
 pub const PROTOCOL_STAGES: &[&str] = &[
     "native_guard",
     "native_stream",
@@ -64,6 +85,17 @@ pub fn preview(
     question: &str,
     sources: &[AnswerSource],
 ) -> LlmResult<OllamaAnswerPreview> {
+    preview_with_residency(target, question, sources, Residency::Cold)
+}
+/// Offline exact requests for a finite residency policy; no model is loaded here.
+/// # Errors
+/// Rejects invalid or oversized messages before network access.
+pub fn preview_with_residency(
+    target: &LocalTarget,
+    question: &str,
+    sources: &[AnswerSource],
+    residency: Residency,
+) -> LlmResult<OllamaAnswerPreview> {
     let prompt = prepare(question, sources)?;
     let catalog = contract::catalog(sources)?;
     // Both inputs are frozen before the first inference. The verifier never sees selection output.
@@ -76,7 +108,7 @@ pub fn preview(
         let validated = wire_payload(target, &request)?;
         Ok(serde_json::json!({
             "model": target.model(), "runner": RUNNER, "messages": validated["messages"],
-            "format": schema, "stream": true, "think": false, "keep_alive": 0,
+            "format": schema, "stream": true, "think": false, "keep_alive": residency.keep_alive(),
             "truncate": false, "shift": false,
             "options": { "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS,
                 "temperature": 0, "seed": 0, "top_k": 1, "top_p": 1,
@@ -92,7 +124,7 @@ pub fn preview(
         contract::verification_schema(&catalog),
     )?;
     Ok(OllamaAnswerPreview {
-        profile: PROFILE,
+        profile: residency.profile(),
         endpoint: format!("{}/api/chat", target.endpoint()),
         protocol_sha256: prompt.fingerprint()?,
         body,
@@ -113,7 +145,7 @@ impl AnswerStage {
         }
     }
 }
-/// The application must confirm identity, idle state and resource reserve for each native call.
+/// The application must confirm identity, residency and resource reserve for each native call.
 pub trait NativeStageGuard: Send + Sync {
     fn permit(&self, stage: AnswerStage) -> BoxFuture<'_, LlmResult<()>>;
 }
@@ -121,6 +153,7 @@ pub struct OllamaAnswers {
     target: LocalTarget,
     client: LocalChatClient,
     guard: std::sync::Arc<dyn NativeStageGuard>,
+    residency: Residency,
 }
 impl OllamaAnswers {
     /// # Errors
@@ -129,10 +162,20 @@ impl OllamaAnswers {
         target: LocalTarget,
         guard: std::sync::Arc<dyn NativeStageGuard>,
     ) -> LlmResult<Self> {
+        Self::with_residency(target, guard, Residency::Cold)
+    }
+    /// # Errors
+    /// Rejects unavailable HTTP client initialization. The host guards every native request.
+    pub fn with_residency(
+        target: LocalTarget,
+        guard: std::sync::Arc<dyn NativeStageGuard>,
+        residency: Residency,
+    ) -> LlmResult<Self> {
         Ok(Self {
             target,
             client: LocalChatClient::new()?,
             guard,
+            residency,
         })
     }
     async fn send(
@@ -187,7 +230,8 @@ impl AnswerProvider for OllamaAnswers {
         question: &str,
         sources: &[AnswerSource],
     ) -> BoxFuture<'_, LlmResult<ModelAnswer>> {
-        let request = preview(&self.target, question, sources).map(|v| (v, sources.to_vec()));
+        let request = preview_with_residency(&self.target, question, sources, self.residency)
+            .map(|v| (v, sources.to_vec()));
         Box::pin(async move {
             let (preview, sources) = request?;
             self.send(preview, &sources).await

@@ -4,6 +4,8 @@
 
 2026-10-08 补充：按用户要求新增 [macOS 已安装 Ollama 的独立合成问答评估](ollama-answer-quality.md)。该入口固定运行器与候选请求，使用 Apple 统一内存估算保护，不替换本文的 Linux/NVIDIA 部署，也尚未接入学习/RSS 或私有问答执行。
 
+2026-10-12 补充：[Ollama 有限驻留复用](ollama-answer-residency.md)默认在连续请求间复用同一模型，空闲 30 秒释放，并继续逐次核对模型及统一内存预算。原 PC llama.cpp 的驻留发送检查、至少 6 GiB 游戏显存余量和空闲卸载继续使用本文部署入口。
+
 ## 推理边界
 
 `llm::local::LocalTarget` 仅接受规范 HTTP loopback 地址与明确模型标签，不接收凭据、路径、代理或云模型标签。`llm-local` 独立实现 `/v1/chat/completions` 的受限 SSE profile，禁用代理/重定向/工具/thinking，设置 JSON、最多 2048 输出 token。部署机固定 8192 上下文、单模型/单并发。授权与推理后端分离，后续可换 vLLM；仍须单独验收真实协议和资源预算。完整提示最大 5632 UTF-8 字节，保守预留角色模板和输出空间；超限在发送前报错，不截断用户材料。适配器不保证其他服务兼容。

@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 const STAGES = ["select", "verify"];
 const failure = () => Object.assign(new Error("native stage handshake unconfirmed"), { answerFailure: "protocol", answerFailureStage: "native_guard" });
 
-// No inference acknowledgment is sent until the host confirms that particular cold request.
+// No inference acknowledgment is sent until the host confirms that particular native request.
 export function stagedCli(binary, args, options, before, signal, timeoutMs = 90000) {
   return new Promise((accept, reject) => {
     const controller = new AbortController();

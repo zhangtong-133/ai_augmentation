@@ -2,13 +2,15 @@
 use personal_ai_knowledge::answer_quality::{QualityCase, QualitySuite};
 use personal_ai_llm::{AnswerProvider, LlmError, local::LocalTarget};
 use personal_ai_llm_local::answer::{LocalAnswers, preview};
-use personal_ai_llm_local::ollama_answer::{self, AnswerStage, NativeStageGuard, OllamaAnswers};
+use personal_ai_llm_local::ollama_answer::{
+    self, AnswerStage, NativeStageGuard, OllamaAnswers, Residency,
+};
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Backend {
     LlamaCpp,
-    Ollama,
+    Ollama(Residency),
 }
 impl Backend {
     fn preview(
@@ -20,9 +22,14 @@ impl Backend {
             Self::LlamaCpp => serde_json::to_value(
                 preview(target, case.question, &case.sources()).map_err(|_| "invalid preview")?,
             ),
-            Self::Ollama => serde_json::to_value(
-                ollama_answer::preview(target, case.question, &case.sources())
-                    .map_err(|_| "invalid preview")?,
+            Self::Ollama(residency) => serde_json::to_value(
+                ollama_answer::preview_with_residency(
+                    target,
+                    case.question,
+                    &case.sources(),
+                    residency,
+                )
+                .map_err(|_| "invalid preview")?,
             ),
         }
         .map_err(|_| "invalid preview")
@@ -32,10 +39,12 @@ impl Backend {
             Self::LlamaCpp => {
                 LocalAnswers::new(target).map(|v| Box::new(v) as Box<dyn AnswerProvider>)
             }
-            Self::Ollama => {
-                OllamaAnswers::new(target, Arc::new(StdioGuard(tokio::sync::Mutex::new(0))))
-                    .map(|v| Box::new(v) as Box<dyn AnswerProvider>)
-            }
+            Self::Ollama(residency) => OllamaAnswers::with_residency(
+                target,
+                Arc::new(StdioGuard(tokio::sync::Mutex::new(0))),
+                residency,
+            )
+            .map(|v| Box::new(v) as Box<dyn AnswerProvider>),
         }
         .map_err(|_| "ANSWER_FAILURE=transport")
     }
@@ -87,10 +96,15 @@ fn manifest(
             personal_ai_llm_local::answer::PROFILE,
             preview(target, case.question, &case.sources()).and_then(|v| v.fingerprint()),
         ),
-        Backend::Ollama => (
-            ollama_answer::PROFILE,
-            ollama_answer::preview(target, case.question, &case.sources())
-                .and_then(|v| v.fingerprint()),
+        Backend::Ollama(residency) => (
+            residency.profile(),
+            ollama_answer::preview_with_residency(
+                target,
+                case.question,
+                &case.sources(),
+                residency,
+            )
+            .and_then(|v| v.fingerprint()),
         ),
     };
     Ok(
@@ -101,6 +115,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
     let mut end = args.len();
     let mut suite = None;
     let mut backend = None;
+    let mut residency = None;
     while end >= 2 {
         match args[end - 2].as_str() {
             "--suite" if suite.is_none() => {
@@ -119,24 +134,36 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
             "--backend" if backend.is_none() => {
                 backend = Some(match args[end - 1].as_str() {
                     "llama.cpp" => Backend::LlamaCpp,
-                    "ollama" => Backend::Ollama,
+                    "ollama" => Backend::Ollama(Residency::Cold),
                     _ => return Err("invalid answer backend"),
+                });
+            }
+            "--residency" if residency.is_none() => {
+                residency = Some(match args[end - 1].as_str() {
+                    "cold" => Residency::Cold,
+                    "reuse" => Residency::Reuse,
+                    _ => return Err("invalid answer residency"),
                 });
             }
             _ => break,
         }
         end -= 2;
     }
+    let backend = match (backend.unwrap_or(Backend::LlamaCpp), residency) {
+        (Backend::Ollama(_), policy) => Backend::Ollama(policy.unwrap_or(Residency::Cold)),
+        (Backend::LlamaCpp, None) => Backend::LlamaCpp,
+        _ => return Err("residency requires Ollama"),
+    };
     Ok((
         &args[..end],
         suite.unwrap_or(QualitySuite::Baseline),
-        backend.unwrap_or(Backend::LlamaCpp),
+        backend,
     ))
 }
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）。\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -154,7 +181,7 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         );
         return Ok(());
     }
-    let guarded = backend == Backend::Ollama;
+    let guarded = matches!(backend, Backend::Ollama(_));
     if !(args.len() == 4 && args[0] == "preview"
         || args.len() == if guarded { 6 } else { 5 }
             && args[0] == "case"
@@ -273,7 +300,9 @@ mod tests {
             let manifests: Vec<_> = suite
                 .cases()
                 .iter()
-                .map(|case| manifest(case, &target, suite, Backend::Ollama).unwrap())
+                .map(|case| {
+                    manifest(case, &target, suite, Backend::Ollama(Residency::Cold)).unwrap()
+                })
                 .collect();
             actual.insert(name.into(), serde_json::json!(manifests));
         }
@@ -333,6 +362,17 @@ mod tests {
                 "http://127.0.0.1:1",
                 "m",
                 "--use-local-benchmark",
+                "--backend",
+                "ollama",
+                "--residency",
+                "reuse",
+            ],
+            vec![
+                "case",
+                "single_fact",
+                "http://127.0.0.1:1",
+                "m",
+                "--use-local-benchmark",
                 "--invalid-guard",
                 "--backend",
                 "ollama",
@@ -355,6 +395,77 @@ mod tests {
                 )
                 .is_ok()
             );
+        }
+    }
+    #[test]
+    fn reuse_keeps_every_cold_condition_and_matches_the_new_frozen_request_fingerprints() {
+        let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-residency-manifests-ollama-v15.json"
+        ))
+        .unwrap();
+        let previous: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-independent-manifests-ollama-v14.json"
+        ))
+        .unwrap();
+        assert_eq!(frozen["execution_profile"], Residency::Reuse.profile());
+        assert_eq!(frozen["keep_alive_seconds"], 30);
+        let mut total = 0;
+        for (name, suite) in [
+            ("baseline", QualitySuite::Baseline),
+            ("challenge", QualitySuite::Challenge),
+            ("coverage", QualitySuite::Coverage),
+            ("extraction", QualitySuite::Extraction),
+            ("decision", QualitySuite::Decision),
+            ("mixed", QualitySuite::Mixed),
+            ("availability", QualitySuite::Availability),
+            ("support", QualitySuite::Support),
+        ] {
+            let cases = suite.cases();
+            assert_eq!(
+                cases.len(),
+                frozen["suites"][name].as_object().unwrap().len()
+            );
+            for (index, case) in cases.iter().enumerate() {
+                let warm =
+                    manifest(case, &target, suite, Backend::Ollama(Residency::Reuse)).unwrap();
+                assert_eq!(warm["case"], previous[name][index]["case"]);
+                assert_eq!(warm["request_sha256"], frozen["suites"][name][case.id]);
+                assert_ne!(
+                    warm["request_sha256"],
+                    previous[name][index]["request_sha256"]
+                );
+                total += 1;
+            }
+        }
+        assert_eq!(serde_json::json!(total), frozen["case_count"]);
+    }
+    #[test]
+    fn residency_requires_explicit_ollama_backend_and_rejects_invalid_or_repeated_options() {
+        for args in [
+            vec!["--residency", "reuse"],
+            vec!["--backend", "llama.cpp", "--residency", "reuse"],
+            vec!["--backend", "ollama", "--residency", "forever"],
+            vec![
+                "--backend",
+                "ollama",
+                "--residency",
+                "reuse",
+                "--residency",
+                "cold",
+            ],
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            assert!(options(&args).is_err() || !options(&args).unwrap().0.is_empty());
+        }
+        for args in [
+            vec!["--backend", "ollama", "--residency", "reuse"],
+            vec!["--residency", "reuse", "--backend", "ollama"],
+        ] {
+            let args: Vec<_> = args.into_iter().map(str::to_owned).collect();
+            let (remaining, _, backend) = options(&args).unwrap();
+            assert_eq!(remaining, &[] as &[String]);
+            assert!(matches!(backend, Backend::Ollama(Residency::Reuse)));
         }
     }
     #[tokio::test]

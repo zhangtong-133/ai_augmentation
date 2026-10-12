@@ -23,13 +23,15 @@ make browser-install
 - Docker：先确认 `docker info` 能访问当前 context。沙箱内 socket 权限错误不等于 daemon 停止，不应因此修改 socket 权限或重装 Docker。
 - 网络：网页导入禁用系统代理，API 必须能直连公网 DNS 与 HTTP/HTTPS。模型服务、依赖下载与 Docker 拉取的连通性需分别检查。
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
-- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-extraction.md)，使用统一内存估算保护，每题结束卸载模型；尚未接入私有问答或学习/RSS 执行。
+- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-residency.md)，默认复用已驻留的同一模型/运行器/上下文、空闲 30 秒释放；`RESIDENCY=cold` 保留逐次卸载对照。仍逐次检查统一内存估计余量，尚未接入私有问答或学习/RSS 执行。
 
 ## CI 故障排查
 
 GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Clippy 错误时先比较日志中的 `rustc`/Clippy 版本；本机较旧版本通过不能证明当前 CI 通过。2026-10-09 的 [失败构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37893764769) 使用 Rust 1.99，新的 `assert_is_empty` 检查拒绝了 Ollama 测试中的布尔空集合断言。当前测试改为比较带元素类型的空数组，保留原断言并输出失败时的实际引用列表。
 
 2026-10-12 检查[上一轮 v13 构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/38042115645)，其余 smoke、web、index、objects 作业均成功；同一 Rust 1.99 规则再次拒绝新增的 `answer.citations.is_empty()` 断言。v14 测试统一使用带元素类型的空数组比较，继续保留 `-D warnings`，本机默认 1.96 不变。复核时另装指定 Rust 1.99.0 / Clippy 0.1.99，独立构建目录完整 fmt、Clippy `-D warnings` 与 326 项测试通过，直接验证 CI 差异；默认仍为 1.96。
+
+继续驻留复用开发前核对 [v14 的 CI 38199354985](https://github.com/zhangtong-133/ai_augmentation/actions/runs/38199354985)，提交 `721989f` 的 Rust、Web、smoke、index、objects 全部成功。
 
 同一次构建的 smoke 在 Playwright 安装系统依赖时，卡住于 `http://azure.archive.ubuntu.com` 的 APT 索引下载，项目 smoke 尚未启动。smoke/index 现共用 [浏览器安装 action](../.github/actions/setup-browser/action.yml)：将 runner 的 APT 镜像列表替换为 Ubuntu 官方 HTTPS archive，设置每次连接 30 秒超时、最多 3 次重试，索引更新错误直接失败；Chromium 安装步骤最多 10 分钟，字体安装最多 5 分钟，原有作业 60 分钟限时保持不变。这些系统配置仅写入临时 GitHub runner，本机 `make browser-install` 的行为保持不变。
 
@@ -41,6 +43,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-12，macOS ARM64 / OrbStack，Ollama 0.40.3 / v15-reuse | Rust 1.96/1.99 各完整检查及 329 项测试、27 项问答/显存 Node、前端检查/构建及 11 项单元测试；281 项 core smoke、生产镜像冷热模式各 71 道冻结清单及双请求预览核对 | 完整双轮 130/142，568 个检查与 v14 一致；284 次许可为 1 次 cold、283 次 reuse，空闲约 30 秒自动释放，中位耗时 11.855→7.496 秒；新 v9/旧 v8 门槛独立重算一致，质量仍失败、私有执行关闭；模型释放、锁解除及测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM，详见[记录](design/ollama-answer-residency.md) |
 | 2026-10-12，macOS ARM64 / OrbStack，Ollama 0.40.3 / v14 | 326 项 Rust 测试与完整检查、17 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke、生产镜像八套 71 道双请求清单逐字段核对 | 先重跑未修改 v13 完整 116/142，v14 完整双轮 130/142，九题各两轮改善、两题各两轮回归；门槛退出 2、私有执行关闭；每题两次资源保护，卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v13 | 331 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像八套 71 道冻结请求逐字段核对 | 完整双轮 116/142，实际值/可用性各轮 12/12、支持对照各轮 10/12；原七套从 v12 的 102/118 降至 96/118，整体质量未改善，门槛退出 2、私有执行关闭；模型卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
 | 2026-10-10，macOS ARM64 / OrbStack，Ollama 0.40.2 / v12 | 330 项 Rust 测试与完整检查、12 项问答 Node、前端检查/构建及 11 项单元测试；281 项 core smoke（含 175 项 PostgreSQL）、生产镜像八套 71 道冻结请求逐字段核对 | 完整双轮 120/142，旧实际值/可用性各轮 12/12；原七套从 v11 的 114/118 降至 102/118，新支持套件各轮 9/12，门槛退出 2、私有执行关闭；模型卸载、锁释放、测试栈清空；未跑浏览器/index/MinIO/公网、游戏并行/vLLM |
