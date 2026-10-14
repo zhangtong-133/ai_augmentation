@@ -242,6 +242,14 @@ test("warm reports bind a new request profile and reserve; cold and warm results
     assert.throws(() => qualityGate(reports, expected));
   }
   assert.throws(() => qualityGate(fixtures().reports, expected));
+  for (const mutate of [
+    report => report.schema = "ollama-answer-semantic-report-v1",
+    report => report.diagnostic_only = true,
+    report => report.results[0].semantic_diagnostic = {},
+  ]) {
+    const diagnostic = fixtures("reuse"); mutate(diagnostic.reports[0]);
+    assert.throws(() => qualityGate(diagnostic.reports, diagnostic.expected));
+  }
   // Starting with an already resident model needs no invented cold-loading observation.
   for (const report of reports) Object.assign(report.resources, { cold_checks: 0, reuse_checks: 2,
     minimum_loading_available_bytes: null, minimum_preload_available_bytes: report.resources.minimum_reuse_available_bytes });

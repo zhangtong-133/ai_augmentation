@@ -21,10 +21,10 @@ export function verifyCase(raw, manifest, target) {
     protocol_valid: true, citation_valid: value.citation_valid, quality_pass: value.quality_pass,
     checks: value.checks.map(c => ({ name: c.name, passed: c.passed })) };
 }
-export async function runCases(manifests, target, send) {
+export async function runCases(manifests, target, send, verify = verifyCase) {
   const results = [];
   for (const manifest of manifests) {
-    try { results.push(verifyCase(await send(manifest.case.id), manifest, target)); }
+    try { results.push(verify(await send(manifest.case.id), manifest, target)); }
     catch (error) {
       return { complete: false, failed_case: manifest.case.id,
         failure: ["transport", "protocol", "resource", "runtime"].includes(error.answerFailure) ? error.answerFailure : "case_unconfirmed",

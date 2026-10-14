@@ -188,13 +188,22 @@ pub(super) fn decode_verification(
     selected: Selected,
     sources: &[AnswerSource],
     catalog: &[Excerpt],
-) -> LlmResult<ModelAnswer> {
+) -> LlmResult<(ModelAnswer, super::SemanticDiagnostics)> {
     let verification: Verification = parse(text, "verification")?;
     if verification.checks.is_empty() || verification.checks.len() > MAX_CHECKS {
         return Err(super::protocol_error("verification_bounds"));
     }
     let mut complete = true;
     let mut checked = HashSet::new();
+    let mut diagnostic = super::SemanticDiagnostics {
+        schema: "ollama-answer-semantic-diagnostic-v1",
+        selected_excerpts: selected.keys.len(),
+        verified_excerpts: 0,
+        requirements: verification.checks.len(),
+        evidence_agrees: false,
+        requirements_supported: false,
+        checks_by_kind: super::diagnostics::KindCounts::default(),
+    };
     for check in verification.checks {
         // Validate all keys even if another check already made the answer insufficient.
         let keys = validate_keys(check.evidence, sources, catalog, true)?.keys;
@@ -203,16 +212,32 @@ pub(super) fn decode_verification(
         }
         complete &= check.support == Support::Stated
             || check.kind == Kind::Availability && check.support == Support::Unavailable;
+        let counts = match check.kind {
+            Kind::Value => &mut diagnostic.checks_by_kind.value,
+            Kind::Availability => &mut diagnostic.checks_by_kind.availability,
+            Kind::Fact => &mut diagnostic.checks_by_kind.fact,
+        };
+        match check.support {
+            Support::Stated => counts.stated += 1,
+            Support::Unavailable => counts.unavailable += 1,
+            Support::Unsupported => counts.unsupported += 1,
+        }
         checked.extend(keys);
     }
+    diagnostic.verified_excerpts = checked.len();
+    diagnostic.evidence_agrees = selected.keys == checked;
+    diagnostic.requirements_supported = complete;
     // Agreement is a consistency condition, not proof that either model judgment is correct.
     // No retries, repairs or union with an unconfirmed selection are allowed.
     if !complete || selected.keys != checked {
-        return Ok(ModelAnswer {
-            answer: String::new(),
-            citations: vec![],
-            insufficient_evidence: true,
-        });
+        return Ok((
+            ModelAnswer {
+                answer: String::new(),
+                citations: vec![],
+                insufficient_evidence: true,
+            },
+            diagnostic,
+        ));
     }
     let spans = selected.spans;
     let error = super::protocol_error;
@@ -255,11 +280,14 @@ pub(super) fn decode_verification(
     if answer.chars().count() > 4000 {
         return Err(error("selection_bounds"));
     }
-    Ok(ModelAnswer {
-        answer,
-        citations,
-        insufficient_evidence: false,
-    })
+    Ok((
+        ModelAnswer {
+            answer,
+            citations,
+            insufficient_evidence: false,
+        },
+        diagnostic,
+    ))
 }
 
 fn validate_keys(

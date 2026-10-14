@@ -53,6 +53,9 @@ fn protocol_error(stage: &'static str) -> personal_ai_llm::LlmError {
 }
 #[path = "ollama_answer_extract.rs"]
 mod contract;
+#[path = "ollama_answer_diagnostics.rs"]
+mod diagnostics;
+pub use diagnostics::SemanticDiagnostics;
 #[derive(Debug, Serialize)]
 pub struct OllamaAnswerPreview {
     profile: &'static str,
@@ -182,7 +185,7 @@ impl OllamaAnswers {
         &self,
         preview: OllamaAnswerPreview,
         sources: &[AnswerSource],
-    ) -> LlmResult<ModelAnswer> {
+    ) -> LlmResult<(ModelAnswer, SemanticDiagnostics)> {
         let catalog = contract::catalog(sources)?;
         self.guard.permit(AnswerStage::Select).await?;
         let selected = self.post(&preview.endpoint, preview.body()).await?;
@@ -192,6 +195,23 @@ impl OllamaAnswers {
             .post(&preview.endpoint, preview.verification_body())
             .await?;
         contract::decode_verification(&checks, selection, sources, &catalog)
+    }
+    /// Returns bounded aggregate metadata after both responses pass protocol validation.
+    /// No model text, excerpt keys or ordered per-requirement judgments are exposed here.
+    /// # Errors
+    /// Uses the same frozen requests, per-call guards and failure behavior as `answer`.
+    #[must_use = "Await the future to run the guarded diagnostic."]
+    pub fn answer_with_diagnostics(
+        &self,
+        question: &str,
+        sources: &[AnswerSource],
+    ) -> BoxFuture<'_, LlmResult<(ModelAnswer, SemanticDiagnostics)>> {
+        let request = preview_with_residency(&self.target, question, sources, self.residency)
+            .map(|v| (v, sources.to_vec()));
+        Box::pin(async move {
+            let (preview, sources) = request?;
+            self.send(preview, &sources).await
+        })
     }
     async fn post(&self, endpoint: &str, body: &serde_json::Value) -> LlmResult<String> {
         let mut response = self
@@ -230,12 +250,8 @@ impl AnswerProvider for OllamaAnswers {
         question: &str,
         sources: &[AnswerSource],
     ) -> BoxFuture<'_, LlmResult<ModelAnswer>> {
-        let request = preview_with_residency(&self.target, question, sources, self.residency)
-            .map(|v| (v, sources.to_vec()));
-        Box::pin(async move {
-            let (preview, sources) = request?;
-            self.send(preview, &sources).await
-        })
+        let result = self.answer_with_diagnostics(question, sources);
+        Box::pin(async move { result.await.map(|(answer, _)| answer) })
     }
 }
 

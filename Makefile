@@ -238,6 +238,7 @@ local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边
 	cargo test -p api-server --bin local-answer-benchmark
 	node scripts/test-local-answer-benchmark.mjs
 	node scripts/test-ollama-answer-benchmark.mjs
+	node scripts/test-ollama-answer-diagnostics.mjs
 
 .PHONY: ollama-answer-benchmark ollama-answer-benchmark-preview ollama-answer-diagnose ollama-answer-quality-gate
 ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认驻留复用/空闲 30 秒释放，RESIDENCY=cold 保留冷加载；SUITE 选八套
@@ -246,7 +247,7 @@ ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认�
 ollama-answer-benchmark-preview: ## 离线预览 Ollama 两次独立请求与驻留策略（CASE、SUITE、RESIDENCY=reuse/cold）
 	node scripts/ollama-answer-benchmark.mjs preview "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",)
 
-ollama-answer-diagnose: ## 显式诊断一题合成请求，只记录固定故障阶段；不能计入质量门槛（CASE、SUITE）
+ollama-answer-diagnose: ## 显式诊断一题合成请求，记录固定阶段及有界语义计数；不能计入质量门槛（CASE、SUITE）
 	node scripts/ollama-answer-benchmark.mjs diagnose "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",)
 
 ollama-answer-quality-gate: ## 离线核对同一候选的八套语料各两轮，REPORTS 为十六份私有报告路径

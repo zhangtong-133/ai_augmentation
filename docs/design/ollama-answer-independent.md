@@ -1,5 +1,7 @@
 # Ollama 精简事实选择与独立语义核对
 
+2026-10-14：[合成阶段诊断](ollama-answer-diagnostics.md)已实现，区分证据分歧、逐项不足及类型/支持汇总；仅在单题 diagnose 输出，不改变本文双请求及历史门槛。
+
 2026-10-12 后续：[有限驻留复用](ollama-answer-residency.md)仅调整 `keep_alive` 和宿主资源分类，保留本文 v14 冷加载条件及全部历史结果。宿主默认使用新 v15-reuse；复现本文评估须显式 `RESIDENCY=cold`，两类报告不混合。
 
 ## 问题与范围

@@ -163,7 +163,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）。\n仅内置合成材料；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\nlocal-answer-benchmark diagnose CASE ENDPOINT MODEL --use-local-benchmark --guard-native-stages --backend ollama\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）。\n仅内置合成材料；diagnose 只增加有界语义计数，不能计入质量门槛；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -182,9 +182,10 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         return Ok(());
     }
     let guarded = matches!(backend, Backend::Ollama(_));
+    let diagnostic = args.first().is_some_and(|s| s == "diagnose");
     if !(args.len() == 4 && args[0] == "preview"
         || args.len() == if guarded { 6 } else { 5 }
-            && args[0] == "case"
+            && (args[0] == "case" || diagnostic && guarded)
             && args[4] == "--use-local-benchmark"
             && (!guarded || args[5] == "--guard-native-stages"))
     {
@@ -204,27 +205,47 @@ async fn run(args: &[String]) -> Result<(), &'static str> {
         );
         return Ok(());
     }
-    let provider = backend.provider(target.clone())?;
     let started = std::time::Instant::now();
-    let output = provider
-        .answer(case.question, &case.sources())
-        .await
-        .map_err(|e| match e {
-            LlmError::InvalidResponse(reason) => {
-                if let Some(stage) = reason
-                    .strip_prefix("ollama answer protocol: ")
-                    .filter(|stage| ollama_answer::PROTOCOL_STAGES.contains(stage))
-                {
-                    eprintln!("ANSWER_PROTOCOL_STAGE={stage}");
-                }
-                "ANSWER_FAILURE=protocol"
+    let output = if diagnostic {
+        let Backend::Ollama(residency) = backend else {
+            return Err("semantic diagnostics require Ollama");
+        };
+        let provider = OllamaAnswers::with_residency(
+            target.clone(),
+            Arc::new(StdioGuard(tokio::sync::Mutex::new(0))),
+            residency,
+        )
+        .map_err(|_| "ANSWER_FAILURE=transport")?;
+        provider
+            .answer_with_diagnostics(case.question, &case.sources())
+            .await
+            .map(|(answer, metadata)| (answer, Some(metadata)))
+    } else {
+        backend
+            .provider(target.clone())?
+            .answer(case.question, &case.sources())
+            .await
+            .map(|answer| (answer, None))
+    }
+    .map_err(|e| match e {
+        LlmError::InvalidResponse(reason) => {
+            if let Some(stage) = reason
+                .strip_prefix("ollama answer protocol: ")
+                .filter(|stage| ollama_answer::PROTOCOL_STAGES.contains(stage))
+            {
+                eprintln!("ANSWER_PROTOCOL_STAGE={stage}");
             }
-            _ => "ANSWER_FAILURE=transport",
-        })?;
-    println!(
-        "{}",
-        serde_json::json!({"manifest":manifest,"endpoint":target.endpoint(),"model":target.model(),"synthetic_only":true,"elapsed_ms":started.elapsed().as_millis(),"protocol_valid":true,"evaluation":case.evaluate(output)})
-    );
+            "ANSWER_FAILURE=protocol"
+        }
+        _ => "ANSWER_FAILURE=transport",
+    })?;
+    let (answer, metadata) = output;
+    let mut result = serde_json::json!({"manifest":manifest,"endpoint":target.endpoint(),"model":target.model(),"synthetic_only":true,"elapsed_ms":started.elapsed().as_millis(),"protocol_valid":true,"evaluation":case.evaluate(answer)});
+    if let Some(metadata) = metadata {
+        result["semantic_diagnostic"] =
+            serde_json::to_value(metadata).map_err(|_| "invalid diagnostic")?;
+    }
+    println!("{result}");
     Ok(())
 }
 #[tokio::main]
@@ -534,6 +555,44 @@ mod tests {
             "m",
             "--suite",
             "challenge",
+        ]
+        .map(str::to_owned);
+        assert!(run(&args).await.is_err());
+    }
+    #[tokio::test]
+    async fn semantic_diagnostics_require_synthetic_ollama_and_both_native_guards() {
+        for suffix in [
+            vec![],
+            vec!["--backend", "llama.cpp"],
+            vec!["--backend", "ollama"],
+        ] {
+            let args: Vec<_> = [
+                vec![
+                    "diagnose",
+                    "single_fact",
+                    "http://127.0.0.1:1",
+                    "fixture",
+                    "--use-local-benchmark",
+                ],
+                suffix,
+            ]
+            .concat()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            assert_eq!(
+                run(&args).await,
+                Err("invalid local answer benchmark command; see --help")
+            );
+        }
+        let args = [
+            "diagnose",
+            "single_fact",
+            "http://127.0.0.1:1",
+            "fixture",
+            "--guard-native-stages",
+            "--backend",
+            "ollama",
         ]
         .map(str::to_owned);
         assert!(run(&args).await.is_err());

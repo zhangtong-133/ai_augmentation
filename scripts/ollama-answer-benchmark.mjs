@@ -7,6 +7,7 @@ import { join, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { stagedCli } from "./ollama-answer-stages.mjs";
+import { DIAGNOSTIC_REPORT_SCHEMA, verifyDiagnostic } from "./ollama-answer-diagnostics.mjs";
 import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
 import { runCases, PROTOCOL_STAGES } from "./local-answer-benchmark-lib.mjs";
@@ -65,7 +66,7 @@ async function gate(files, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成诊断，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。每题两次独立请求分别检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。每题两次独立请求分别检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
@@ -107,7 +108,7 @@ async function run() {
     stage = "synthetic_cases";
     const outcome = await runCases(frozen, runtime, async id => {
       try {
-        const raw = await guardedSend(signal => stagedCli(binary, ["case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--guard-native-stages", "--suite", target.suite, "--backend", "ollama", "--residency", target.residency], { cwd: root, env },
+        const raw = await guardedSend(signal => stagedCli(binary, [command === "diagnose" ? "diagnose" : "case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--guard-native-stages", "--suite", target.suite, "--backend", "ollama", "--residency", target.residency], { cwd: root, env },
           async (nativeStage, bounded) => {
             try {
               if (target.residency === "cold") await idle(runtime, bounded, nativeStage === "verify");
@@ -144,14 +145,15 @@ async function run() {
         const protocolStage = error.answerFailureStage ?? /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
         throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1], answerFailureStage: PROTOCOL_STAGES.includes(protocolStage) ? protocolStage : undefined });
       }
-    });
-    const report = { schema: policy.report_schema, run_id: randomUUID(), synthetic_only: true, suite: target.suite,
-      ...(command === "diagnose" ? { diagnostic_only: true } : {}),
+    }, command === "diagnose" ? verifyDiagnostic : undefined);
+    const report = { schema: command === "diagnose" ? DIAGNOSTIC_REPORT_SCHEMA : policy.report_schema, run_id: randomUUID(), synthetic_only: true, suite: target.suite,
+      ...(command === "diagnose" ? { diagnostic_only: true, private_execution_authorized: false } : {}),
       started_at: started, ended_at: new Date().toISOString(), runtime, resources, manifests: frozen, ...outcome,
       passed_cases: outcome.results.filter(result => result.quality_pass).length, total_cases: frozen.length };
     stage = "write_report";
     console.log(JSON.stringify({ report: await writeReport(directory, report), complete: report.complete,
-      passed_cases: report.passed_cases, total_cases: report.total_cases, failure: report.failure, failure_stage: report.failure_stage, diagnostic_only: report.diagnostic_only, exit_code: report.exit_code }));
+      passed_cases: report.passed_cases, total_cases: report.total_cases, failure: report.failure, failure_stage: report.failure_stage, diagnostic_only: report.diagnostic_only,
+      ...(command === "diagnose" ? { semantic_diagnostic: report.results[0]?.semantic_diagnostic } : {}), exit_code: report.exit_code }));
     process.exitCode = report.exit_code;
   } finally {
     process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt);

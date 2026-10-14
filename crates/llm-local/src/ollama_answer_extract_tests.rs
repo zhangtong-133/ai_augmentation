@@ -21,6 +21,7 @@ fn paired(
         sources,
         catalog,
     )
+    .map(|(answer, _)| answer)
 }
 fn complete(keys: &[&str]) -> String {
     json!({"checks":[check(keys, "fact", "stated")]}).to_string()
@@ -35,7 +36,7 @@ fn select(text: &str, sources: &[AnswerSource]) -> LlmResult<ModelAnswer> {
         .flat_map(|c| c["evidence"].as_array().into_iter().flatten())
         .collect();
     let selected = decode_selection(&json!({"evidence":keys}).to_string(), sources, &catalog)?;
-    decode_verification(text, selected, sources, &catalog)
+    decode_verification(text, selected, sources, &catalog).map(|(answer, _)| answer)
 }
 #[test]
 fn matching_selections_copy_exact_unicode_and_source_order_without_generated_prose() {
@@ -330,4 +331,103 @@ fn frozen_catalog_cannot_be_reinterpreted_against_changed_source_bytes() {
         )
         .is_err()
     );
+}
+
+#[test]
+fn semantic_diagnostics_distinguish_disagreement_from_unsupported_requirements() {
+    let sources = sources("活动周四举行。负责人未知。");
+    let catalog = catalog(&sources).unwrap();
+    for (keys, checks, agrees, supported) in [
+        (
+            vec!["s1u1"],
+            vec![check(&["s1u1"], "value", "stated")],
+            true,
+            true,
+        ),
+        (
+            vec!["s1u2"],
+            vec![check(&["s1u1"], "value", "stated")],
+            false,
+            true,
+        ),
+        (
+            vec!["s1u2"],
+            vec![check(&["s1u2"], "value", "unavailable")],
+            true,
+            false,
+        ),
+        (
+            vec!["s1u1"],
+            vec![check(&["s1u2"], "fact", "unavailable")],
+            false,
+            false,
+        ),
+        (
+            vec![],
+            vec![check(&[], "availability", "unsupported")],
+            true,
+            false,
+        ),
+        (
+            vec!["s1u2"],
+            vec![check(&["s1u2"], "availability", "unavailable")],
+            true,
+            true,
+        ),
+    ] {
+        let selection =
+            decode_selection(&json!({"evidence":keys}).to_string(), &sources, &catalog).unwrap();
+        let (answer, metadata) = decode_verification(
+            &json!({"checks":checks}).to_string(),
+            selection,
+            &sources,
+            &catalog,
+        )
+        .unwrap();
+        assert_eq!(metadata.evidence_agrees, agrees);
+        assert_eq!(metadata.requirements_supported, supported);
+        assert_eq!(answer.insufficient_evidence, !(agrees && supported));
+        assert_eq!(metadata.requirements, 1);
+    }
+}
+
+#[test]
+fn diagnostics_count_all_nine_kind_support_pairs_without_text_keys_or_ordered_checks() {
+    let sources = sources("secret🙂事实。");
+    let catalog = catalog(&sources).unwrap();
+    let checks: Vec<_> = ["value", "availability", "fact"]
+        .into_iter()
+        .flat_map(|kind| {
+            ["stated", "unavailable", "unsupported"].map(|support| check(&["s1u1"], kind, support))
+        })
+        .collect();
+    let evaluate = |checks: &[Value]| {
+        let selected = decode_selection(r#"{"evidence":["s1u1"]}"#, &sources, &catalog).unwrap();
+        let (_, metadata) = decode_verification(
+            &json!({"checks":checks}).to_string(),
+            selected,
+            &sources,
+            &catalog,
+        )
+        .unwrap();
+        serde_json::to_value(metadata).unwrap()
+    };
+    let metadata = evaluate(&checks);
+    let mut reversed = checks.clone();
+    reversed.reverse();
+    assert_eq!(metadata, evaluate(&reversed));
+    assert_eq!(
+        metadata,
+        json!({
+            "schema":"ollama-answer-semantic-diagnostic-v1", "requirements":9,
+            "selected_excerpts":1, "verified_excerpts":1, "evidence_agrees":true, "requirements_supported":false,
+            "checks_by_kind": {
+                "value":{"stated":1,"unavailable":1,"unsupported":1},
+                "availability":{"stated":1,"unavailable":1,"unsupported":1},
+                "fact":{"stated":1,"unavailable":1,"unsupported":1}
+            }
+        })
+    );
+    assert!(!metadata.to_string().contains("secret"));
+    assert!(!metadata.to_string().contains("s1u1"));
 }
