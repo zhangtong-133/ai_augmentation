@@ -241,6 +241,7 @@ local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边
 	node scripts/test-ollama-answer-diagnostics.mjs
 	node scripts/test-ollama-answer-question-diagnostics.mjs
 	node scripts/test-ollama-answer-guarded-diagnostics.mjs
+	node scripts/test-ollama-answer-compare.mjs
 
 .PHONY: ollama-answer-benchmark ollama-answer-benchmark-preview ollama-answer-diagnose ollama-answer-quality-gate
 ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认驻留复用/空闲 30 秒释放；CANDIDATE=question/guarded 显式选两步/三步问题分类候选；SUITE 选八套
@@ -254,3 +255,7 @@ ollama-answer-diagnose: ## 显式诊断一题合成请求，记录固定阶段�
 
 ollama-answer-quality-gate: ## 离线核对同一候选的八套语料各两轮，REPORTS 为十六份私有报告路径
 	node scripts/ollama-answer-benchmark.mjs gate $(REPORTS)
+
+.PHONY: ollama-answer-compare
+ollama-answer-compare: ## 离线比较两个候选的完整双轮，LEFT/RIGHT 各十六份私有报告，分别统计整题与检查项退步
+	node scripts/ollama-answer-benchmark.mjs compare --left $(LEFT) --right $(RIGHT)

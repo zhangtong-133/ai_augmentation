@@ -93,6 +93,7 @@ npm --prefix apps/web run build
 | `make local-model-test` / `make local-model-probe` | 显存保护测试 / 显式使用固定合成材料验收已启动的真实本地模型 |
 | `make ollama-answer-benchmark-preview CASE=two_absences_establish_availability SUITE=support` / `make ollama-answer-benchmark SUITE=support` | [macOS 已有 Ollama 的驻留复用与资源保护](docs/design/ollama-answer-residency.md)，每题两次分别保护的独立请求，默认 `qwen3.5:9b`、空闲 30 秒释放；`RESIDENCY=cold` 保留 v14 冷加载。另支持 baseline/challenge/coverage/extraction/decision/mixed/availability，不下载模型 |
 | `make ollama-answer-quality-gate REPORTS="十六份报告路径"` | 离线核对同一候选八套语料各两轮；不授予私有材料执行权限 |
+| `make ollama-answer-compare LEFT="十六份报告路径" RIGHT="十六份报告路径"` | [离线比较同一模型/运行时的两个候选完整双轮](docs/design/ollama-answer-comparison.md)，保留整题及每项检查的改善/退步；严格核对双方当前 manifest，私有报告不授予执行权限 |
 | `make ollama-answer-benchmark-preview CASE=same_source_missing SUITE=extraction CANDIDATE=question` | 显式选择[问题独立分类/资料核对候选](docs/design/ollama-answer-question.md)，保持原八套 71 道条件；run/diagnose 同样支持 `CANDIDATE=question`，仅限 reuse；完整双轮 122/142，质量回归，默认仍为 v15-reuse |
 | `make ollama-answer-benchmark-preview CASE=same_source_missing SUITE=extraction CANDIDATE=guarded` | 显式选择[问题分类与独立证据三步候选](docs/design/ollama-answer-guarded.md)：复用 v16 分类与 v15 选择/核对请求，本地比较证据并应用问题类型；每题三次分别保护的静态请求，run/diagnose 同样支持，仅限 reuse；完整双轮 136/142（v15 为 130/142），尚未通过质量门槛，默认仍为 v15-reuse |
 | `make ollama-answer-diagnose CASE=single_fact` | 显式单题合成诊断，记录固定故障阶段、证据一致性和类型/支持汇总计数，不能作为完整验收报告；见[诊断说明](docs/design/ollama-answer-diagnostics.md) |

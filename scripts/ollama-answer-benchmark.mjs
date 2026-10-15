@@ -1,9 +1,9 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { open, unlink, lstat, readFile, realpath } from "node:fs/promises";
+import { open, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { stagedCli } from "./ollama-answer-stages.mjs";
@@ -12,8 +12,10 @@ import { verifyGuardedDiagnostic } from "./ollama-answer-guarded-diagnostics.mjs
 import { verifyQuestionDiagnostic } from "./ollama-answer-question-diagnostics.mjs";
 import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
+import { compareQualityReports } from "./ollama-answer-compare-lib.mjs";
+import { comparisonFiles, expectedManifests, readQualityReports } from "./ollama-answer-reports.mjs";
 import { runCases, PROTOCOL_STAGES } from "./local-answer-benchmark-lib.mjs";
-import { availableMemory, digest, executionPolicy, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REUSE_PROFILE, QUESTION_PROFILE, GUARDED_PROFILE, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
+import { availableMemory, digest, executionPolicy, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, RUNNER } from "./ollama-answer-benchmark-lib.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -49,39 +51,45 @@ async function cli(args, signal) {
 async function manifests(target, suite, signal) {
   return cli(["manifest", target.endpoint, target.model_alias, "--suite", suite, "--backend", "ollama", "--residency", target.residency, "--candidate", target.candidate], signal);
 }
-async function gate(files, signal) {
-  assert.equal(files.length, Object.keys(SUITES).length * 2);
-  const seen = new Set(), reports = [];
-  const allowed = await realpath(join(base, "quality"));
-  for (const file of files) {
-    const path = resolve(file), info = await lstat(path), actual = await realpath(path);
-    assert.ok(info.isFile() && !info.isSymbolicLink() && info.size <= 65536 && actual.startsWith(`${allowed}${sep}`) && !seen.has(actual));
-    seen.add(actual); reports.push(JSON.parse(await readFile(path, "utf8")));
-  }
-  const profile = reports[0].runtime.execution_profile;
-  const target = { ...reports[0].runtime, residency: [REUSE_PROFILE, QUESTION_PROFILE, GUARDED_PROFILE].includes(profile) ? "reuse" : "cold", candidate: profile === GUARDED_PROFILE ? "guarded" : profile === QUESTION_PROFILE ? "question" : "independent" };
-  parseOptions(["--endpoint", target.endpoint, "--model", target.model_alias, "--candidate", target.candidate, "--residency", target.residency]);
-  const expected = {};
-  for (const suite of Object.keys(SUITES)) expected[suite] = await manifests(target, suite, signal);
+async function gate(inputs, signal) {
+  const reports = inputs.map(input => input.report);
+  const expected = await expectedManifests(reports, (target, suite) => manifests(target, suite, signal));
   const result = qualityGate(reports, expected);
   console.log(JSON.stringify(result)); process.exitCode = result.passed ? 0 : 2;
+}
+async function compare(inputs, signal) {
+  const middle = inputs.length / 2;
+  const left = inputs.slice(0, middle).map(input => input.report), right = inputs.slice(middle).map(input => input.report);
+  const load = (target, suite) => manifests(target, suite, signal);
+  const result = compareQualityReports(left, right, await expectedManifests(left, load), await expectedManifests(right, load));
+  const directory = await newReportDirectory(base, "quality");
+  console.log(JSON.stringify({ report: await writeReport(directory, result), ...result }));
+  process.exitCode = result.all_passed ? 0 : 2;
 }
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold] [--candidate independent|question|guarded]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。candidate 默认 independent；显式 question 仅用于 reuse 合成实验，先只读问题规划类型，再独立核对资料，两步均在发送前冻结。guarded 将问题分类与原独立选择、核对组合，每题三次静态请求（plan/select/verify）；其他候选两次。每次独立检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold] [--candidate independent|question|guarded]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\nnode scripts/ollama-answer-benchmark.mjs compare --left 十六份报告路径 --right 十六份报告路径\ncompare 要求同一运行时/模型和原八套条件，按套内时间配对两轮，保留整题与检查项退步；生成 0700/0600 私有报告，不授予执行权限。退出 0 双方门槛均通过、2 可比较但至少一方失败、1 无法比较。\npreview/gate/compare 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。candidate 默认 independent；显式 question 仅用于 reuse 合成实验，先只读问题规划类型，再独立核对资料，两步均在发送前冻结。guarded 将问题分类与原独立选择、核对组合，每题三次静态请求（plan/select/verify）；其他候选两次。每次独立检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
-  assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
-  const target = command === "gate" ? null : parseOptions(args.slice(command === "run" ? 1 : 2));
+  assert.ok(["run", "gate", "compare"].includes(command) || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
+  const offline = ["gate", "compare"].includes(command);
+  const target = offline ? null : parseOptions(args.slice(command === "run" ? 1 : 2));
   const policy = target ? executionPolicy(target.residency, target.candidate) : null;
   const abort = new AbortController(); const halt = () => abort.abort();
   process.on("SIGINT", halt); process.on("SIGTERM", halt);
   let lock, lockPath;
   try {
+    let inputs;
+    if (offline) {
+      stage = "read_reports";
+      const files = command === "compare" ? comparisonFiles(args.slice(1)) : null;
+      inputs = await readQualityReports(files ? [...files.left, ...files.right] : args.slice(1), base);
+    }
     stage = "build";
     await execute("cargo", ["build", "--locked", "--offline", "-p", "api-server", "--bin", "local-answer-benchmark"], { cwd: root, env, timeout: 180000, signal: abort.signal, maxBuffer: 65536 });
-    if (command === "gate") { stage = "gate"; await gate(args.slice(1), abort.signal); return; }
+    if (command === "gate") { stage = "gate"; await gate(inputs, abort.signal); return; }
+    if (command === "compare") { stage = "compare"; await compare(inputs, abort.signal); return; }
     if (command === "preview") {
       stage = "offline_preview";
       console.log(JSON.stringify(await cli(["preview", args[1], target.endpoint, target.model_alias, "--suite", target.suite, "--backend", "ollama", "--residency", target.residency, "--candidate", target.candidate], abort.signal))); return;
