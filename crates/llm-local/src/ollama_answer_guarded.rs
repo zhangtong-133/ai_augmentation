@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+#[path = "ollama_answer_evidence_bound.rs"]
+pub mod evidence_bound;
 #[path = "ollama_answer_question_first.rs"]
 pub mod question_first;
 

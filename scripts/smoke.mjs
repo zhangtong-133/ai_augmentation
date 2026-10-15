@@ -459,6 +459,26 @@ try {
     assert.deepEqual(restored, guardedPreview.preview[field]);
   }
   console.log("PASS: all 71 packaged question-first requests preserve frozen conditions and all values; only full user field order changes; no model call");
+  const frozenEvidenceBound = JSON.parse(await readFile(join(root, "apps/api-server/tests/fixtures/answer-evidence-bound-manifests-ollama-v19.json"), "utf8"));
+  for (const [suite, cold] of Object.entries(packagedOllamaManifests)) {
+    const bound = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", suite, "--backend", "ollama", "--residency", "reuse", "--candidate", "evidence-bound"], true));
+    assert.deepEqual(bound.map(item => item.case), cold.map(item => item.case));
+    assert.ok(bound.every(item => item.execution_profile === frozenEvidenceBound.execution_profile));
+    assert.deepEqual(Object.fromEntries(bound.map(item => [item.case.id, item.request_sha256])), frozenEvidenceBound.suites[suite]);
+  }
+  const boundPreview = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "preview", "missing_budget", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama", "--residency", "reuse", "--candidate", "evidence-bound"], true));
+  const alternatives = boundPreview.preview.verification_body.format.properties.checks.items.anyOf;
+  assert.equal(alternatives.length, 2);
+  assert.equal(alternatives[0].properties.evidence.minItems, 1);
+  assert.deepEqual(alternatives[0].properties.support.enum, ["stated", "unavailable"]);
+  assert.equal(alternatives[1].properties.evidence.minItems, 0);
+  assert.deepEqual(alternatives[1].properties.support.enum, ["unsupported"]);
+  const restoredBound = structuredClone(boundPreview.preview);
+  restoredBound.profile = firstPreview.preview.profile;
+  restoredBound.verification_body.format = firstPreview.preview.verification_body.format;
+  restoredBound.verification_body.messages[0].content = firstPreview.preview.verification_body.messages[0].content;
+  assert.deepEqual(restoredBound, firstPreview.preview);
+  console.log("PASS: all 71 packaged evidence-bound requests match frozen conditions; only verifier schema and matching declaration change; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

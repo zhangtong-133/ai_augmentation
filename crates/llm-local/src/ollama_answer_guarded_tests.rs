@@ -118,7 +118,11 @@ impl NativeStageGuard for Guard {
 }
 #[tokio::test]
 async fn three_fresh_guards_and_early_protocol_validation_bound_native_requests() {
-    for builder in [preview as PreviewBuilder, question_first::preview] {
+    for builder in [
+        preview as PreviewBuilder,
+        question_first::preview,
+        evidence_bound::preview,
+    ] {
         for (plan, selection, limit, expected, valid) in [
             (
                 r#"{"kinds":["value"]}"#,

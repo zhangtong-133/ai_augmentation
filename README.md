@@ -97,6 +97,7 @@ npm --prefix apps/web run build
 | `make ollama-answer-benchmark-preview CASE=same_source_missing SUITE=extraction CANDIDATE=question` | 显式选择[问题独立分类/资料核对候选](docs/design/ollama-answer-question.md)，保持原八套 71 道条件；run/diagnose 同样支持 `CANDIDATE=question`，仅限 reuse；完整双轮 122/142，质量回归，默认仍为 v15-reuse |
 | `make ollama-answer-benchmark-preview CASE=same_source_missing SUITE=extraction CANDIDATE=guarded` | 显式选择[问题分类与独立证据三步候选](docs/design/ollama-answer-guarded.md)：复用 v16 分类与 v15 选择/核对请求，本地比较证据并应用问题类型；每题三次分别保护的静态请求，run/diagnose 同样支持，仅限 reuse；完整双轮 136/142（v15 为 130/142），尚未通过质量门槛，默认仍为 v15-reuse |
 | `make ollama-answer-benchmark-preview CASE=injection CANDIDATE=question-first` | 显式选择[原问题前置顺序实验](docs/design/ollama-answer-question-first.md)：只移动 v17 完整用户 JSON 的字段顺序，三步流程与判定保持；run/diagnose 同样支持，仅限 reuse；前七套双轮 114/118；支持首轮发生协议拒绝，完整双轮未完成，默认仍为 v15-reuse |
+| `make ollama-answer-benchmark-preview CASE=silence_cannot_establish_availability SUITE=support CANDIDATE=evidence-bound` | 显式选择[支持状态与证据约束实验](docs/design/ollama-answer-evidence-bound.md)：在 v18 核对 schema 中要求 stated/unavailable 带非空证据，严格解码及原题目保持；run/diagnose 同样支持，仅限 reuse；完整双轮 132/142，低于 v17，质量门槛失败；默认仍为 v15-reuse |
 | `make ollama-answer-diagnose CASE=single_fact` | 显式单题合成诊断，记录固定故障阶段、证据一致性和类型/支持汇总计数，不能作为完整验收报告；见[诊断说明](docs/design/ollama-answer-diagnostics.md) |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |

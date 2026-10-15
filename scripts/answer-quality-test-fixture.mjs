@@ -8,9 +8,10 @@ const profiles = {
   question: frozen("answer-question-manifests-ollama-v16.json"),
   guarded: frozen("answer-guarded-manifests-ollama-v17.json"),
   "question-first": frozen("answer-question-first-manifests-ollama-v18.json"),
+  "evidence-bound": frozen("answer-evidence-bound-manifests-ollama-v19.json"),
 };
 export function answerReports({ residency = "reuse", candidate = "independent", offset = 0 } = {}) {
-  const policy = executionPolicy(residency, candidate), requests = ["guarded", "question-first"].includes(candidate) ? 3 : 2;
+  const policy = executionPolicy(residency, candidate), requests = ["guarded", "question-first", "evidence-bound"].includes(candidate) ? 3 : 2;
   const expected = Object.fromEntries(Object.keys(SUITES).map(suite => [suite, original[suite].map(manifest => ({
     case: structuredClone(manifest.case), execution_profile: policy.profile,
     request_sha256: residency === "cold" ? manifest.request_sha256 : profiles[candidate].suites[suite][manifest.case.id],

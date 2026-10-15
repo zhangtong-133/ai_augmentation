@@ -244,10 +244,10 @@ local-answer-quality-test: ## 验收问答条件、固定 CLI 与私有报告边
 	node scripts/test-ollama-answer-compare.mjs
 
 .PHONY: ollama-answer-benchmark ollama-answer-benchmark-preview ollama-answer-diagnose ollama-answer-quality-gate
-ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认驻留复用/空闲 30 秒释放；CANDIDATE=question/guarded/question-first 显式选合成候选；SUITE 选八套
+ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认驻留复用/空闲 30 秒释放；CANDIDATE=question/guarded/question-first/evidence-bound 显式选合成候选；SUITE 选八套
 	node scripts/ollama-answer-benchmark.mjs run $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",) $(if $(CANDIDATE),--candidate "$(CANDIDATE)",)
 
-ollama-answer-benchmark-preview: ## 离线预览 Ollama 静态请求与驻留策略（CASE、SUITE、RESIDENCY=reuse/cold、CANDIDATE=independent/question/guarded/question-first）
+ollama-answer-benchmark-preview: ## 离线预览 Ollama 静态请求与驻留策略（CASE、SUITE、RESIDENCY=reuse/cold、CANDIDATE=independent/question/guarded/question-first/evidence-bound）
 	node scripts/ollama-answer-benchmark.mjs preview "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",) $(if $(CANDIDATE),--candidate "$(CANDIDATE)",)
 
 ollama-answer-diagnose: ## 显式诊断一题合成请求，记录固定阶段及有界语义计数；不能计入质量门槛（CASE、SUITE）

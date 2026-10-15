@@ -8,7 +8,7 @@ make ollama-answer-compare LEFT='左侧十六份报告路径' RIGHT='右侧十�
 node scripts/ollama-answer-benchmark.mjs compare --left 左侧十六份路径 --right 右侧十六份路径
 ```
 
-该命令只在本机离线构建合成 CLI 并重建 manifest，不访问 Ollama、下载模型或发送推理。两侧分别支持 v14 cold、v15 reuse、v16 question、v17 guarded 和后续新增的 [v18 question-first](ollama-answer-question-first.md)，也可比较同一 profile 的不同观察。默认模型和业务路径保持原状。
+该命令只在本机离线构建合成 CLI 并重建 manifest，不访问 Ollama、下载模型或发送推理。两侧分别支持 v14 cold、v15 reuse、v16 question、v17 guarded、[v18 question-first](ollama-answer-question-first.md) 和 [v19 evidence-bound](ollama-answer-evidence-bound.md)，也可比较同一 profile 的不同观察。默认模型和业务路径保持原状。
 
 ## 输入与配对
 
@@ -59,3 +59,7 @@ v15 → v17 的四项退步均是 injection 两轮的 expected_status 和 requir
 本批未重跑真实模型双轮、Docker smoke、PostgreSQL、浏览器 UI、Qdrant/index、MinIO、真实公网/私有材料、游戏并行和 vLLM；改动限于离线 Node 工具、读取器及文档。上一批 smoke 和模型质量保留原记录，不当作本批重跑。
 
 本批不修改模型提示、数据库迁移、配置开关或页面。模型质量仍为 v17 136/142，默认 v15-reuse、私有执行关闭。后续继续处理所问项映射、证据粒度和一致误选命令；新的候选仍须在首次推理前冻结并完成独立双轮门槛。
+
+## 后续 v19 完整观察
+
+[v19 证据约束实验](ollama-answer-evidence-bound.md)的完整首次双轮也通过本命令核对：v17 → v19 为 136/142 → 132/142，整题改善/退步 2/6，布尔改善/退步 4/18；v15 → v19 为 130/142 → 132/142，整题 8/6、布尔 24/22。新增三题各两轮退步与 forged_system 两轮改善均保存，不能只按相对 v15 的净增分判断通过。v19 gate v13 仍失败；两份比较的身份、完整性及私有报告检查通过，退出 2 表示质量未过门槛。v18 报告不完整，仍不能参加正式比较。
