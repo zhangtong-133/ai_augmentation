@@ -6,6 +6,7 @@ import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
 export const PROFILE = "ollama-knowledge-answer-v14";
 export const REUSE_PROFILE = "ollama-knowledge-answer-v15-reuse";
+export const GUARDED_PROFILE = "ollama-knowledge-answer-v17-guarded";
 export const QUESTION_PROFILE = "ollama-knowledge-answer-v16-question";
 export const RUNNER = "llamacpp";
 export const REPORT_SCHEMA = "ollama-answer-quality-report-v2";
@@ -23,11 +24,11 @@ export function residencyPolicy(residency) {
     : { profile: REUSE_PROFILE, report_schema: REUSE_REPORT_SCHEMA, resource_policy: REUSE_RESOURCE_POLICY };
 }
 export function executionPolicy(residency, candidate = "independent") {
-  assert.ok(["independent", "question"].includes(candidate));
+  assert.ok(["independent", "question", "guarded"].includes(candidate));
   const policy = residencyPolicy(residency);
   if (candidate === "independent") return policy;
-  assert.equal(residency, "reuse", "question candidate requires finite reuse");
-  return { ...policy, profile: QUESTION_PROFILE, report_schema: "ollama-answer-quality-report-v4" };
+  assert.equal(residency, "reuse", "experimental candidate requires finite reuse");
+  return { ...policy, profile: candidate === "guarded" ? GUARDED_PROFILE : QUESTION_PROFILE, report_schema: candidate === "guarded" ? "ollama-answer-quality-report-v5" : "ollama-answer-quality-report-v4" };
 }
 export function localMetadata(endpoint, path, body, signal) {
   return new Promise((accept, reject) => {
@@ -157,9 +158,11 @@ export function qualityGate(reports, expected) {
   assert.deepEqual(Object.keys(expected).sort(), Object.keys(SUITES).sort());
   const rounds = Object.fromEntries(Object.keys(SUITES).map(suite => [suite, []])), ids = new Set();
   const runtime = reports[0].runtime;
+  const guarded = runtime.execution_profile === GUARDED_PROFILE;
+  const nativeRequests = guarded ? 3 : 2;
   const question = runtime.execution_profile === QUESTION_PROFILE;
-  const reuse = question || runtime.execution_profile === REUSE_PROFILE;
-  const policy = executionPolicy(reuse ? "reuse" : "cold", question ? "question" : "independent");
+  const reuse = guarded || question || runtime.execution_profile === REUSE_PROFILE;
+  const policy = executionPolicy(reuse ? "reuse" : "cold", guarded ? "guarded" : question ? "question" : "independent");
   assert.deepEqual(Object.keys(runtime).sort(), ["arch", "endpoint", "engine", "execution_profile", "model_alias", "model_digest", "model_metadata_sha256", "model_size", "platform", "resource_policy", "runner", "total_memory", "version"]);
   assert.equal(runtime.engine, "ollama"); assert.equal(runtime.execution_profile, policy.profile);
   assert.equal(runtime.runner, RUNNER);
@@ -191,7 +194,7 @@ export function qualityGate(reports, expected) {
       if (reuse && ["minimum_loading_available_bytes", "minimum_reuse_available_bytes"].includes(key) && value === null) continue;
       assert.ok(Number.isSafeInteger(value) && value >= 0);
     }
-    assert.equal(report.resources.preload_checks, report.total_cases * 2);
+    assert.equal(report.resources.preload_checks, report.total_cases * nativeRequests);
     assert.ok(report.resources.inflight_checks >= report.total_cases);
     if (reuse) {
       const resources = report.resources, loadingChecks = resources.cold_checks + resources.reload_checks;
@@ -224,8 +227,8 @@ export function qualityGate(reports, expected) {
     }
   }
   const failed = reports.flatMap(report => report.results.filter(result => !result.quality_pass).map(result => ({ suite: report.suite, run_id: report.run_id, id: result.id })));
-  return { schema: question ? "ollama-answer-quality-gate-v10" : reuse ? "ollama-answer-quality-gate-v9" : "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
+  return { schema: guarded ? "ollama-answer-quality-gate-v11" : question ? "ollama-answer-quality-gate-v10" : reuse ? "ollama-answer-quality-gate-v9" : "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
     reports_sha256: reports.map(digest), manifests_sha256: digest(expected),
-    rounds_per_suite: 2, native_requests_per_case: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
+    rounds_per_suite: 2, native_requests_per_case: nativeRequests, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
     passed: failed.length === 0, failed_cases: failed, private_execution_authorized: false };
 }

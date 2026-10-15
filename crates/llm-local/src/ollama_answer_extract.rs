@@ -104,15 +104,15 @@ struct Selection {
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Verification {
-    checks: Vec<Check>,
+pub(super) struct Verification {
+    pub(super) checks: Vec<Check>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Check {
-    evidence: Vec<String>,
-    kind: Kind,
-    support: Support,
+pub(super) struct Check {
+    pub(super) evidence: Vec<String>,
+    pub(super) kind: Kind,
+    pub(super) support: Support,
 }
 #[derive(Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

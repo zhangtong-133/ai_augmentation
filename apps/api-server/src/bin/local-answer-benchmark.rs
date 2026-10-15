@@ -12,6 +12,7 @@ enum Backend {
     LlamaCpp,
     Ollama(Residency),
     Question,
+    Guarded,
 }
 impl Backend {
     fn preview(
@@ -20,6 +21,10 @@ impl Backend {
         target: &LocalTarget,
     ) -> Result<serde_json::Value, &'static str> {
         match self {
+            Self::Guarded => serde_json::to_value(
+                ollama_answer::question::guarded::preview(target, case.question, &case.sources())
+                    .map_err(|_| "invalid preview")?,
+            ),
             Self::Question => serde_json::to_value(
                 ollama_answer::question::preview(target, case.question, &case.sources())
                     .map_err(|_| "invalid preview")?,
@@ -41,6 +46,10 @@ impl Backend {
     }
     fn provider(self, target: LocalTarget) -> Result<Box<dyn AnswerProvider>, &'static str> {
         match self {
+            Self::Guarded => {
+                ollama_answer::question::guarded::GuardedAnswers::new(target, self.guard())
+                    .map(|v| Box::new(v) as Box<dyn AnswerProvider>)
+            }
             Self::Question => ollama_answer::question::QuestionAnswers::new(target, self.guard())
                 .map(|v| Box::new(v) as Box<dyn AnswerProvider>),
             Self::LlamaCpp => {
@@ -56,10 +65,10 @@ impl Backend {
     fn guard(self) -> Arc<StdioGuard> {
         Arc::new(StdioGuard {
             next: tokio::sync::Mutex::new(0),
-            first: if self == Self::Question {
-                AnswerStage::Plan
-            } else {
-                AnswerStage::Select
+            stages: match self {
+                Self::Guarded => &[AnswerStage::Plan, AnswerStage::Select, AnswerStage::Verify],
+                Self::Question => &[AnswerStage::Plan, AnswerStage::Verify],
+                _ => &[AnswerStage::Select, AnswerStage::Verify],
             },
         })
     }
@@ -76,6 +85,12 @@ impl Backend {
                 .map_err(|_| LlmError::InvalidResponse("invalid diagnostic".into()))
         }
         match self {
+            Self::Guarded => {
+                ollama_answer::question::guarded::GuardedAnswers::new(target, self.guard())?
+                    .answer_with_diagnostics(case.question, &case.sources())
+                    .await
+                    .and_then(metadata)
+            }
             Self::Question => ollama_answer::question::QuestionAnswers::new(target, self.guard())?
                 .answer_with_diagnostics(case.question, &case.sources())
                 .await
@@ -95,7 +110,7 @@ impl Backend {
 // The host runner confirms each native call separately. No acknowledgment means no request.
 struct StdioGuard {
     next: tokio::sync::Mutex<u8>,
-    first: AnswerStage,
+    stages: &'static [AnswerStage],
 }
 impl NativeStageGuard for StdioGuard {
     fn permit(
@@ -104,7 +119,7 @@ impl NativeStageGuard for StdioGuard {
     ) -> personal_ai_llm::BoxFuture<'_, personal_ai_llm::LlmResult<()>> {
         Box::pin(async move {
             let mut next = self.next.lock().await;
-            if (*next, stage) != (0, self.first) && (*next, stage) != (1, AnswerStage::Verify) {
+            if self.stages.get(usize::from(*next)) != Some(&stage) {
                 return Err(LlmError::ProviderUnavailable(
                     "native stage permission unavailable".into(),
                 ));
@@ -136,6 +151,11 @@ fn manifest(
     backend: Backend,
 ) -> Result<serde_json::Value, &'static str> {
     let (profile, digest) = match backend {
+        Backend::Guarded => (
+            ollama_answer::question::guarded::PROFILE,
+            ollama_answer::question::guarded::preview(target, case.question, &case.sources())
+                .and_then(|v| v.fingerprint()),
+        ),
         Backend::Question => (
             ollama_answer::question::PROFILE,
             ollama_answer::question::preview(target, case.question, &case.sources())
@@ -170,8 +190,9 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
         match args[end - 2].as_str() {
             "--candidate" if candidate.is_none() => {
                 candidate = Some(match args[end - 1].as_str() {
-                    "independent" => false,
-                    "question" => true,
+                    "independent" => "independent",
+                    "question" => "question",
+                    "guarded" => "guarded",
                     _ => return Err("invalid answer candidate"),
                 });
             }
@@ -212,9 +233,10 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
         _ => return Err("residency requires Ollama"),
     };
     let backend = match (backend, candidate) {
-        (Backend::Ollama(Residency::Reuse), Some(true)) => Backend::Question,
-        (Backend::Ollama(_), Some(false) | None) | (Backend::LlamaCpp, None) => backend,
-        _ => return Err("question candidate requires explicit Ollama reuse"),
+        (Backend::Ollama(Residency::Reuse), Some("question")) => Backend::Question,
+        (Backend::Ollama(Residency::Reuse), Some("guarded")) => Backend::Guarded,
+        (Backend::Ollama(_), Some("independent") | None) | (Backend::LlamaCpp, None) => backend,
+        _ => return Err("experimental candidate requires explicit Ollama reuse"),
     };
     Ok((
         &args[..end],
@@ -225,7 +247,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\nlocal-answer-benchmark diagnose CASE ENDPOINT MODEL --use-local-benchmark --guard-native-stages --backend ollama\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）；--candidate independent|question 默认 independent，question 必须显式选择 Ollama reuse，首步只读问题。\n仅内置合成材料；diagnose 只增加有界语义计数，不能计入质量门槛；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\nlocal-answer-benchmark diagnose CASE ENDPOINT MODEL --use-local-benchmark --guard-native-stages --backend ollama\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）；--candidate independent|question|guarded 默认 independent；question/guarded 必须显式选择 Ollama reuse。question 两步；guarded 三步 plan/select/verify，每步独立授权，首步只读问题。\n仅内置合成材料；diagnose 只增加有界语义计数，不能计入质量门槛；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -564,6 +586,55 @@ mod tests {
         assert_eq!(serde_json::json!(total), frozen["case_count"]);
     }
     #[test]
+    fn guarded_candidate_freezes_three_static_requests_and_preserves_every_original_condition() {
+        let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-guarded-manifests-ollama-v17.json"
+        ))
+        .unwrap();
+        let previous: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-independent-manifests-ollama-v14.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            frozen["execution_profile"],
+            ollama_answer::question::guarded::PROFILE
+        );
+        assert_eq!(
+            frozen["native_stages"],
+            serde_json::json!(["plan", "select", "verify"])
+        );
+        assert_eq!(frozen["keep_alive_seconds"], 30);
+        let mut total = 0;
+        for (name, suite) in [
+            ("baseline", QualitySuite::Baseline),
+            ("challenge", QualitySuite::Challenge),
+            ("coverage", QualitySuite::Coverage),
+            ("extraction", QualitySuite::Extraction),
+            ("decision", QualitySuite::Decision),
+            ("mixed", QualitySuite::Mixed),
+            ("availability", QualitySuite::Availability),
+            ("support", QualitySuite::Support),
+        ] {
+            let cases = suite.cases();
+            assert_eq!(
+                cases.len(),
+                frozen["suites"][name].as_object().unwrap().len()
+            );
+            for (index, case) in cases.iter().enumerate() {
+                let actual = manifest(case, &target, suite, Backend::Guarded).unwrap();
+                assert_eq!(actual["case"], previous[name][index]["case"]);
+                assert_eq!(actual["request_sha256"], frozen["suites"][name][case.id]);
+                assert_ne!(
+                    actual["request_sha256"],
+                    previous[name][index]["request_sha256"]
+                );
+                total += 1;
+            }
+        }
+        assert_eq!(serde_json::json!(total), frozen["case_count"]);
+    }
+    #[test]
     fn residency_requires_explicit_ollama_backend_and_rejects_invalid_or_repeated_options() {
         for args in [
             vec!["--residency", "reuse"],
@@ -700,43 +771,48 @@ mod tests {
         assert!(run(&args).await.is_err());
     }
     #[test]
-    fn question_candidate_requires_explicit_ollama_reuse_and_preserves_default_selection() {
-        for suffix in [
-            vec!["--candidate", "question"],
-            vec!["--backend", "ollama", "--candidate", "question"],
-            vec![
-                "--backend",
-                "ollama",
-                "--residency",
-                "cold",
-                "--candidate",
-                "question",
-            ],
-            vec!["--candidate", "later"],
-            vec![
+    fn experimental_candidates_require_explicit_ollama_reuse_and_preserve_default_selection() {
+        for candidate in ["question", "guarded"] {
+            for suffix in [
+                vec!["--candidate", candidate],
+                vec!["--backend", "ollama", "--candidate", candidate],
+                vec![
+                    "--backend",
+                    "ollama",
+                    "--residency",
+                    "cold",
+                    "--candidate",
+                    candidate,
+                ],
+                vec!["--candidate", "later"],
+                vec![
+                    "--backend",
+                    "ollama",
+                    "--residency",
+                    "reuse",
+                    "--candidate",
+                    candidate,
+                    "--candidate",
+                    candidate,
+                ],
+            ] {
+                let args: Vec<_> = suffix.into_iter().map(str::to_owned).collect();
+                assert!(options(&args).is_err() || !options(&args).unwrap().0.is_empty());
+            }
+            let args = [
                 "--backend",
                 "ollama",
                 "--residency",
                 "reuse",
                 "--candidate",
-                "question",
-                "--candidate",
-                "question",
-            ],
-        ] {
-            let args: Vec<_> = suffix.into_iter().map(str::to_owned).collect();
-            assert!(options(&args).is_err() || !options(&args).unwrap().0.is_empty());
+                candidate,
+            ]
+            .map(str::to_owned);
+            assert!(matches!(
+                (candidate, options(&args).unwrap().2),
+                ("question", Backend::Question) | ("guarded", Backend::Guarded)
+            ));
         }
-        let args = [
-            "--backend",
-            "ollama",
-            "--residency",
-            "reuse",
-            "--candidate",
-            "question",
-        ]
-        .map(str::to_owned);
-        assert!(matches!(options(&args).unwrap().2, Backend::Question));
         let args = ["--backend", "ollama", "--residency", "reuse"].map(str::to_owned);
         assert!(matches!(
             options(&args).unwrap().2,

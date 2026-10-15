@@ -429,6 +429,18 @@ try {
   for (const field of ["body", "verification_body"]) assert.equal(questionPreview.preview[field].keep_alive, 30);
   assert.deepEqual(JSON.parse(questionPreview.preview.verification_body.messages[1].content), JSON.parse(coveragePreview.preview.verification_body.messages[1].content));
   console.log("PASS: all 71 packaged question-only candidate requests preserve conditions, source bytes and frozen fingerprints; no model call");
+  const frozenGuarded = JSON.parse(await readFile(join(root, "apps/api-server/tests/fixtures/answer-guarded-manifests-ollama-v17.json"), "utf8"));
+  for (const [suite, cold] of Object.entries(packagedOllamaManifests)) {
+    const guarded = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", suite, "--backend", "ollama", "--residency", "reuse", "--candidate", "guarded"], true));
+    assert.deepEqual(guarded.map(item => item.case), cold.map(item => item.case));
+    assert.ok(guarded.every(item => item.execution_profile === frozenGuarded.execution_profile));
+    assert.deepEqual(Object.fromEntries(guarded.map(item => [item.case.id, item.request_sha256])), frozenGuarded.suites[suite]);
+  }
+  const guardedPreview = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "preview", "missing_budget", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama", "--residency", "reuse", "--candidate", "guarded"], true));
+  assert.deepEqual(guardedPreview.preview.planning_body, questionPreview.preview.body);
+  assert.deepEqual(guardedPreview.preview.selection_body, warmPreview.preview.body);
+  assert.deepEqual(guardedPreview.preview.verification_body, warmPreview.preview.verification_body);
+  console.log("PASS: all 71 packaged three-stage requests preserve frozen conditions and exact v16/v15 component bodies; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

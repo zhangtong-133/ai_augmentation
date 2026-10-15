@@ -3,9 +3,9 @@ import { spawn } from "node:child_process";
 const failure = () => Object.assign(new Error("native stage handshake unconfirmed"), { answerFailure: "protocol", answerFailureStage: "native_guard" });
 
 // No inference acknowledgment is sent until the host confirms that particular native request.
-export function stagedCli(binary, args, options, before, signal, timeoutMs = 90000, firstStage = "select") {
-  if (!["select", "plan"].includes(firstStage)) return Promise.reject(failure());
-  const stages = [firstStage, "verify"];
+export function stagedCli(binary, args, options, before, signal, timeoutMs = 90000, mode = "select") {
+  if (!["select", "plan", "guarded"].includes(mode)) return Promise.reject(failure());
+  const stages = mode === "guarded" ? ["plan", "select", "verify"] : [mode, "verify"];
   return new Promise((accept, reject) => {
     const controller = new AbortController();
     const child = spawn(binary, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
@@ -54,7 +54,7 @@ export function stagedCli(binary, args, options, before, signal, timeoutMs = 900
       signal?.removeEventListener("abort", cancelled);
       if (error) { reject(error); return; }
       if (code !== 0) { reject(Object.assign(new Error("native case unconfirmed"), { stderr })); return; }
-      if (seen !== 2 || allowed !== 2 || line) { reject(failure()); return; }
+      if (seen !== stages.length || allowed !== stages.length || line) { reject(failure()); return; }
       try { accept(JSON.parse(stdout)); } catch { reject(failure()); }
     });
   });

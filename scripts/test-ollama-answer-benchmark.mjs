@@ -113,8 +113,8 @@ function fixtures(residency = "cold", candidate = "independent") {
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
     schema: policy.report_schema, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
     runtime: { ...runtimeIdentity({ ...target, residency, candidate }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
-    resources: { preload_checks: 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
-      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
+    resources: { preload_checks: candidate === "guarded" ? 3 : 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
+      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: candidate === "guarded" ? 2 : 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
     results: [{ id: suite, request_sha256: "b".repeat(64), elapsed_ms: 1, protocol_valid: true, citation_valid: true, quality_pass: true,
       checks: ["expected_status", "required_terms", "expected_citations", "forbidden_terms"].map(name => ({ name, passed: true })) }],
@@ -365,4 +365,40 @@ test("question planning handshake guards both requests and rejects selection mar
     }, undefined, 5000, "plan"), error => error.answerFailure === "resource");
     assert.deepEqual(checks, blocked === "plan" ? ["plan"] : ["plan","verify"]);
   }
+});
+
+test("guarded reports require three permits per case and cannot mix profiles or diagnostics", () => {
+  const { reports, expected } = fixtures("reuse", "guarded");
+  const result = qualityGate(reports, expected);
+  assert.equal(result.schema, "ollama-answer-quality-gate-v11");
+  assert.equal(result.native_requests_per_case, 3);
+  assert.equal(result.private_execution_authorized, false);
+  assert.throws(() => parseOptions(["--candidate","guarded","--residency","cold"]));
+  for (const mutate of [
+    report => report.schema = "ollama-answer-quality-report-v4",
+    report => report.resources.preload_checks = 2,
+    report => report.runtime.execution_profile = "ollama-knowledge-answer-v16-question",
+    report => report.results[0].semantic_diagnostic = {},
+    report => report.diagnostic_only = true,
+  ]) { const copy = structuredClone(reports); mutate(copy[1]); assert.throws(() => qualityGate(copy, expected)); }
+  assert.throws(() => qualityGate(fixtures("reuse", "question").reports, expected));
+});
+test("guarded handshake permits plan select verify exactly once and stops at each denied stage", async () => {
+  const stages = ["plan","select","verify"], seen = [];
+  assert.deepEqual(await stagedCli(process.execPath,childArgs(stages),childOptions,async stage => { seen.push(stage); },undefined,5000,"guarded"), {completed:true});
+  assert.deepEqual(seen,stages);
+  for (const wrong of [[],["plan","verify"],["select","verify"],["plan","select","select"],[...stages,"verify"]]) {
+    await assert.rejects(stagedCli(process.execPath,childArgs(wrong),childOptions,async()=>{},undefined,5000,"guarded"),error=>error.answerFailureStage==="native_guard");
+  }
+  for (const blocked of stages) {
+    const checked = [];
+    await assert.rejects(stagedCli(process.execPath,childArgs(stages),childOptions,async stage=>{
+      checked.push(stage); if(stage===blocked) throw Object.assign(new Error("reserve unavailable"),{answerFailure:"resource"});
+    },undefined,5000,"guarded"),error=>error.answerFailure==="resource");
+    assert.deepEqual(checked,stages.slice(0,stages.indexOf(blocked)+1));
+  }
+  const controller = new AbortController(); let release;
+  await assert.rejects(stagedCli(process.execPath,childArgs(stages),childOptions,async stage=>{
+    if(stage === "select") { controller.abort(); await new Promise(resolve=>{release=resolve;}); }
+  },controller.signal,5000,"guarded")); release();
 });

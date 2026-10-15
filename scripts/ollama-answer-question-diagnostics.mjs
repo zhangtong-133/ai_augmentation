@@ -5,6 +5,13 @@ import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 export function verifyQuestionDiagnostic(raw, manifest, target) {
   const { semantic_diagnostic: value, ...ordinary } = raw;
   const result = verifyCase(ordinary, manifest, target);
+  const diagnostic = validateQuestionDiagnostic(value);
+  if (result.citation_valid) assert.equal(result.checks[0].passed,
+    (value.requirements_supported ? "answered" : "insufficient_evidence") === manifest.case.expected_status);
+  return { ...result, semantic_diagnostic: diagnostic };
+}
+// Shared bounded validator; the guarded composition applies its extra evidence constraint separately.
+export function validateQuestionDiagnostic(value) {
   assert.deepEqual(Object.keys(value).sort(), ["checks_by_kind", "planned_by_kind", "planned_requirements", "requirements_agree", "requirements_supported", "schema", "verified_excerpts", "verified_requirements"]);
   assert.equal(value.schema, "ollama-answer-question-diagnostic-v1");
   for (const field of ["planned_requirements", "verified_requirements", "verified_excerpts"]) {
@@ -41,11 +48,9 @@ export function verifyQuestionDiagnostic(raw, manifest, target) {
     assert.equal(value.checks_by_kind, null);
     assert.equal(value.requirements_supported, false);
   }
-  if (result.citation_valid) assert.equal(result.checks[0].passed,
-    (value.requirements_supported ? "answered" : "insufficient_evidence") === manifest.case.expected_status);
-  return { ...result, semantic_diagnostic: {
+  return {
     schema: value.schema, planned_requirements: value.planned_requirements, verified_requirements: value.verified_requirements,
     requirements_agree: value.requirements_agree, requirements_supported: value.requirements_supported,
     verified_excerpts: value.verified_excerpts, planned_by_kind: planned, checks_by_kind: value.requirements_agree ? counts : null,
-  } };
+  };
 }
