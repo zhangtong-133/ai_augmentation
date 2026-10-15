@@ -21,6 +21,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
+- [x] [Ollama 原问题前置顺序实验](design/ollama-answer-question-first.md)：v18 只重排 v17 两份完整用户 JSON 的字段，原 71 道条件、字段值、字节长度及三步判定保持；新 profile、report v6/gate v12 与比较器入口已接入。前七套双轮 114/118，`forged_system` 两轮恢复，但支持组首轮 `silence_cannot_establish_availability` 在 verification_decision 被协议拒绝，新增协议回归；按冻结规则停止，保留十四份完整及一份部分报告。剩余十六题和十一道诊断未运行，不能给出完整双轮分数或正式比较；默认 v15-reuse 与私有执行关闭状态保持。
+
 - [x] [Ollama 候选完整双轮离线比较](design/ollama-answer-comparison.md)：正式 compare 命令、Make 与 CI 入口，分别核对两侧八套门槛和当前 manifest，按套内时间配对两轮；同一运行时/模型/题目条件下保留整题与四项检查的全部变化。历史 v15 → v17 复核为六次整题改善、零次整题退步，但有四项检查退步；v16 → v17 为二十次改善、六次退步。新建有界私有报告，未调用模型，默认 v15-reuse 与私有执行关闭状态保持。
 
 - [x] [Ollama 问题分类与独立证据三步实验](design/ollama-answer-guarded.md)：v17 组合未修改的 v16 问题分类和 v15 独立选择/核对请求，本地应用问题类型并比较证据集合；三次逐步许可，原八套 71 道条件及历史请求保持。完整双轮 136/142，相对 v15 三题各两轮改善、没有新增失败题；相对 v16 十题各两轮恢复、三题各两轮回归。十一题单次诊断区分数量失配、证据分歧及一致误选；正确结果也可能依赖数量失配，不能当作实体支持已判对。质量门槛仍失败，默认 v15-reuse 与私有执行关闭状态保持。
@@ -53,7 +55,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 - [x] [macOS Ollama 问答候选与独立质量挑战](design/ollama-answer-quality.md)：复用已安装 Qwen3.5-9B，固定 llamacpp 运行器、上下文/输出、统一内存保护与逐题卸载；保留旧 4/7 记录及全部 v2 授权指纹。新增 8 题冻结挑战和离线双轮门槛，v3 原基准两轮 7/7、挑战两轮 7/8，因 `partial_answer` 未通过质量门槛，私有执行继续关闭。
 
-本地问答当前下一步：保留八套全部条件和历史失败，解决稳定需求映射、独立证据粒度以及资料命令与事实的区分。三步组合 v17 达到 136/142，高于同运行时 v15 的 130/142、v16 的 122/142；仍有三题各两轮失败，不能替代默认候选。下一 profile 须在首次推理前冻结并通过完整双轮门槛，再推进多请求的精确预览/同意与单次私有执行器。完整对照、诊断和限制见[三步实验](design/ollama-answer-guarded.md)，原[问题独立分类](design/ollama-answer-question.md)、[独立语义核对](design/ollama-answer-independent.md)及[有限驻留验收](design/ollama-answer-residency.md)记录保持。
+本地问答当前下一步：保留八套全部条件和历史失败，解决稳定需求映射、证据状态与实际证据的一致性，以及资料命令与事实的区分。三步 v17 完整双轮为 136/142；v18 仅改输入顺序，前七套一题两轮均恢复，却在支持沉默题出现新协议拒绝，未完成双轮，不能与 v17 作完整成绩比较或替代默认候选。下一 profile 须首次推理前冻结实际请求，不放宽无证据支持的拒绝规则，完成完整双轮门槛后再推进多请求精确预览/同意与单次私有执行器。最新部分观察与停止证据见[顺序实验](design/ollama-answer-question-first.md)，原[三步实验](design/ollama-answer-guarded.md)、[问题独立分类](design/ollama-answer-question.md)、[独立语义核对](design/ollama-answer-independent.md)及[有限驻留验收](design/ollama-answer-residency.md)记录保持。
 
 2026-10-10 用户明确资源优先级：主要给 PC 游戏留出显存，继续执行[至少 6 GiB 余量与模型监督](design/local-model.md#显存约束)。游戏并行及 FPS/卡顿实测为[可选观察](design/gpu-observation.md#可选游戏观察)，不作为后续开发或发布前置；历史记录中的游戏未测事实保留。后续继续推进问答质量和功能闭环。
 

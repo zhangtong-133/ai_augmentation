@@ -63,6 +63,16 @@ fn count_mismatch_abstains_and_never_bypasses_strict_verification() {
             .to_string();
         assert!(!error.contains("secret"));
     }
+    for support in ["stated", "unavailable"] {
+        let error = evaluate(
+            json!(["availability", "availability"]),
+            json!([]),
+            json!([{"evidence":[],"kind":"availability","support":support}]),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("verification_decision"));
+    }
 }
 #[test]
 fn all_three_static_bodies_exactly_reuse_the_frozen_candidate_components() {
@@ -108,80 +118,84 @@ impl NativeStageGuard for Guard {
 }
 #[tokio::test]
 async fn three_fresh_guards_and_early_protocol_validation_bound_native_requests() {
-    for (plan, selection, limit, expected, valid) in [
-        (
-            r#"{"kinds":["value"]}"#,
-            r#"{"evidence":["s1u1"]}"#,
-            3,
-            3,
-            true,
-        ),
-        (
-            r#"{"kinds":["value"]}"#,
-            r#"{"evidence":["s1u1"]}"#,
-            0,
-            0,
-            false,
-        ),
-        (
-            r#"{"kinds":["value"]}"#,
-            r#"{"evidence":["s1u1"]}"#,
-            1,
-            1,
-            false,
-        ),
-        (
-            r#"{"kinds":["value"]}"#,
-            r#"{"evidence":["s1u1"]}"#,
-            2,
-            2,
-            false,
-        ),
-        (r#"{"secret":[]}"#, r#"{"evidence":["s1u1"]}"#, 3, 1, false),
-        (
-            r#"{"kinds":["value"]}"#,
-            r#"{"evidence":["secret"]}"#,
-            3,
-            2,
-            false,
-        ),
-    ] {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let target = LocalTarget::new(
-            &format!("http://{}", listener.local_addr().unwrap()),
-            "fixture",
-        )
-        .unwrap();
-        let preview = preview(&target, "日期是什么？", &sources()).unwrap();
-        let bodies = [
-            preview.planning_body,
-            preview.selection_body,
-            preview.verification_body,
-        ];
-        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let counter = calls.clone();
-        let app = axum::Router::new().route("/api/chat",axum::routing::post(move |headers:axum::http::HeaderMap,axum::Json(input):axum::Json<Value>| {
+    for builder in [preview as PreviewBuilder, question_first::preview] {
+        for (plan, selection, limit, expected, valid) in [
+            (
+                r#"{"kinds":["value"]}"#,
+                r#"{"evidence":["s1u1"]}"#,
+                3,
+                3,
+                true,
+            ),
+            (
+                r#"{"kinds":["value"]}"#,
+                r#"{"evidence":["s1u1"]}"#,
+                0,
+                0,
+                false,
+            ),
+            (
+                r#"{"kinds":["value"]}"#,
+                r#"{"evidence":["s1u1"]}"#,
+                1,
+                1,
+                false,
+            ),
+            (
+                r#"{"kinds":["value"]}"#,
+                r#"{"evidence":["s1u1"]}"#,
+                2,
+                2,
+                false,
+            ),
+            (r#"{"secret":[]}"#, r#"{"evidence":["s1u1"]}"#, 3, 1, false),
+            (
+                r#"{"kinds":["value"]}"#,
+                r#"{"evidence":["secret"]}"#,
+                3,
+                2,
+                false,
+            ),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let target = LocalTarget::new(
+                &format!("http://{}", listener.local_addr().unwrap()),
+                "fixture",
+            )
+            .unwrap();
+            let preview = builder(&target, "日期是什么？", &sources()).unwrap();
+            let bodies = [
+                preview.planning_body,
+                preview.selection_body,
+                preview.verification_body,
+            ];
+            let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+            let counter = calls.clone();
+            let app = axum::Router::new().route("/api/chat",axum::routing::post(move |headers:axum::http::HeaderMap,axum::Json(input):axum::Json<Value>| {
             let n = counter.fetch_add(1,std::sync::atomic::Ordering::SeqCst);
             assert_eq!(input,bodies[n]); assert!(!headers.contains_key("authorization"));
             let content = match n { 0=>plan,1=>selection,_=>r#"{"checks":[{"evidence":["s1u1"],"kind":"value","support":"stated"}]}"# };
             let body = format!("{}\n",json!({"model":"fixture","message":{"role":"assistant","content":content},"done":true,"done_reason":"stop"}));
             async move { ([("content-type","application/x-ndjson")],body) }
         }));
-        let server = tokio::spawn(async move {
-            axum::serve(listener, app).await.unwrap();
-        });
-        let result = GuardedAnswers::new(
-            target,
-            Arc::new(Guard {
-                seen: std::sync::atomic::AtomicUsize::new(0),
-                limit,
-            }),
-        )
-        .unwrap()
-        .answer_with_diagnostics("日期是什么？", &sources())
-        .await;
-        assert_eq!(result.is_ok(), valid);
-        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), expected);
-        server.abort();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = GuardedAnswers::new(
+                target,
+                Arc::new(Guard {
+                    seen: std::sync::atomic::AtomicUsize::new(0),
+                    limit,
+                }),
+            )
+            .unwrap();
+            provider.preview = builder;
+            let result = provider
+                .answer_with_diagnostics("日期是什么？", &sources())
+                .await;
+            assert_eq!(result.is_ok(), valid);
+            assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), expected);
+            server.abort();
+        }
     }
 }

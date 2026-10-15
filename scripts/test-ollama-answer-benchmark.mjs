@@ -113,8 +113,8 @@ function fixtures(residency = "cold", candidate = "independent") {
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
     schema: policy.report_schema, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
     runtime: { ...runtimeIdentity({ ...target, residency, candidate }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
-    resources: { preload_checks: candidate === "guarded" ? 3 : 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
-      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: candidate === "guarded" ? 2 : 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
+    resources: { preload_checks: ["guarded", "question-first"].includes(candidate) ? 3 : 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
+      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: ["guarded", "question-first"].includes(candidate) ? 2 : 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
     results: [{ id: suite, request_sha256: "b".repeat(64), elapsed_ms: 1, protocol_valid: true, citation_valid: true, quality_pass: true,
       checks: ["expected_status", "required_terms", "expected_citations", "forbidden_terms"].map(name => ({ name, passed: true })) }],
@@ -401,4 +401,20 @@ test("guarded handshake permits plan select verify exactly once and stops at eac
   await assert.rejects(stagedCli(process.execPath,childArgs(stages),childOptions,async stage=>{
     if(stage === "select") { controller.abort(); await new Promise(resolve=>{release=resolve;}); }
   },controller.signal,5000,"guarded")); release();
+});
+test("question-first reports require a separate gate and three fresh native permissions", () => {
+  const { reports, expected } = fixtures("reuse", "question-first");
+  const result = qualityGate(reports, expected);
+  assert.equal(result.schema, "ollama-answer-quality-gate-v12");
+  assert.equal(result.native_requests_per_case, 3); assert.equal(result.private_execution_authorized, false);
+  assert.equal(parseOptions(["--candidate", "question-first"]).candidate, "question-first");
+  assert.throws(() => parseOptions(["--candidate", "question-first", "--residency", "cold"]));
+  for (const mutate of [
+    report => report.schema = "ollama-answer-quality-report-v5",
+    report => report.runtime.execution_profile = "ollama-knowledge-answer-v17-guarded",
+    report => report.resources.preload_checks = 2,
+    report => report.results[0].semantic_diagnostic = {},
+    report => report.diagnostic_only = true,
+  ]) { const copy = structuredClone(reports); mutate(copy[1]); assert.throws(() => qualityGate(copy, expected)); }
+  assert.throws(() => qualityGate(fixtures("reuse", "guarded").reports, expected));
 });

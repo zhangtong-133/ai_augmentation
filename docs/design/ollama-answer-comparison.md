@@ -8,7 +8,7 @@ make ollama-answer-compare LEFT='左侧十六份报告路径' RIGHT='右侧十�
 node scripts/ollama-answer-benchmark.mjs compare --left 左侧十六份路径 --right 右侧十六份路径
 ```
 
-该命令只在本机离线构建合成 CLI 并重建 manifest，不访问 Ollama、下载模型或发送推理。两侧分别支持 v14 cold、v15 reuse、v16 question 和 v17 guarded，也可比较同一 profile 的不同观察。默认模型和业务路径保持原状。
+该命令只在本机离线构建合成 CLI 并重建 manifest，不访问 Ollama、下载模型或发送推理。两侧分别支持 v14 cold、v15 reuse、v16 question、v17 guarded 和后续新增的 [v18 question-first](ollama-answer-question-first.md)，也可比较同一 profile 的不同观察。默认模型和业务路径保持原状。
 
 ## 输入与配对
 

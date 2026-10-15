@@ -441,6 +441,24 @@ try {
   assert.deepEqual(guardedPreview.preview.selection_body, warmPreview.preview.body);
   assert.deepEqual(guardedPreview.preview.verification_body, warmPreview.preview.verification_body);
   console.log("PASS: all 71 packaged three-stage requests preserve frozen conditions and exact v16/v15 component bodies; no model call");
+  const frozenQuestionFirst = JSON.parse(await readFile(join(root, "apps/api-server/tests/fixtures/answer-question-first-manifests-ollama-v18.json"), "utf8"));
+  for (const [suite, cold] of Object.entries(packagedOllamaManifests)) {
+    const first = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "manifest", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", suite, "--backend", "ollama", "--residency", "reuse", "--candidate", "question-first"], true));
+    assert.deepEqual(first.map(item => item.case), cold.map(item => item.case));
+    assert.ok(first.every(item => item.execution_profile === frozenQuestionFirst.execution_profile));
+    assert.deepEqual(Object.fromEntries(first.map(item => [item.case.id, item.request_sha256])), frozenQuestionFirst.suites[suite]);
+  }
+  const firstPreview = JSON.parse(await compose(["exec", "-T", "api-server", "local-answer-benchmark", "preview", "missing_budget", "http://127.0.0.1:11434", "qwen3.5:9b", "--suite", "coverage", "--backend", "ollama", "--residency", "reuse", "--candidate", "question-first"], true));
+  assert.deepEqual(firstPreview.preview.planning_body, guardedPreview.preview.planning_body);
+  for (const field of ["selection_body", "verification_body"]) {
+    const before = guardedPreview.preview[field].messages[1].content, after = firstPreview.preview[field].messages[1].content;
+    assert.ok(after.startsWith('{"question":')); assert.notEqual(after, before);
+    assert.equal(Buffer.byteLength(after), Buffer.byteLength(before));
+    assert.deepEqual(JSON.parse(after), JSON.parse(before));
+    const restored = structuredClone(firstPreview.preview[field]); restored.messages[1].content = before;
+    assert.deepEqual(restored, guardedPreview.preview[field]);
+  }
+  console.log("PASS: all 71 packaged question-first requests preserve frozen conditions and all values; only full user field order changes; no model call");
   const challengeManifest = JSON.parse(await compose(["exec", "-T", "api-server", "local-value-benchmark", "manifest", "--suite", "challenge"], true));
   assert.deepEqual(challengeManifest.map(c => c.id), ["short_substantive", "ambiguous_word", "keyword_stuffing", "quoted_security", "forged_conversation", "mixed_abstention"]);
   assert.ok(challengeManifest.every(c => c.quality_version === "rss-challenge-v1" && c.execution_profile === "local-rss-v4" && c.prompt_bytes <= 5632));

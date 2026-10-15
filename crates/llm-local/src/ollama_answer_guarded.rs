@@ -9,6 +9,9 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+#[path = "ollama_answer_question_first.rs"]
+pub mod question_first;
+
 pub const PROFILE: &str = "ollama-knowledge-answer-v17-guarded";
 #[derive(Debug, Serialize)]
 pub struct GuardedPreview {
@@ -107,13 +110,16 @@ fn decode(
 }
 pub struct GuardedAnswers {
     inner: OllamaAnswers,
+    preview: PreviewBuilder,
 }
+type PreviewBuilder = fn(&LocalTarget, &str, &[AnswerSource]) -> LlmResult<GuardedPreview>;
 impl GuardedAnswers {
     /// # Errors
     /// Rejects HTTP initialization failures without loading or downloading a model.
     pub fn new(target: LocalTarget, guard: Arc<dyn NativeStageGuard>) -> LlmResult<Self> {
         Ok(Self {
             inner: OllamaAnswers::with_residency(target, guard, Residency::Reuse)?,
+            preview,
         })
     }
     /// # Errors
@@ -124,7 +130,8 @@ impl GuardedAnswers {
         question: &str,
         sources: &[AnswerSource],
     ) -> BoxFuture<'_, LlmResult<(ModelAnswer, GuardedDiagnostics)>> {
-        let request = preview(&self.inner.target, question, sources).map(|p| (p, sources.to_vec()));
+        let request =
+            (self.preview)(&self.inner.target, question, sources).map(|p| (p, sources.to_vec()));
         Box::pin(async move {
             let (preview, sources) = request?;
             self.inner.guard.permit(AnswerStage::Plan).await?;
