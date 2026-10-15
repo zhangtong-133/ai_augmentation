@@ -35,6 +35,9 @@ pub const PROTOCOL_STAGES: &[&str] = &[
     "native_guard",
     "native_stream",
     "native_completion",
+    "plan_fields",
+    "plan_json",
+    "plan_bounds",
     "selection_fields",
     "selection_json",
     "selection_decision",
@@ -56,6 +59,8 @@ mod contract;
 #[path = "ollama_answer_diagnostics.rs"]
 mod diagnostics;
 pub use diagnostics::SemanticDiagnostics;
+#[path = "ollama_answer_question.rs"]
+pub mod question;
 #[derive(Debug, Serialize)]
 pub struct OllamaAnswerPreview {
     profile: &'static str,
@@ -104,19 +109,8 @@ pub fn preview_with_residency(
     // Both inputs are frozen before the first inference. The verifier never sees selection output.
     let mut user: serde_json::Value = serde_json::from_str(prompt.user()).map_err(|_| invalid())?;
     user["exact_excerpts"] = serde_json::to_value(&catalog).map_err(|_| invalid())?;
-    let build = |instruction: &str, schema: serde_json::Value| -> LlmResult<serde_json::Value> {
-        let mut request = prompt.request();
-        request.messages[0].content = format!("{instruction}{schema}");
-        request.messages[1].content = user.to_string();
-        let validated = wire_payload(target, &request)?;
-        Ok(serde_json::json!({
-            "model": target.model(), "runner": RUNNER, "messages": validated["messages"],
-            "format": schema, "stream": true, "think": false, "keep_alive": residency.keep_alive(),
-            "truncate": false, "shift": false,
-            "options": { "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS,
-                "temperature": 0, "seed": 0, "top_k": 1, "top_p": 1,
-                "repeat_penalty": 1, "presence_penalty": 0, "frequency_penalty": 0 }
-        }))
+    let build = |instruction: &str, schema: serde_json::Value| {
+        native_body(target, &prompt, &user, instruction, &schema, residency)
     };
     let body = build(
         contract::SELECT_INSTRUCTION,
@@ -134,8 +128,30 @@ pub fn preview_with_residency(
         verification_body,
     })
 }
+fn native_body(
+    target: &LocalTarget,
+    prompt: &personal_ai_llm::answer::AnswerPrompt,
+    user: &serde_json::Value,
+    instruction: &str,
+    schema: &serde_json::Value,
+    residency: Residency,
+) -> LlmResult<serde_json::Value> {
+    let mut request = prompt.request();
+    request.messages[0].content = format!("{instruction}{schema}");
+    request.messages[1].content = user.to_string();
+    let validated = wire_payload(target, &request)?;
+    Ok(serde_json::json!({
+            "model": target.model(), "runner": RUNNER, "messages": validated["messages"],
+            "format": schema, "stream": true, "think": false, "keep_alive": residency.keep_alive(),
+            "truncate": false, "shift": false,
+            "options": { "num_ctx": CONTEXT_TOKENS, "num_predict": OUTPUT_TOKENS,
+                "temperature": 0, "seed": 0, "top_k": 1, "top_p": 1,
+                "repeat_penalty": 1, "presence_penalty": 0, "frequency_penalty": 0 }
+    }))
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnswerStage {
+    Plan,
     Select,
     Verify,
 }
@@ -143,6 +159,7 @@ impl AnswerStage {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Plan => "plan",
             Self::Select => "select",
             Self::Verify => "verify",
         }

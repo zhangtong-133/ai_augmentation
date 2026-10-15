@@ -6,6 +6,7 @@ import { verifyCase } from "./local-answer-benchmark-lib.mjs";
 
 export const PROFILE = "ollama-knowledge-answer-v14";
 export const REUSE_PROFILE = "ollama-knowledge-answer-v15-reuse";
+export const QUESTION_PROFILE = "ollama-knowledge-answer-v16-question";
 export const RUNNER = "llamacpp";
 export const REPORT_SCHEMA = "ollama-answer-quality-report-v2";
 export const REUSE_REPORT_SCHEMA = "ollama-answer-quality-report-v3";
@@ -20,6 +21,13 @@ export function residencyPolicy(residency) {
   return residency === "cold"
     ? { profile: PROFILE, report_schema: REPORT_SCHEMA, resource_policy: RESOURCE_POLICY }
     : { profile: REUSE_PROFILE, report_schema: REUSE_REPORT_SCHEMA, resource_policy: REUSE_RESOURCE_POLICY };
+}
+export function executionPolicy(residency, candidate = "independent") {
+  assert.ok(["independent", "question"].includes(candidate));
+  const policy = residencyPolicy(residency);
+  if (candidate === "independent") return policy;
+  assert.equal(residency, "reuse", "question candidate requires finite reuse");
+  return { ...policy, profile: QUESTION_PROFILE, report_schema: "ollama-answer-quality-report-v4" };
 }
 export function localMetadata(endpoint, path, body, signal) {
   return new Promise((accept, reject) => {
@@ -55,15 +63,15 @@ export function localTarget(endpoint, model) {
   return { endpoint, model_alias: model };
 }
 export function parseOptions(args) {
-  const result = { endpoint: "http://127.0.0.1:11434", model: "qwen3.5:9b", suite: "baseline", residency: "reuse" };
+  const result = { endpoint: "http://127.0.0.1:11434", model: "qwen3.5:9b", suite: "baseline", residency: "reuse", candidate: "independent" };
   const seen = new Set();
   for (let i = 0; i < args.length; i += 2) {
     const key = args[i]?.replace(/^--/, "");
-    assert.ok(["endpoint", "model", "suite", "residency"].includes(key) && args[i] === `--${key}` && !seen.has(key) && typeof args[i + 1] === "string");
+    assert.ok(["endpoint", "model", "suite", "residency", "candidate"].includes(key) && args[i] === `--${key}` && !seen.has(key) && typeof args[i + 1] === "string");
     seen.add(key); result[key] = args[i + 1];
   }
   assert.ok(Object.hasOwn(SUITES, result.suite));
-  residencyPolicy(result.residency);
+  executionPolicy(result.residency, result.candidate);
   return { ...result, ...localTarget(result.endpoint, result.model) };
 }
 function supportedVersion(version) {
@@ -86,7 +94,7 @@ export function runtimeIdentity(target, version, tags, show) {
   assert.equal(selected.length, 1); assert.equal(selected[0].runner, RUNNER); assert.equal(selected[0].digest, `sha256:${model.digest}`);
   assert.ok(show.capabilities.includes("completion"));
   if (show.capabilities.includes("thinking")) assert.ok(show.thinking?.values?.includes(false));
-  return { engine: "ollama", runner: RUNNER, version: version.version, execution_profile: residencyPolicy(target.residency ?? "cold").profile, endpoint: target.endpoint, model_alias: target.model_alias,
+  return { engine: "ollama", runner: RUNNER, version: version.version, execution_profile: executionPolicy(target.residency ?? "cold", target.candidate ?? "independent").profile, endpoint: target.endpoint, model_alias: target.model_alias,
     model_digest: model.digest, model_size: model.size, model_metadata_sha256: digest({ details: model.details, show }) };
 }
 export function availableMemory(total, pressure) {
@@ -149,8 +157,9 @@ export function qualityGate(reports, expected) {
   assert.deepEqual(Object.keys(expected).sort(), Object.keys(SUITES).sort());
   const rounds = Object.fromEntries(Object.keys(SUITES).map(suite => [suite, []])), ids = new Set();
   const runtime = reports[0].runtime;
-  const reuse = runtime.execution_profile === REUSE_PROFILE;
-  const policy = residencyPolicy(reuse ? "reuse" : "cold");
+  const question = runtime.execution_profile === QUESTION_PROFILE;
+  const reuse = question || runtime.execution_profile === REUSE_PROFILE;
+  const policy = executionPolicy(reuse ? "reuse" : "cold", question ? "question" : "independent");
   assert.deepEqual(Object.keys(runtime).sort(), ["arch", "endpoint", "engine", "execution_profile", "model_alias", "model_digest", "model_metadata_sha256", "model_size", "platform", "resource_policy", "runner", "total_memory", "version"]);
   assert.equal(runtime.engine, "ollama"); assert.equal(runtime.execution_profile, policy.profile);
   assert.equal(runtime.runner, RUNNER);
@@ -215,7 +224,7 @@ export function qualityGate(reports, expected) {
     }
   }
   const failed = reports.flatMap(report => report.results.filter(result => !result.quality_pass).map(result => ({ suite: report.suite, run_id: report.run_id, id: result.id })));
-  return { schema: reuse ? "ollama-answer-quality-gate-v9" : "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
+  return { schema: question ? "ollama-answer-quality-gate-v10" : reuse ? "ollama-answer-quality-gate-v9" : "ollama-answer-quality-gate-v8", synthetic_only: true, runtime,
     reports_sha256: reports.map(digest), manifests_sha256: digest(expected),
     rounds_per_suite: 2, native_requests_per_case: 2, evaluated_cases: reports.reduce((sum, report) => sum + report.total_cases, 0),
     passed: failed.length === 0, failed_cases: failed, private_execution_authorized: false };

@@ -139,6 +139,7 @@ jobs:
       - run: node ../../scripts/test-local-answer-benchmark.mjs
       - run: node ../../scripts/test-ollama-answer-benchmark.mjs
       - run: node ../../scripts/test-ollama-answer-diagnostics.mjs
+      - run: node ../../scripts/test-ollama-answer-question-diagnostics.mjs
       - run: node ../../scripts/test-local-value-benchmark.mjs
       - run: node ../../scripts/test-local-value-compare.mjs
       - run: node ../../scripts/test-local-value-gate.mjs

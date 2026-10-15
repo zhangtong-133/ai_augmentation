@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
 
-const STAGES = ["select", "verify"];
 const failure = () => Object.assign(new Error("native stage handshake unconfirmed"), { answerFailure: "protocol", answerFailureStage: "native_guard" });
 
 // No inference acknowledgment is sent until the host confirms that particular native request.
-export function stagedCli(binary, args, options, before, signal, timeoutMs = 90000) {
+export function stagedCli(binary, args, options, before, signal, timeoutMs = 90000, firstStage = "select") {
+  if (!["select", "plan"].includes(firstStage)) return Promise.reject(failure());
+  const stages = [firstStage, "verify"];
   return new Promise((accept, reject) => {
     const controller = new AbortController();
     const child = spawn(binary, args, { ...options, stdio: ["pipe", "pipe", "pipe"] });
@@ -35,7 +36,7 @@ export function stagedCli(binary, args, options, before, signal, timeoutMs = 900
         const end = line.indexOf("\n"), record = line.slice(0, end); line = line.slice(end + 1);
         if (!record.startsWith("ANSWER_NATIVE_STAGE=")) continue;
         const stage = record.slice("ANSWER_NATIVE_STAGE=".length);
-        if (pending || stage !== STAGES[seen]) { stop(failure()); return; }
+        if (pending || stage !== stages[seen]) { stop(failure()); return; }
         seen++;
         pending = (async () => {
           await before(stage, controller.signal);

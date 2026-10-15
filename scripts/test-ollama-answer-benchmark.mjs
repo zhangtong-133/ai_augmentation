@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { stagedCli } from "./ollama-answer-stages.mjs";
 import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
-import { availableMemory, guardedSend, localMetadata, memoryBudget, memoryReady, parseOptions, qualityGate, residencyPolicy, runtimeIdentity, PROFILE, REUSE_PROFILE, REPORT_SCHEMA, SUITES, RESERVE_BYTES, RESOURCE_POLICY, REUSE_HEADROOM_BYTES } from "./ollama-answer-benchmark-lib.mjs";
+import { availableMemory, guardedSend, localMetadata, memoryBudget, memoryReady, parseOptions, qualityGate, executionPolicy, residencyPolicy, runtimeIdentity, PROFILE, REUSE_PROFILE, REPORT_SCHEMA, SUITES, RESERVE_BYTES, RESOURCE_POLICY, REUSE_HEADROOM_BYTES } from "./ollama-answer-benchmark-lib.mjs";
 const target = { endpoint: "http://127.0.0.1:11434", model_alias: "qwen3.5:9b" };
 const version = { version: "0.40.1" };
 const tags = { models: [{ name: target.model_alias, model: target.model_alias, digest: "a".repeat(64), size: 1000, details: { format: "gguf", runner: "llamacpp" } }] };
@@ -107,12 +107,12 @@ test("monitor stops before the final pressure confirmation so a late sample cann
   assert.equal(samples, 2);
   await assert.rejects(guardedSend(async () => "completed", async () => { throw new Error("final pressure unavailable"); }), error => error.answerFailure === "resource");
 });
-function fixtures(residency = "cold") {
-  const policy = residencyPolicy(residency);
+function fixtures(residency = "cold", candidate = "independent") {
+  const policy = executionPolicy(residency, candidate);
   const expected = Object.fromEntries(Object.entries(SUITES).map(([suite, version]) => [suite, [{ execution_profile: policy.profile, request_sha256: "b".repeat(64), case: { id: suite, suite: version, synthetic_only: true } }]]));
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
     schema: policy.report_schema, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
-    runtime: { ...runtimeIdentity({ ...target, residency }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
+    runtime: { ...runtimeIdentity({ ...target, residency, candidate }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
     resources: { preload_checks: 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
       ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
@@ -331,4 +331,38 @@ test("a stalled host check cannot delay cancellation or grant a late permission"
     controller.abort(); await new Promise(resolve => { release = resolve; });
   }, controller.signal, 1000));
   release();
+});
+test("question candidate has distinct reports and cannot mix with the unchanged independent baseline", () => {
+  assert.equal(parseOptions(["--candidate", "question"]).candidate, "question");
+  for (const options of [["--candidate","question","--residency","cold"],["--candidate","later"],["--candidate","question","--candidate","independent"]]) assert.throws(() => parseOptions(options));
+  const { reports, expected } = fixtures("reuse", "question");
+  const result = qualityGate(reports, expected);
+  assert.equal(result.schema, "ollama-answer-quality-gate-v10");
+  assert.equal(result.native_requests_per_case, 2); assert.equal(result.private_execution_authorized, false);
+  for (const mutate of [
+    report => report.schema = "ollama-answer-quality-report-v3",
+    report => report.runtime.execution_profile = "ollama-knowledge-answer-v15-reuse",
+    report => report.results[0].semantic_diagnostic = {},
+    report => report.diagnostic_only = true,
+    report => report.resources.preload_checks = 1,
+  ]) {
+    const altered = structuredClone(reports); mutate(altered[1]);
+    assert.throws(() => qualityGate(altered, expected));
+  }
+  assert.throws(() => qualityGate(fixtures("reuse").reports, expected));
+});
+test("question planning handshake guards both requests and rejects selection markers or late permission", async () => {
+  const seen = [];
+  assert.deepEqual(await stagedCli(process.execPath, childArgs(["plan","verify"]), childOptions, async stage => { seen.push(stage); }, undefined, 5000, "plan"), { completed: true });
+  assert.deepEqual(seen, ["plan","verify"]);
+  for (const stages of [["select","verify"],["plan","plan"],["verify"],["plan","verify","verify"]]) {
+    await assert.rejects(stagedCli(process.execPath, childArgs(stages), childOptions, async () => {}, undefined, 5000, "plan"), error => error.answerFailureStage === "native_guard");
+  }
+  for (const blocked of ["plan","verify"]) {
+    const checks = [];
+    await assert.rejects(stagedCli(process.execPath, childArgs(["plan","verify"]), childOptions, async stage => {
+      checks.push(stage); if (stage === blocked) throw Object.assign(new Error("reserve unavailable"), { answerFailure: "resource" });
+    }, undefined, 5000, "plan"), error => error.answerFailure === "resource");
+    assert.deepEqual(checks, blocked === "plan" ? ["plan"] : ["plan","verify"]);
+  }
 });

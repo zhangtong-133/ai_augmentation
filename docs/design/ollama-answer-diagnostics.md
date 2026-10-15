@@ -49,7 +49,7 @@ macOS ARM64 / 32 GiB / Ollama 0.40.3 / Qwen3.5:9B llamacpp，模型 digest 与�
 | `price_availability_undetermined` | 1 / 1 | true / false | 一项 value/unavailable，可用性问题误弃权 |
 | `two_absences_establish_availability` | 2 / 2 | true / false | 两项 value/unavailable，可用性问题误弃权 |
 
-缺负责人题与两道可用性题的计数表明，本次类型判断可使原本不同的问题走入错误的接受/弃权分支；安全示例题走入证据分歧分支。两道资料指令题则说明内部一致及逐项支持并不保证质量，计数无法指出哪段内容被误选，不据此推断具体所选 key。
+集合时间缺项题与两道可用性题的计数表明，本次类型判断可使原本不同的问题走入错误的接受/弃权分支；安全示例题走入证据分歧分支。两道资料指令题则说明内部一致及逐项支持并不保证质量，计数无法指出哪段内容被误选，不据此推断具体所选 key。
 
 九份报告为 `run-EH2JhB`、`run-EEV9hB`、`run-NOqJoS`、`run-HelNVQ`、`run-GfY0uI`、`run-s2a876`、`run-u7cRuD`、`run-N1r7wr`、`run-QMMxJp`，仅在本机 `.local-model/quality/<run-ID>/report.json`。独立核对报告白名单、布尔/计数一致性、相同运行时和目录/文件 700/600 权限。18 次许可包含 2 次 cold、16 次 reuse，146 次运行采样，最低估计余量 9.60 GiB，高于既有保护阈值。
 
@@ -64,3 +64,5 @@ macOS ARM64 / 32 GiB / Ollama 0.40.3 / Qwen3.5:9B llamacpp，模型 digest 与�
 ## 下一步
 
 先针对需求从问题推导、实际值/可用性类型边界和证据分歧制定新的受限候选，并在首次推理前冻结实际请求。全部八套条件及失败必须保留，完整双轮门槛通过后才能推进新双请求预览/精确同意和单次私有执行器。
+
+后续已实现[问题独立分类/资料核对候选](ollama-answer-question.md)：使用新的 v16 指纹及完整双轮评估，原 v15 诊断和质量记录保持。

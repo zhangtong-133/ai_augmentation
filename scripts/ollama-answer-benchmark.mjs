@@ -8,10 +8,11 @@ import { setTimeout as delay } from "node:timers/promises";
 import assert from "node:assert/strict";
 import { stagedCli } from "./ollama-answer-stages.mjs";
 import { DIAGNOSTIC_REPORT_SCHEMA, verifyDiagnostic } from "./ollama-answer-diagnostics.mjs";
+import { verifyQuestionDiagnostic } from "./ollama-answer-question-diagnostics.mjs";
 import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
 import { runCases, PROTOCOL_STAGES } from "./local-answer-benchmark-lib.mjs";
-import { availableMemory, digest, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, residencyPolicy, runtimeIdentity, REUSE_PROFILE, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
+import { availableMemory, digest, executionPolicy, guardedSend, localMetadata as api, memoryBudget, memoryReady, parseOptions, qualityGate, runtimeIdentity, REUSE_PROFILE, QUESTION_PROFILE, RUNNER, SUITES } from "./ollama-answer-benchmark-lib.mjs";
 
 const execute = promisify(execFile);
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -45,7 +46,7 @@ async function cli(args, signal) {
   return JSON.parse(value.stdout);
 }
 async function manifests(target, suite, signal) {
-  return cli(["manifest", target.endpoint, target.model_alias, "--suite", suite, "--backend", "ollama", "--residency", target.residency], signal);
+  return cli(["manifest", target.endpoint, target.model_alias, "--suite", suite, "--backend", "ollama", "--residency", target.residency, "--candidate", target.candidate], signal);
 }
 async function gate(files, signal) {
   assert.equal(files.length, Object.keys(SUITES).length * 2);
@@ -56,8 +57,9 @@ async function gate(files, signal) {
     assert.ok(info.isFile() && !info.isSymbolicLink() && info.size <= 65536 && actual.startsWith(`${allowed}${sep}`) && !seen.has(actual));
     seen.add(actual); reports.push(JSON.parse(await readFile(path, "utf8")));
   }
-  const target = { ...reports[0].runtime, residency: reports[0].runtime.execution_profile === REUSE_PROFILE ? "reuse" : "cold" };
-  parseOptions(["--endpoint", target.endpoint, "--model", target.model_alias]);
+  const profile = reports[0].runtime.execution_profile;
+  const target = { ...reports[0].runtime, residency: [REUSE_PROFILE, QUESTION_PROFILE].includes(profile) ? "reuse" : "cold", candidate: profile === QUESTION_PROFILE ? "question" : "independent" };
+  parseOptions(["--endpoint", target.endpoint, "--model", target.model_alias, "--candidate", target.candidate, "--residency", target.residency]);
   const expected = {};
   for (const suite of Object.keys(SUITES)) expected[suite] = await manifests(target, suite, signal);
   const result = qualityGate(reports, expected);
@@ -66,12 +68,12 @@ async function gate(files, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。每题两次独立请求分别检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold] [--candidate independent|question]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\npreview/gate 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。candidate 默认 independent；显式 question 仅用于 reuse 合成实验，先只读问题规划类型，再独立核对资料，两步均在发送前冻结。每题两次独立请求分别检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(command === "run" || command === "gate" || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
   const target = command === "gate" ? null : parseOptions(args.slice(command === "run" ? 1 : 2));
-  const policy = target ? residencyPolicy(target.residency) : null;
+  const policy = target ? executionPolicy(target.residency, target.candidate) : null;
   const abort = new AbortController(); const halt = () => abort.abort();
   process.on("SIGINT", halt); process.on("SIGTERM", halt);
   let lock, lockPath;
@@ -81,7 +83,7 @@ async function run() {
     if (command === "gate") { stage = "gate"; await gate(args.slice(1), abort.signal); return; }
     if (command === "preview") {
       stage = "offline_preview";
-      console.log(JSON.stringify(await cli(["preview", args[1], target.endpoint, target.model_alias, "--suite", target.suite, "--backend", "ollama", "--residency", target.residency], abort.signal))); return;
+      console.log(JSON.stringify(await cli(["preview", args[1], target.endpoint, target.model_alias, "--suite", target.suite, "--backend", "ollama", "--residency", target.residency, "--candidate", target.candidate], abort.signal))); return;
     }
     assert.ok(process.platform === "darwin" && process.arch === "arm64", "run requires macOS ARM64 memory guard");
     stage = "report_directory";
@@ -108,7 +110,7 @@ async function run() {
     stage = "synthetic_cases";
     const outcome = await runCases(frozen, runtime, async id => {
       try {
-        const raw = await guardedSend(signal => stagedCli(binary, [command === "diagnose" ? "diagnose" : "case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--guard-native-stages", "--suite", target.suite, "--backend", "ollama", "--residency", target.residency], { cwd: root, env },
+        const raw = await guardedSend(signal => stagedCli(binary, [command === "diagnose" ? "diagnose" : "case", id, target.endpoint, target.model_alias, "--use-local-benchmark", "--guard-native-stages", "--suite", target.suite, "--backend", "ollama", "--residency", target.residency, "--candidate", target.candidate], { cwd: root, env },
           async (nativeStage, bounded) => {
             try {
               if (target.residency === "cold") await idle(runtime, bounded, nativeStage === "verify");
@@ -127,7 +129,7 @@ async function run() {
               resources.minimum_preload_available_bytes = Math.min(resources.minimum_preload_available_bytes ?? total, ready.available);
               resources.settle_wait_ms += ready.waited_ms;
             } catch (error) { throw Object.assign(new Error("local residency or reserve unconfirmed"), { answerFailure: error.answerFailure ?? "resource" }); }
-          }, signal),
+          }, signal, 90000, target.candidate === "question" ? "plan" : "select"),
           async () => {
             const free = await available(total); resources.inflight_checks++;
             resources.minimum_inflight_available_bytes = Math.min(resources.minimum_inflight_available_bytes ?? total, free);
@@ -145,7 +147,7 @@ async function run() {
         const protocolStage = error.answerFailureStage ?? /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
         throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1], answerFailureStage: PROTOCOL_STAGES.includes(protocolStage) ? protocolStage : undefined });
       }
-    }, command === "diagnose" ? verifyDiagnostic : undefined);
+    }, command === "diagnose" ? target.candidate === "question" ? verifyQuestionDiagnostic : verifyDiagnostic : undefined);
     const report = { schema: command === "diagnose" ? DIAGNOSTIC_REPORT_SCHEMA : policy.report_schema, run_id: randomUUID(), synthetic_only: true, suite: target.suite,
       ...(command === "diagnose" ? { diagnostic_only: true, private_execution_authorized: false } : {}),
       started_at: started, ended_at: new Date().toISOString(), runtime, resources, manifests: frozen, ...outcome,
