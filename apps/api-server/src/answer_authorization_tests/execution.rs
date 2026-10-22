@@ -1,11 +1,16 @@
 use super::*;
 use axum::{extract::State, http::header, routing::post};
-use personal_ai_llm::{local::LocalTarget, local_answer};
+use personal_ai_llm::{
+    local::LocalTarget,
+    local_answer::{self, AnswerBackend},
+};
 use personal_ai_storage::{
     answer_authorizations::AnswerAuthorizationStore, answer_executions::AnswerExecutionStore,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Notify;
+
+const BACKENDS: [AnswerBackend; 2] = [AnswerBackend::Local, AnswerBackend::Ollama];
 
 struct Guard(AtomicBool);
 impl crate::AnswerExecutionGuard for Guard {
@@ -20,6 +25,7 @@ impl crate::AnswerExecutionGuard for Guard {
     }
 }
 struct ModelFixture {
+    backend: AnswerBackend,
     mode: usize,
     calls: AtomicUsize,
     requests: Mutex<Vec<serde_json::Value>>,
@@ -45,13 +51,28 @@ async fn inference(
             json!({"answer":"会议安排在周五。","citations":[{"id":1,"quote":"会议安排在周五。"}],"insufficient_evidence":false})
         }
     };
-    let record = json!({"model":"answer-fixture","choices":[{"index":0,"delta":{"content":result.to_string()},"finish_reason":"stop"}]});
-    let wire = if model.mode == 4 {
-        format!("data: {record}\n\n")
-    } else {
-        format!("data: {record}\n\ndata: [DONE]\n\n")
+    let (content_type, wire) = match model.backend {
+        AnswerBackend::Local => {
+            let record = json!({"model":"answer-fixture","choices":[{"index":0,"delta":{"content":result.to_string()},"finish_reason":"stop"}]});
+            let wire = if model.mode == 4 {
+                format!("data: {record}\n\n")
+            } else {
+                format!("data: {record}\n\ndata: [DONE]\n\n")
+            };
+            ("text/event-stream", wire)
+        }
+        AnswerBackend::Ollama => {
+            let record = json!({"model":"answer-fixture","message":{"role":"assistant","content":result.to_string()},"done":false});
+            let wire = if model.mode == 4 {
+                format!("{record}\n")
+            } else {
+                let done = json!({"model":"answer-fixture","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop"});
+                format!("{record}\n{done}\n")
+            };
+            ("application/x-ndjson", wire)
+        }
     };
-    ([(header::CONTENT_TYPE, "text/event-stream")], wire)
+    ([(header::CONTENT_TYPE, content_type)], wire)
 }
 struct Fixture {
     state: AppState,
@@ -62,12 +83,16 @@ struct Fixture {
     cookie: String,
     document: StoredDocument,
     target: LocalTarget,
+    backend: AnswerBackend,
     model: Arc<ModelFixture>,
     guard: Arc<Guard>,
     server: tokio::task::JoinHandle<()>,
 }
 impl Fixture {
     async fn new(mode: usize) -> Self {
+        Self::new_for(mode, AnswerBackend::Local).await
+    }
+    async fn new_for(mode: usize, backend: AnswerBackend) -> Self {
         let (mut state, auth, _, owner, cookie, mut document) = retrieval_fixture().await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let target = LocalTarget::new(
@@ -76,6 +101,7 @@ impl Fixture {
         )
         .unwrap();
         let model = Arc::new(ModelFixture {
+            backend,
             mode,
             calls: AtomicUsize::new(0),
             requests: Mutex::new(vec![]),
@@ -83,7 +109,13 @@ impl Fixture {
             release: Notify::new(),
         });
         let app = axum::Router::new()
-            .route("/v1/chat/completions", post(inference))
+            .route(
+                match backend {
+                    AnswerBackend::Local => "/v1/chat/completions",
+                    AnswerBackend::Ollama => "/api/chat",
+                },
+                post(inference),
+            )
             .with_state(model.clone());
         let server = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
@@ -105,9 +137,19 @@ impl Fixture {
         let guard = Arc::new(Guard(AtomicBool::new(true)));
         state.answer_authorizations = Some(pg.clone());
         state.answer_executions = Some(pg.clone());
-        state.answer_execution = Some(Arc::new(crate::AnswerExecutionRuntime::new(
+        let provider: Arc<dyn personal_ai_llm::AnswerProvider> = match backend {
+            AnswerBackend::Local => {
+                Arc::new(personal_ai_llm_local::answer::LocalAnswers::new(target.clone()).unwrap())
+            }
+            AnswerBackend::Ollama => Arc::new(
+                personal_ai_llm_local::ollama_local_answer::OllamaLocalAnswers::new(target.clone())
+                    .unwrap(),
+            ),
+        };
+        state.answer_execution = Some(Arc::new(crate::AnswerExecutionRuntime::new_for(
+            backend,
             target.clone(),
-            Arc::new(personal_ai_llm_local::answer::LocalAnswers::new(target.clone()).unwrap()),
+            provider,
             guard.clone(),
         )));
         state.indexing = None;
@@ -120,6 +162,7 @@ impl Fixture {
             cookie,
             document,
             target,
+            backend,
             model,
             guard,
             server,
@@ -146,8 +189,15 @@ impl Fixture {
         json_body(response).await
     }
     async fn authorized(&self, model: &str) -> serde_json::Value {
+        self.authorized_for(model, self.backend).await
+    }
+    async fn authorized_for(&self, model: &str, backend: AnswerBackend) -> serde_json::Value {
         let id = Uuid::new_v4().to_string();
-        let prepared = self.request("POST","",json!({"request_id":id,"question":"会议什么时候？","endpoint":self.target.endpoint(),"model":model,"sources":[{"document_id":self.document.summary.id,"ordinal":0}]}),StatusCode::OK).await;
+        let mut input = json!({"request_id":id,"question":"会议什么时候？","endpoint":self.target.endpoint(),"model":model,"sources":[{"document_id":self.document.summary.id,"ordinal":0}]});
+        if !backend.is_local() {
+            input["backend"] = json!(backend);
+        }
+        let prepared = self.request("POST", "", input, StatusCode::OK).await;
         assert_eq!(self.model.calls.load(Ordering::SeqCst), 0);
         let authorized = self.request("POST",&format!("/{id}/approve"),json!({"digest":prepared["digest"],"acknowledge_sharing":true,"acknowledge_local_compute":true}),StatusCode::OK).await;
         assert_eq!(authorized["status"], "authorized");
@@ -192,127 +242,133 @@ impl Fixture {
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL 与 loopback HTTP"]
 async fn local_answer_execution_sends_exact_preview_once_and_recovers_persisted_citations() {
-    let f = Fixture::new(0).await;
-    let grant = f.authorized("answer-fixture").await;
-    let id = grant["request_id"].as_str().unwrap();
-    let result = f.execute(&grant, StatusCode::ACCEPTED).await;
-    assert_eq!(result["status"], "consumed");
-    let terminal = f.terminal(id).await;
-    assert_eq!(terminal["execution"]["status"], "succeeded");
-    assert_eq!(terminal["execution"]["result"]["status"], "answered");
-    let citation = &terminal["execution"]["result"]["citations"][0];
-    let start = usize::try_from(citation["quote_start"].as_u64().unwrap()).unwrap();
-    let end = usize::try_from(citation["quote_end"].as_u64().unwrap()).unwrap();
-    assert_eq!(
-        f.document.chunks[0]
-            .chars()
-            .skip(start)
-            .take(end - start)
-            .collect::<String>(),
-        citation["quote"].as_str().unwrap()
-    );
-    assert_eq!(
-        f.model.requests.lock().unwrap()[0],
-        grant["preview"]["request"]["body"]
-    );
-    let sources = [personal_ai_llm::AnswerSource {
-        id: 1,
-        text: f.document.chunks[0].clone(),
-    }];
-    assert_eq!(
-        local_answer::preview(&f.target, "会议什么时候？", &sources)
-            .unwrap()
-            .fingerprint()
-            .unwrap(),
-        grant["preview"]["request_sha256"]
-    );
-    f.execute(&grant, StatusCode::OK).await;
-    assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
-    let listed = f.request("GET", "", json!({}), StatusCode::OK).await;
-    assert!(listed["items"][0]["preview"].is_null());
-    assert!(listed["items"][0]["execution"]["question"].is_null());
-    assert!(listed["items"][0]["execution"]["result"].is_null());
-    let reopened = PostgresStore::connect(&std::env::var("TEST_DATABASE_URL").unwrap())
-        .await
-        .unwrap();
-    assert!(
-        reopened
-            .get_answer_execution(&f.owner, id)
+    for backend in BACKENDS {
+        let f = Fixture::new_for(0, backend).await;
+        let grant = f.authorized("answer-fixture").await;
+        let id = grant["request_id"].as_str().unwrap();
+        let result = f.execute(&grant, StatusCode::ACCEPTED).await;
+        assert_eq!(result["status"], "consumed");
+        let terminal = f.terminal(id).await;
+        assert_eq!(terminal["execution"]["status"], "succeeded");
+        assert_eq!(terminal["execution"]["result"]["status"], "answered");
+        let citation = &terminal["execution"]["result"]["citations"][0];
+        let start = usize::try_from(citation["quote_start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(citation["quote_end"].as_u64().unwrap()).unwrap();
+        assert_eq!(
+            f.document.chunks[0]
+                .chars()
+                .skip(start)
+                .take(end - start)
+                .collect::<String>(),
+            citation["quote"].as_str().unwrap()
+        );
+        assert_eq!(
+            f.model.requests.lock().unwrap()[0],
+            grant["preview"]["request"]["body"]
+        );
+        let sources = [personal_ai_llm::AnswerSource {
+            id: 1,
+            text: f.document.chunks[0].clone(),
+        }];
+        assert_eq!(
+            local_answer::preview_for(backend, &f.target, "会议什么时候？", &sources)
+                .unwrap()
+                .fingerprint()
+                .unwrap(),
+            grant["preview"]["request_sha256"]
+        );
+        f.execute(&grant, StatusCode::OK).await;
+        assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
+        let listed = f.request("GET", "", json!({}), StatusCode::OK).await;
+        assert!(listed["items"][0]["preview"].is_null());
+        assert!(listed["items"][0]["execution"]["question"].is_null());
+        assert!(listed["items"][0]["execution"]["result"].is_null());
+        let reopened = PostgresStore::connect(&std::env::var("TEST_DATABASE_URL").unwrap())
             .await
-            .unwrap()
-            .result
-            .is_some()
-    );
-    let deleted = f
-        .request("POST", &format!("/{id}/cancel"), json!({}), StatusCode::OK)
-        .await;
-    assert_eq!(deleted["execution"]["status"], "cancelled");
-    assert!(deleted["execution"]["result"].is_null());
-    f.execute(&grant, StatusCode::OK).await;
-    assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
-    f.cleanup().await;
+            .unwrap();
+        assert!(
+            reopened
+                .get_answer_execution(&f.owner, id)
+                .await
+                .unwrap()
+                .result
+                .is_some()
+        );
+        let deleted = f
+            .request("POST", &format!("/{id}/cancel"), json!({}), StatusCode::OK)
+            .await;
+        assert_eq!(deleted["execution"]["status"], "cancelled");
+        assert!(deleted["execution"]["result"].is_null());
+        f.execute(&grant, StatusCode::OK).await;
+        assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
+        f.cleanup().await;
+    }
 }
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL 与 loopback HTTP"]
 async fn local_answer_execution_rejects_unapproved_target_resource_and_source_changes_without_sending()
  {
-    let f = Fixture::new(0).await;
-    let draft_id = Uuid::new_v4().to_string();
-    let draft = f.request("POST","",json!({"request_id":draft_id,"question":"会议什么时候？","endpoint":f.target.endpoint(),"model":"answer-fixture","sources":[{"document_id":f.document.summary.id,"ordinal":0}]}),StatusCode::OK).await;
-    f.execute(&draft, StatusCode::CONFLICT).await;
-    let wrong = f.authorized("different-model").await;
-    f.execute(&wrong, StatusCode::CONFLICT).await;
-    let grant = f.authorized("answer-fixture").await;
-    let id = grant["request_id"].as_str().unwrap();
-    f.request(
-        "POST",
-        &format!("/{id}/execute"),
-        json!({"digest":"wrong"}),
-        StatusCode::CONFLICT,
-    )
-    .await;
-    f.guard.0.store(false, Ordering::SeqCst);
-    f.execute(&grant, StatusCode::SERVICE_UNAVAILABLE).await;
-    assert_eq!(
-        f.pg.get_answer_authorization(&f.owner, id)
+    for backend in BACKENDS {
+        let f = Fixture::new_for(0, backend).await;
+        let draft_id = Uuid::new_v4().to_string();
+        let draft = f.request("POST","",json!({"request_id":draft_id,"backend":backend,"question":"会议什么时候？","endpoint":f.target.endpoint(),"model":"answer-fixture","sources":[{"document_id":f.document.summary.id,"ordinal":0}]}),StatusCode::OK).await;
+        f.execute(&draft, StatusCode::CONFLICT).await;
+        let wrong = f.authorized("different-model").await;
+        f.execute(&wrong, StatusCode::CONFLICT).await;
+        let grant = f.authorized("answer-fixture").await;
+        let id = grant["request_id"].as_str().unwrap();
+        f.request(
+            "POST",
+            &format!("/{id}/execute"),
+            json!({"digest":"wrong"}),
+            StatusCode::CONFLICT,
+        )
+        .await;
+        f.guard.0.store(false, Ordering::SeqCst);
+        f.execute(&grant, StatusCode::SERVICE_UNAVAILABLE).await;
+        assert_eq!(
+            f.pg.get_answer_authorization(&f.owner, id)
+                .await
+                .unwrap()
+                .status,
+            "authorized"
+        );
+        f.guard.0.store(true, Ordering::SeqCst);
+        sqlx::query("UPDATE documents SET title='changed' WHERE id=$1")
+            .bind(Uuid::parse_str(&f.document.summary.id).unwrap())
+            .execute(&f.pool)
             .await
-            .unwrap()
-            .status,
-        "authorized"
-    );
-    f.guard.0.store(true, Ordering::SeqCst);
-    sqlx::query("UPDATE documents SET title='changed' WHERE id=$1")
-        .bind(Uuid::parse_str(&f.document.summary.id).unwrap())
-        .execute(&f.pool)
-        .await
-        .unwrap();
-    f.execute(&grant, StatusCode::CONFLICT).await;
-    assert_eq!(f.model.calls.load(Ordering::SeqCst), 0);
-    f.cleanup().await;
+            .unwrap();
+        f.execute(&grant, StatusCode::CONFLICT).await;
+        assert_eq!(f.model.calls.load(Ordering::SeqCst), 0);
+        f.cleanup().await;
+    }
 }
 
 #[tokio::test]
 #[ignore = "需要一次性 TEST_DATABASE_URL 与 loopback HTTP"]
 async fn local_answer_execution_invalid_outputs_fail_and_insufficient_results_remain_distinct() {
-    for (mode, expected) in [(2, "failed"), (3, "succeeded"), (4, "failed")] {
-        let f = Fixture::new(mode).await;
-        let grant = f.authorized("answer-fixture").await;
-        f.execute(&grant, StatusCode::ACCEPTED).await;
-        let terminal = f.terminal(grant["request_id"].as_str().unwrap()).await;
-        assert_eq!(terminal["execution"]["status"], expected);
-        if mode == 3 {
-            assert_eq!(
-                terminal["execution"]["result"]["status"],
-                "insufficient_evidence"
-            );
-        } else {
-            assert!(terminal["execution"]["result"].is_null());
-            assert!(!terminal.to_string().contains("不得展示"));
+    for backend in BACKENDS {
+        for (mode, expected) in [(2, "failed"), (3, "succeeded"), (4, "failed")] {
+            let f = Fixture::new_for(mode, backend).await;
+            let grant = f.authorized("answer-fixture").await;
+            f.execute(&grant, StatusCode::ACCEPTED).await;
+            let terminal = f.terminal(grant["request_id"].as_str().unwrap()).await;
+            assert_eq!(terminal["execution"]["status"], expected);
+            if mode == 3 {
+                assert_eq!(
+                    terminal["execution"]["result"]["status"],
+                    "insufficient_evidence"
+                );
+            } else {
+                assert!(terminal["execution"]["result"].is_null());
+                assert!(!terminal.to_string().contains("不得展示"));
+            }
+            f.execute(&grant, StatusCode::OK).await;
+            assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
+            f.cleanup().await;
         }
-        f.execute(&grant, StatusCode::OK).await;
-        assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
-        f.cleanup().await;
     }
 }
 
@@ -320,58 +376,93 @@ async fn local_answer_execution_invalid_outputs_fail_and_insufficient_results_re
 #[ignore = "需要一次性 TEST_DATABASE_URL 与 loopback HTTP"]
 async fn local_answer_execution_cancellation_source_revocation_and_logout_discard_inflight_results()
 {
-    for interruption in 0..3 {
-        let f = Fixture::new(1).await;
-        let grant = f.authorized("answer-fixture").await;
-        let id = grant["request_id"].as_str().unwrap();
-        f.execute(&grant, StatusCode::ACCEPTED).await;
-        tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            f.model.started.notified(),
-        )
-        .await
-        .unwrap();
-        // Even a duplicate while the first request is running cannot issue another send.
-        f.execute(&grant, StatusCode::OK).await;
-        match interruption {
-            0 => {
-                f.request("POST", &format!("/{id}/cancel"), json!({}), StatusCode::OK)
-                    .await;
-            }
-            1 => {
-                sqlx::query("UPDATE documents SET chunks=ARRAY['changed'] WHERE id=$1")
-                    .bind(Uuid::parse_str(&f.document.summary.id).unwrap())
-                    .execute(&f.pool)
-                    .await
-                    .unwrap();
-            }
-            _ => f.auth.sessions.lock().unwrap().clear(),
-        }
-        tokio::time::timeout(std::time::Duration::from_secs(3), async {
-            loop {
-                let execution = f.pg.get_answer_execution(&f.owner, id).await.unwrap();
-                if execution.status != "running" {
-                    assert_eq!(
-                        execution.status,
-                        match interruption {
-                            0 => "cancelled",
-                            1 => "invalidated",
-                            _ => "unknown",
-                        }
-                    );
-                    assert!(execution.result.is_none());
-                    assert!(execution.preview.is_none());
-                    break;
+    for backend in BACKENDS {
+        for interruption in 0..3 {
+            let f = Fixture::new_for(1, backend).await;
+            let grant = f.authorized("answer-fixture").await;
+            let id = grant["request_id"].as_str().unwrap();
+            f.execute(&grant, StatusCode::ACCEPTED).await;
+            tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                f.model.started.notified(),
+            )
+            .await
+            .unwrap();
+            // Even a duplicate while the first request is running cannot issue another send.
+            f.execute(&grant, StatusCode::OK).await;
+            match interruption {
+                0 => {
+                    f.request("POST", &format!("/{id}/cancel"), json!({}), StatusCode::OK)
+                        .await;
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                1 => {
+                    sqlx::query("UPDATE documents SET chunks=ARRAY['changed'] WHERE id=$1")
+                        .bind(Uuid::parse_str(&f.document.summary.id).unwrap())
+                        .execute(&f.pool)
+                        .await
+                        .unwrap();
+                }
+                _ => f.auth.sessions.lock().unwrap().clear(),
             }
-        })
-        .await
-        .unwrap();
-        f.model.release.notify_waiters();
-        assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
-        f.cleanup().await;
+            tokio::time::timeout(std::time::Duration::from_secs(3), async {
+                loop {
+                    let execution = f.pg.get_answer_execution(&f.owner, id).await.unwrap();
+                    if execution.status != "running" {
+                        assert_eq!(
+                            execution.status,
+                            match interruption {
+                                0 => "cancelled",
+                                1 => "invalidated",
+                                _ => "unknown",
+                            }
+                        );
+                        assert!(execution.result.is_none());
+                        assert!(execution.preview.is_none());
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            })
+            .await
+            .unwrap();
+            f.model.release.notify_waiters();
+            assert_eq!(f.model.calls.load(Ordering::SeqCst), 1);
+            f.cleanup().await;
+        }
     }
+}
+
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL 与 loopback HTTP"]
+async fn local_authorization_cannot_be_consumed_or_sent_by_a_native_ollama_runtime() {
+    let f = Fixture::new_for(0, AnswerBackend::Ollama).await;
+    let grant = f
+        .authorized_for("answer-fixture", AnswerBackend::Local)
+        .await;
+    let id = grant["request_id"].as_str().unwrap();
+    assert_eq!(
+        grant["preview"]["request"]["profile"],
+        local_answer::PROFILE
+    );
+    assert_eq!(
+        f.state.answer_execution.as_ref().unwrap().backend(),
+        AnswerBackend::Ollama
+    );
+    f.execute(&grant, StatusCode::CONFLICT).await;
+    f.execute(&grant, StatusCode::CONFLICT).await;
+    assert_eq!(
+        f.pg.get_answer_authorization(&f.owner, id)
+            .await
+            .unwrap()
+            .status,
+        "authorized"
+    );
+    assert!(matches!(
+        f.pg.get_answer_execution(&f.owner, id).await,
+        Err(personal_ai_storage::StorageError::NotFound)
+    ));
+    assert_eq!(f.model.calls.load(Ordering::SeqCst), 0);
+    f.cleanup().await;
 }
 
 // Deterministically commits an execution in the window before the old

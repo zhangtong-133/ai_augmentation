@@ -70,6 +70,7 @@ impl Fixture {
             question: "会议什么时候？".into(),
             endpoint: "http://127.0.0.1:11435".into(),
             model: "qwen3:4b-q4_K_M".into(),
+            backend: personal_ai_llm::local_answer::AnswerBackend::Local,
             sources: vec![SourceSelection {
                 document_id: self.document.clone(),
                 ordinal: 0,
@@ -417,6 +418,7 @@ async fn answer_execution_rechecks_authorization_and_request_fingerprints() {
         "UPDATE answer_authorizations SET intent_sha256=repeat('0',64) WHERE request_id=$1",
         "UPDATE answer_authorizations SET digest=repeat('0',64) WHERE request_id=$1",
         "UPDATE answer_authorizations SET model='different' WHERE request_id=$1",
+        "UPDATE answer_authorizations SET backend='ollama' WHERE request_id=$1",
         "UPDATE answer_executions SET request_sha256=repeat('0',64) WHERE request_id=$1",
     ] {
         let f = Fixture::new().await;

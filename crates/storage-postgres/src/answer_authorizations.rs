@@ -93,6 +93,11 @@ pub(super) async fn rebuild_with_question(
         question: question.into(),
         endpoint: row.get("endpoint"),
         model: row.get("model"),
+        backend: match row.get::<String, _>("backend").as_str() {
+            "local" => personal_ai_llm::local_answer::AnswerBackend::Local,
+            "ollama" => personal_ai_llm::local_answer::AnswerBackend::Ollama,
+            _ => return Err(invalid()),
+        },
         sources: bindings.iter().map(|b| b.selection.clone()).collect(),
     };
     let user = UserId::new(owner.to_string());
@@ -184,8 +189,10 @@ impl AnswerAuthorizationStore for PostgresStore {
             let current = materials(&mut tx, user, &input.sources).await?;
             let time = now(&mut tx).await?;
             let (_, bindings, digest) = prepare(&owner, &input, current, time, time + LIFETIME_MS)?;
-            sqlx::query("INSERT INTO answer_authorizations(user_id,request_id,endpoint,model,question,sources,intent_sha256,digest,status,created_ms,expires_ms) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10)")
-                .bind(user).bind(request).bind(&input.endpoint).bind(&input.model).bind(&input.question).bind(serde_json::to_value(bindings).map_err(|_|invalid())?).bind(intent).bind(digest).bind(time).bind(time+LIFETIME_MS).execute(&mut *tx).await.map_err(map_error)?;
+            sqlx::query("INSERT INTO answer_authorizations(user_id,request_id,endpoint,model,question,sources,intent_sha256,digest,status,created_ms,expires_ms,backend) VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$10,$11)")
+                .bind(user).bind(request).bind(&input.endpoint).bind(&input.model).bind(&input.question).bind(serde_json::to_value(bindings).map_err(|_|invalid())?).bind(intent).bind(digest).bind(time).bind(time+LIFETIME_MS)
+                .bind(match input.backend { personal_ai_llm::local_answer::AnswerBackend::Local => "local", personal_ai_llm::local_answer::AnswerBackend::Ollama => "ollama" })
+                .execute(&mut *tx).await.map_err(map_error)?;
             let item = read(&mut tx, user, request).await?;
             tx.commit().await.map_err(map_error)?;
             Ok(item)

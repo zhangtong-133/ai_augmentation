@@ -2,6 +2,7 @@
 //! Explicit local chat-completions SSE profile. Verified backends are recorded separately.
 pub mod answer;
 pub mod ollama_answer;
+pub mod ollama_local_answer;
 
 use personal_ai_llm::{
     BoxFuture, ChatRequest, LlmError, LlmResult,

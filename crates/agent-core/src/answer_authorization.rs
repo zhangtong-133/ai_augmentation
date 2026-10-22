@@ -1,6 +1,6 @@
 //! Pure authorization binding. No database, network, model or environment access.
 use personal_ai_domain::UserId;
-use personal_ai_llm::{AnswerSource, local::LocalTarget, local_answer::preview};
+use personal_ai_llm::{AnswerSource, local::LocalTarget, local_answer::preview_for};
 use personal_ai_storage::{
     StorageError, StorageResult,
     answer_authorizations::{AnswerMaterial, AnswerPreparation, PreparedAnswer, SourceBinding},
@@ -71,7 +71,8 @@ pub fn prepare(
             text: m.text.clone(),
         })
         .collect();
-    let request = preview(
+    let request = preview_for(
+        input.backend,
         &LocalTarget::new(&input.endpoint, &input.model).map_err(|_| invalid())?,
         &input.question,
         &sources,
@@ -122,6 +123,7 @@ mod tests {
                 question: "问题🙂".into(),
                 endpoint: "http://127.0.0.1:11435".into(),
                 model: "qwen3:4b-q4_K_M".into(),
+                backend: personal_ai_llm::local_answer::AnswerBackend::Local,
                 sources: vec![selection.clone()],
             },
             vec![AnswerMaterial {
@@ -138,7 +140,7 @@ mod tests {
         let original = prepare(&owner, &input, materials.clone(), 1, 1 + LIFETIME_MS)
             .unwrap()
             .2;
-        for mutation in 0..7 {
+        for mutation in 0..8 {
             let mut i = input.clone();
             let mut m = materials.clone();
             let mut u = owner.clone();
@@ -150,6 +152,7 @@ mod tests {
                 3 => i.model = "other".into(),
                 4 => m[0].title.push('!'),
                 5 => m[0].text.push(' '),
+                6 => i.backend = personal_ai_llm::local_answer::AnswerBackend::Ollama,
                 _ => time = 2,
             }
             assert_ne!(
@@ -157,6 +160,52 @@ mod tests {
                 prepare(&u, &i, m, time, time + LIFETIME_MS).unwrap().2
             );
         }
+    }
+    #[test]
+    fn legacy_inputs_preserve_intent_bytes_and_native_backend_requires_new_consent() {
+        // Compare the pre-migration struct's field order as well as its JSON shape.
+        #[derive(Serialize)]
+        struct LegacyInput<'a> {
+            request_id: &'a str,
+            question: &'a str,
+            endpoint: &'a str,
+            model: &'a str,
+            sources: &'a [personal_ai_storage::answer_authorizations::SourceSelection],
+        }
+        let (owner, input, materials) = fixture();
+        let legacy = serde_json::json!({
+            "request_id": input.request_id, "question": input.question,
+            "endpoint": input.endpoint, "model": input.model, "sources": input.sources,
+        });
+        let parsed: AnswerPreparation = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(parsed.backend.is_local());
+        let old = LegacyInput {
+            request_id: &input.request_id,
+            question: &input.question,
+            endpoint: &input.endpoint,
+            model: &input.model,
+            sources: &input.sources,
+        };
+        assert_eq!(serde_json::to_value(&parsed).unwrap(), legacy);
+        assert_eq!(
+            serde_json::to_vec(&parsed).unwrap(),
+            serde_json::to_vec(&old).unwrap()
+        );
+        assert_eq!(
+            intent_digest(&owner, &parsed).unwrap(),
+            hash(&("local-answer-intent-v1", owner.as_str(), old)).unwrap()
+        );
+        let local = prepare(&owner, &input, materials.clone(), 1, 1 + LIFETIME_MS).unwrap();
+        let mut native = input.clone();
+        native.backend = personal_ai_llm::local_answer::AnswerBackend::Ollama;
+        let native = prepare(&owner, &native, materials, 1, 1 + LIFETIME_MS).unwrap();
+        assert_ne!(local.0.request_sha256, native.0.request_sha256);
+        assert_ne!(local.2, native.2);
+        assert_eq!(native.0.request.profile(), "ollama-local-answer-v1");
+        assert!(native.0.request.endpoint().ends_with("/api/chat"));
+        let mut invalid = legacy;
+        invalid["backend"] = serde_json::json!("experimental");
+        assert!(serde_json::from_value::<AnswerPreparation>(invalid).is_err());
     }
     #[test]
     fn duplicate_forged_source_order_invalid_target_and_local_budget_are_rejected() {

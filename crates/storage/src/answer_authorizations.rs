@@ -1,7 +1,7 @@
 //! Owner-scoped local answer preparation; no model or embedding invocation.
 use crate::{BoxFuture, StorageResult};
 use personal_ai_domain::UserId;
-use personal_ai_llm::local_answer::LocalAnswerPreview;
+use personal_ai_llm::local_answer::{AnswerBackend, LocalAnswerPreview};
 use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +16,8 @@ pub struct AnswerPreparation {
     pub question: String,
     pub endpoint: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "AnswerBackend::is_local")]
+    pub backend: AnswerBackend,
     pub sources: Vec<SourceSelection>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

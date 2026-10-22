@@ -1,18 +1,32 @@
 //! Explicit local answer execution, independent of paid providers and quality experiments.
 use personal_ai_llm::{
     AnswerProvider, AnswerSource, BoxFuture, LlmError, LlmResult, ModelAnswer, local::LocalTarget,
+    local_answer::AnswerBackend,
 };
-use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
-use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::{
+    io::AsyncReadExt,
+    sync::{OwnedSemaphorePermit, Semaphore},
+};
 
 const GUARD_UNAVAILABLE: &str = "answer_execution_resource_unavailable";
 
 /// A trusted resource check receives no question, source text, session or grant.
 pub trait AnswerExecutionGuard: Send + Sync {
     fn check(&self) -> BoxFuture<'_, Result<(), &'static str>>;
+    /// Adapters without an external supervisor can revalidate the in-flight runtime.
+    fn monitor(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 pub struct AnswerExecutionRuntime {
+    backend: AnswerBackend,
     target: LocalTarget,
     provider: Arc<dyn AnswerProvider>,
     guard: Arc<dyn AnswerExecutionGuard>,
@@ -28,12 +42,29 @@ impl AnswerExecutionRuntime {
         provider: Arc<dyn AnswerProvider>,
         guard: Arc<dyn AnswerExecutionGuard>,
     ) -> Self {
+        Self::new_for(AnswerBackend::Local, target, provider, guard)
+    }
+
+    /// Builds a runtime whose backend is part of the exact consent fingerprint.
+    #[must_use]
+    pub fn new_for(
+        backend: AnswerBackend,
+        target: LocalTarget,
+        provider: Arc<dyn AnswerProvider>,
+        guard: Arc<dyn AnswerExecutionGuard>,
+    ) -> Self {
         Self {
+            backend,
             target,
             provider,
             guard,
             slots: Arc::new(Semaphore::new(1)),
         }
+    }
+
+    #[must_use]
+    pub const fn backend(&self) -> AnswerBackend {
+        self.backend
     }
 
     #[must_use]
@@ -94,30 +125,57 @@ impl AnswerExecutionPermit {
                 LlmError::ProviderUnavailable("local answer resource admission unavailable".into())
             })?;
             before_send.await?;
-            self.runtime.provider.answer(question, sources).await
+            let response = self.runtime.provider.answer(question, sources);
+            tokio::pin!(response);
+            let mut monitor = tokio::time::interval_at(
+                tokio::time::Instant::now() + Duration::from_secs(2),
+                Duration::from_secs(2),
+            );
+            monitor.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            loop {
+                tokio::select! {
+                    result = &mut response => {
+                        self.runtime.guard.monitor().await.map_err(|_| resource_error())?;
+                        return result;
+                    }
+                    _ = monitor.tick() => {
+                        self.runtime.guard.monitor().await.map_err(|_| resource_error())?;
+                    }
+                }
+            }
         })
     }
 }
 
+fn resource_error() -> LlmError {
+    LlmError::ProviderUnavailable("local answer resource admission unavailable".into())
+}
+
 struct CommandGuard {
+    backend: AnswerBackend,
     script: PathBuf,
     node_binary: String,
     target: LocalTarget,
     timeout: Duration,
+    identity: Mutex<Option<String>>,
 }
 
-impl AnswerExecutionGuard for CommandGuard {
-    fn check(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+impl CommandGuard {
+    fn run(&self, mode: &'static str) -> BoxFuture<'_, Result<(), &'static str>> {
         Box::pin(async move {
             let mut command = tokio::process::Command::new(&self.node_binary);
             command
                 .arg(&self.script)
-                .arg("answer-admit")
+                .arg(mode)
                 .arg(self.target.endpoint())
                 .arg(self.target.model())
                 .env_clear()
                 .stdin(Stdio::null())
-                .stdout(Stdio::null())
+                .stdout(if self.backend.is_local() {
+                    Stdio::null()
+                } else {
+                    Stdio::piped()
+                })
                 .stderr(Stdio::null())
                 .kill_on_drop(true);
             for key in ["PATH", "HOME"] {
@@ -125,20 +183,68 @@ impl AnswerExecutionGuard for CommandGuard {
                     command.env(key, value);
                 }
             }
-            let status = tokio::time::timeout(self.timeout, command.status())
+            let result = async {
+                let mut child = command.spawn().map_err(|_| GUARD_UNAVAILABLE)?;
+                let mut output = Vec::new();
+                if let Some(stdout) = child.stdout.take() {
+                    // A trusted script must still return a bounded identity, never logs.
+                    stdout
+                        .take(66)
+                        .read_to_end(&mut output)
+                        .await
+                        .map_err(|_| GUARD_UNAVAILABLE)?;
+                    if output.len() > 65 {
+                        return Err(GUARD_UNAVAILABLE);
+                    }
+                }
+                if !child.wait().await.map_err(|_| GUARD_UNAVAILABLE)?.success() {
+                    return Err(GUARD_UNAVAILABLE);
+                }
+                if self.backend.is_local() {
+                    return Ok(());
+                }
+                if output.len() != 65
+                    || output[64] != b'\n'
+                    || !output[..64]
+                        .iter()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
+                {
+                    return Err(GUARD_UNAVAILABLE);
+                }
+                let observed =
+                    String::from_utf8(output[..64].to_vec()).map_err(|_| GUARD_UNAVAILABLE)?;
+                let mut identity = self.identity.lock().map_err(|_| GUARD_UNAVAILABLE)?;
+                match identity.as_ref() {
+                    Some(expected) if *expected == observed => Ok(()),
+                    None if mode == "answer-admit" => {
+                        *identity = Some(observed);
+                        Ok(())
+                    }
+                    _ => Err(GUARD_UNAVAILABLE),
+                }
+            };
+            tokio::time::timeout(self.timeout, result)
                 .await
                 .map_err(|_| GUARD_UNAVAILABLE)?
-                .map_err(|_| GUARD_UNAVAILABLE)?;
-            if status.success() {
-                Ok(())
-            } else {
-                Err(GUARD_UNAVAILABLE)
-            }
         })
     }
 }
 
+impl AnswerExecutionGuard for CommandGuard {
+    fn check(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+        self.run("answer-admit")
+    }
+    fn monitor(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+        if self.backend.is_local() {
+            Box::pin(async { Ok(()) })
+        } else {
+            self.run("answer-monitor")
+        }
+    }
+}
+
 struct Settings {
+    backend: AnswerBackend,
     target: LocalTarget,
     script: PathBuf,
     node_binary: String,
@@ -150,6 +256,11 @@ fn settings(env: impl Fn(&str) -> Option<String>) -> Result<Option<Settings>, &'
         Some("true") => {}
         _ => return Err("LOCAL_ANSWER_EXECUTION_ENABLED must be true or false"),
     }
+    let backend = match env("LOCAL_ANSWER_BACKEND").as_deref() {
+        None | Some("local") => AnswerBackend::Local,
+        Some("ollama") => AnswerBackend::Ollama,
+        _ => return Err("LOCAL_ANSWER_BACKEND must be local or ollama"),
+    };
     let endpoint = env("LOCAL_ANSWER_ENDPOINT").ok_or("LOCAL_ANSWER_ENDPOINT is required")?;
     let model = env("LOCAL_ANSWER_MODEL").ok_or("LOCAL_ANSWER_MODEL is required")?;
     let target = LocalTarget::new(&endpoint, &model).map_err(|_| "invalid local answer target")?;
@@ -165,6 +276,7 @@ fn settings(env: impl Fn(&str) -> Option<String>) -> Result<Option<Settings>, &'
         return Err("LOCAL_ANSWER_NODE_BINARY must be node or an absolute executable path");
     }
     Ok(Some(Settings {
+        backend,
         target,
         script,
         node_binary,
@@ -179,16 +291,26 @@ pub fn answer_execution_from_env()
     let Some(settings) = settings(|key| std::env::var(key).ok())? else {
         return Ok(None);
     };
-    let provider = Arc::new(personal_ai_llm_local::answer::LocalAnswers::new(
-        settings.target.clone(),
-    )?);
+    let provider: Arc<dyn AnswerProvider> = match settings.backend {
+        AnswerBackend::Local => Arc::new(personal_ai_llm_local::answer::LocalAnswers::new(
+            settings.target.clone(),
+        )?),
+        AnswerBackend::Ollama => Arc::new(
+            personal_ai_llm_local::ollama_local_answer::OllamaLocalAnswers::new(
+                settings.target.clone(),
+            )?,
+        ),
+    };
     let guard = Arc::new(CommandGuard {
+        backend: settings.backend,
         script: settings.script,
         node_binary: settings.node_binary,
         target: settings.target.clone(),
-        timeout: Duration::from_secs(3),
+        timeout: Duration::from_secs(if settings.backend.is_local() { 3 } else { 10 }),
+        identity: Mutex::new(None),
     });
-    Ok(Some(Arc::new(AnswerExecutionRuntime::new(
+    Ok(Some(Arc::new(AnswerExecutionRuntime::new_for(
+        settings.backend,
         settings.target,
         provider,
         guard,
@@ -230,10 +352,12 @@ mod tests {
     #[test]
     fn enablement_requires_exact_loopback_target_and_explicit_fixed_guard_configuration() {
         let good = settings(configuration).unwrap().unwrap();
+        assert_eq!(good.backend, AnswerBackend::Local);
         assert_eq!(good.target, target());
         assert_eq!(good.node_binary, "node");
         for (key, bad) in [
             ("LOCAL_ANSWER_EXECUTION_ENABLED", "yes"),
+            ("LOCAL_ANSWER_BACKEND", "experimental"),
             ("LOCAL_ANSWER_ENDPOINT", "http://192.168.1.1:11435"),
             (
                 "LOCAL_ANSWER_ENDPOINT",
@@ -255,6 +379,16 @@ mod tests {
             .unwrap();
             assert!(!error.contains("secret"));
         }
+        let native = settings(|name| {
+            if name == "LOCAL_ANSWER_BACKEND" {
+                Some("ollama".into())
+            } else {
+                configuration(name)
+            }
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(native.backend, AnswerBackend::Ollama);
         for absent in [
             "LOCAL_ANSWER_ENDPOINT",
             "LOCAL_ANSWER_MODEL",
@@ -414,10 +548,12 @@ mod tests {
         )
         .unwrap();
         let guard = CommandGuard {
+            backend: AnswerBackend::Local,
             script: script.clone(),
             node_binary: "/bin/sh".into(),
             target: target(),
             timeout: Duration::from_secs(1),
+            identity: Mutex::new(None),
         };
         guard.check().await.unwrap();
         std::fs::write(&script, "printf private-guard-detail >&2\nexit 1\n").unwrap();
@@ -429,5 +565,102 @@ mod tests {
         };
         assert_eq!(guard.check().await, Err(GUARD_UNAVAILABLE));
         std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ollama_guard_pins_bounded_identity_for_admission_and_monitoring() {
+        let directory =
+            std::env::temp_dir().join(format!("answer-identity-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir(&directory).unwrap();
+        let script = directory.join("guard fixture.sh");
+        let guard = CommandGuard {
+            backend: AnswerBackend::Ollama,
+            script: script.clone(),
+            node_binary: "/bin/sh".into(),
+            target: target(),
+            timeout: Duration::from_secs(1),
+            identity: Mutex::new(None),
+        };
+        let identity = "a".repeat(64);
+        std::fs::write(&script, format!("printf '{identity}\\n'\n")).unwrap();
+        // Monitoring may not establish a baseline without a successful admission.
+        assert_eq!(guard.monitor().await, Err(GUARD_UNAVAILABLE));
+        guard.check().await.unwrap();
+        guard.monitor().await.unwrap();
+        for bad in [
+            "b".repeat(64),
+            "A".repeat(64),
+            "c".repeat(65),
+            "private".into(),
+        ] {
+            std::fs::write(&script, format!("printf '{bad}\\n'\n")).unwrap();
+            assert_eq!(guard.check().await, Err(GUARD_UNAVAILABLE));
+            assert_eq!(guard.monitor().await, Err(GUARD_UNAVAILABLE));
+        }
+        // A failed observation cannot repin a changed model or engine.
+        std::fs::write(
+            &script,
+            format!("test \"$1\" = answer-monitor && printf '{identity}\\n'\n"),
+        )
+        .unwrap();
+        guard.monitor().await.unwrap();
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    struct MonitoredGuard;
+    impl AnswerExecutionGuard for MonitoredGuard {
+        fn check(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+            Box::pin(async { Ok(()) })
+        }
+        fn monitor(&self) -> BoxFuture<'_, Result<(), &'static str>> {
+            Box::pin(async { Err("fixture pressure") })
+        }
+    }
+    #[tokio::test]
+    async fn failed_monitor_discards_inflight_response_and_releases_slot_without_another_send() {
+        let provider = Arc::new(PausedProvider {
+            started: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        let runtime = Arc::new(AnswerExecutionRuntime::new_for(
+            AnswerBackend::Ollama,
+            target(),
+            provider.clone(),
+            Arc::new(MonitoredGuard),
+        ));
+        assert_eq!(runtime.backend(), AnswerBackend::Ollama);
+        let permit = runtime.admit().await.unwrap();
+        let response = tokio::spawn(async move { permit.answer("question", &[]).await });
+        provider.started.notified().await;
+        let error = tokio::time::timeout(Duration::from_secs(3), response)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(error, LlmError::ProviderUnavailable(_)));
+        assert!(runtime.admit().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn failed_final_monitor_also_discards_a_completed_answer() {
+        let provider = Arc::new(Provider(AtomicUsize::new(0)));
+        let runtime = Arc::new(AnswerExecutionRuntime::new_for(
+            AnswerBackend::Ollama,
+            target(),
+            provider.clone(),
+            Arc::new(MonitoredGuard),
+        ));
+        assert!(
+            runtime
+                .admit()
+                .await
+                .unwrap()
+                .answer("question", &[])
+                .await
+                .is_err()
+        );
+        assert_eq!(provider.0.load(Ordering::SeqCst), 1);
+        assert!(runtime.admit().await.is_ok());
     }
 }

@@ -11,6 +11,7 @@ function failure(status: number, code?: string) {
   if (status === 403) return "请求校验失败，请刷新页面。";
   if (code === "answer_execution_disabled") return "管理员尚未启用本地问答执行，授权尚未消费。请查询原请求状态。";
   if (code === "answer_execution_target_changed") return "当前执行目标与已确认请求不同。请重新预览并确认当前目标。";
+  if (code === "answer_execution_resource_unavailable") return "本地运行器身份或资源检查未通过，请查询原请求状态。";
   if (status === 404) return "未找到该请求或来源，请查询原请求或重新检索。";
   if (status === 409) return "请求已失效、内容冲突或达到授权上限，请查询原请求状态。";
   if (status === 400 || status === 422) return "预览输入无效或材料超过本地请求预算，请减少选择。";
@@ -29,6 +30,7 @@ function ExecutionCitation({ citation }: { citation: Citation }) {
 
 export function AnswerAuthorizationsPanel({ query, sources }: { query: string; sources: Source[] }) {
   const [selected, setSelected] = useState<number[]>([]);
+  const [backend, setBackend] = useState<"local" | "ollama">("local");
   const [endpoint, setEndpoint] = useState("http://127.0.0.1:11435");
   const [model, setModel] = useState("qwen3:4b-q4_K_M");
   const [items, setItems] = useState<Grant[]>([]);
@@ -87,7 +89,14 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
   function prepare() {
     const id = crypto.randomUUID();
     void run(base, id, { request_id: id, question: query, endpoint, model,
+      ...(backend === "ollama" ? { backend } : {}),
       sources: selected.map(index => ({ document_id: sources[index].document_id, ordinal: sources[index].ordinal })) });
+  }
+  function chooseBackend(value: string) {
+    const next = value === "ollama" ? "ollama" : "local";
+    setBackend(next);
+    setEndpoint(next === "ollama" ? "http://127.0.0.1:11434" : "http://127.0.0.1:11435");
+    setModel(next === "ollama" ? "qwen3.5:9b" : "qwen3:4b-q4_K_M");
   }
   function approve() {
     if (!grant?.preview || !sharing || !compute) return;
@@ -115,6 +124,10 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
         <input type="checkbox" checked={selected.includes(index)} onChange={event => setSelected(previous => event.target.checked ? [...previous, index] : previous.filter(i => i !== index))} />
         {source.title} · 第 {source.ordinal + 1} 块
       </label>)}
+      <label>本地运行器<select value={backend} onChange={e => chooseBackend(e.target.value)}>
+        <option value="local">llama.cpp</option><option value="ollama">Ollama（macOS）</option>
+      </select></label>
+      <p>运行器和目标设置用于新建预览，已有授权继续绑定原完整请求。</p>
       <label>本地服务地址<input value={endpoint} onChange={e => setEndpoint(e.target.value)} /></label>
       <label>本地模型名称<input value={model} onChange={e => setModel(e.target.value)} /></label>
       <button type="button" onClick={prepare} disabled={!selected.length}>创建精确预览</button>
@@ -133,6 +146,7 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
       {grant.preview && <>
         <h4>授权问题：{grant.preview.question}</h4>
         <p>发送目标：{grant.preview.request.endpoint}</p>
+        <p>请求协议：{grant.preview.request.profile}</p>
         <ol>{grant.preview.materials.map(s => <li key={`${s.document_id}:${s.ordinal}`}><strong>{s.title}</strong><p>{s.source} · 第 {s.ordinal + 1} 块</p><pre>{s.text}</pre></li>)}</ol>
         <details><summary>查看完整模型请求与指纹</summary><pre>{JSON.stringify(grant.preview.request, null, 2)}</pre><p>请求指纹：<code>{grant.preview.request_sha256}</code></p><p>授权摘要：<code>{grant.digest}</code></p></details>
         {grant.status === "draft" && <fieldset disabled={busy}>

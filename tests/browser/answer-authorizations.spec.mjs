@@ -5,7 +5,7 @@ const base = "/api/knowledge/answer-authorizations";
 const panel = page => page.getByRole("region", { name: "本地问答授权", exact: true });
 const indexTest = process.env.E2E_INDEX === "1" ? test : test.skip;
 
-indexTest("exact consent persists and cancels without dispatching inference", async ({ page }, testInfo) => {
+for (const backend of ["local", "ollama"]) indexTest(`${backend} exact consent persists and cancels without dispatching inference`, async ({ page }, testInfo) => {
   const owner = await createAccount(); const other = await createAccount();
   await page.goto("/"); await login(page, owner);
   const imported = page.waitForResponse(r => r.url().endsWith("/api/documents") && r.request().method() === "POST");
@@ -23,6 +23,7 @@ indexTest("exact consent persists and cancels without dispatching inference", as
   let dispatches = 0;
   page.on("request", r => { if (/\/api\/knowledge\/(answer|search)$|\/execute$|\/v1\/chat\/completions$/.test(new URL(r.url()).pathname)) dispatches++; });
   await panel(page).getByRole("checkbox").check();
+  if (backend === "ollama") await panel(page).getByRole("combobox", { name: "本地运行器", exact: true }).selectOption("ollama");
   const created = page.waitForResponse(r => r.url().endsWith(base) && r.request().method() === "POST");
   await panel(page).getByRole("button", { name: "创建精确预览" }).click();
   const grant = await (await created).json();
@@ -33,7 +34,15 @@ indexTest("exact consent persists and cancels without dispatching inference", as
   await expect(detail.getByRole("button", { name: "保存一次授权" })).toBeDisabled();
   await detail.getByLabel("我理解未来执行", { exact: false }).check();
   await detail.getByText("查看完整模型请求与指纹").click();
-  await expect(detail).toContainText("local-knowledge-answer-v2");
+  const profile = backend === "ollama" ? "ollama-local-answer-v1" : "local-knowledge-answer-v2";
+  await expect(detail).toContainText(profile);
+  expect(grant.preview.request.profile).toBe(profile);
+  if (backend === "ollama") {
+    expect(grant.preview.request.endpoint).toBe("http://127.0.0.1:11434/api/chat");
+    expect(grant.preview.request.body.model).toBe("qwen3.5:9b");
+    expect(grant.preview.request.body.think).toBe(false);
+    expect(grant.preview.request.body.keep_alive).toBe(30);
+  }
   await panel(page).screenshot({ path: testInfo.outputPath("answer-authorization.png") });
   await detail.getByRole("button", { name: "保存一次授权" }).click();
   await expect(detail).toContainText("状态：已保存授权");
@@ -108,15 +117,22 @@ test("lost preview response recovers original request and invalidation clears co
 
 // These fixtures exercise the browser contract; the real database/runtime flow is
 // covered by the API acceptance suite, without calling a real model.
-async function executionFixture(page, { initial = "authorized", available = true, mode = "normal" } = {}) {
+async function executionFixture(page, { initial = "authorized", available = true, mode = "normal", backend = "local" } = {}) {
   const unsafe = '<img src=x onerror="window.injected=true">';
   const quote = "会议安排在周五。";
   const hit = { document_id: randomUUID(), ordinal: 0, title: "执行夹具", source: unsafe, text: `😀${quote}尾声 ${unsafe}`, score: 1 };
   const answer = { status: "answered", answer: `${unsafe}\n会议安排在周五。[1]`, citations: [{ ...hit, id: 1, quote, quote_start: 1, quote_end: 1 + Array.from(quote).length }] };
-  const create = (id = randomUUID(), status = "authorized", question = "何时开会？") => ({
+  const create = (id = randomUUID(), status = "authorized", question = "何时开会？", runtime = backend) => ({
     request_id: id, status, digest: "a".repeat(64), created_at_unix_ms: Date.now(), expires_at_unix_ms: Date.now() + 600000,
     execution_available: available, execution: null,
-    preview: { question, materials: [hit], request_sha256: "b".repeat(64), request: { endpoint: "http://127.0.0.1:11435/v1/chat/completions", profile: "local-knowledge-answer-v2", body: { model: "fixture", messages: [{ content: hit.text }] } } },
+    preview: { question, materials: [hit], request_sha256: "b".repeat(64), request: runtime === "ollama"
+      ? { endpoint: "http://127.0.0.1:11434/api/chat", profile: "ollama-local-answer-v1", body: {
+        model: "qwen3.5:9b", runner: "llamacpp", stream: true, think: false, keep_alive: 30,
+        format: { type: "object" }, options: { num_ctx: 8192, num_predict: 2048, temperature: 0,
+          seed: 0, top_k: 1, top_p: 1, repeat_penalty: 1, presence_penalty: 0, frequency_penalty: 0 },
+        truncate: false, shift: false, messages: [{ content: hit.text }],
+      } }
+      : { endpoint: "http://127.0.0.1:11435/v1/chat/completions", profile: "local-knowledge-answer-v2", body: { model: "fixture", messages: [{ content: hit.text }] } } },
   });
   const control = { current: initial ? create(undefined, initial) : null, calls: [], answer, hit, release: null };
   const question = () => control.current.preview?.question ?? control.current.execution?.question ?? "何时开会？";
@@ -132,9 +148,9 @@ async function executionFixture(page, { initial = "authorized", available = true
   await page.route("**/api/knowledge/search", route => route.fulfill({ json: { hits: [hit] } }));
   await page.route("**/api/knowledge/answer-authorizations**", async route => {
     const request = route.request(); const path = new URL(request.url()).pathname;
-    control.calls.push({ method: request.method(), path });
+    control.calls.push({ method: request.method(), path, input: request.method() === "POST" ? request.postDataJSON() : null });
     if (path === base && request.method() === "POST") {
-      const input = request.postDataJSON(); control.current = create(input.request_id, "draft", input.question);
+      const input = request.postDataJSON(); control.current = create(input.request_id, "draft", input.question, input.backend ?? "local");
     } else if (path === base) {
       const items = control.current ? [{ ...control.current, preview: null, execution: control.current.execution ? { ...control.current.execution, question: null, result: null } : null }] : [];
       await route.fulfill({ json: { execution_available: available, items } }); return;
@@ -144,6 +160,9 @@ async function executionFixture(page, { initial = "authorized", available = true
     } else if (path.endsWith("/execute")) {
       expect(request.postDataJSON()).toEqual({ digest: control.current.digest });
       expect(control.current.status).toBe("authorized");
+      if (mode === "target_changed") {
+        await route.fulfill({ status: 409, json: { error: { code: "answer_execution_target_changed" } } }); return;
+      }
       control.terminal("running"); control.current.execution.sent_at_unix_ms = null; control.current.execution.finished_at_unix_ms = null;
       if (mode === "lost") { control.terminal("unknown"); await route.abort("failed"); return; }
       if (mode === "held") {
@@ -206,6 +225,61 @@ test("a separate execution click persists text and Unicode citations through ref
   await expect(detail.locator(".answerText")).toHaveCount(0);
   expect(fixture.executions()).toBe(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("Ollama preview requires its own confirmation before one native execution and result recovery", async ({ page }, testInfo) => {
+  const fixture = await executionFixture(page, { initial: null, backend: "ollama" });
+  await page.getByLabel("问题或检索内容", { exact: false }).fill("何时开会？");
+  await page.getByRole("button", { name: "检索资料", exact: true }).click();
+  await panel(page).getByRole("checkbox").check();
+  await panel(page).getByRole("combobox", { name: "本地运行器", exact: true }).selectOption("ollama");
+  await expect(panel(page).getByLabel("本地服务地址", { exact: true })).toHaveValue("http://127.0.0.1:11434");
+  await expect(panel(page).getByLabel("本地模型名称", { exact: true })).toHaveValue("qwen3.5:9b");
+  await panel(page).getByRole("button", { name: "创建精确预览" }).click();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText("请求协议：ollama-local-answer-v1");
+  const input = fixture.calls.find(call => call.path === base && call.method === "POST").input;
+  expect(input.backend).toBe("ollama"); expect(input.endpoint).toBe("http://127.0.0.1:11434"); expect(input.model).toBe("qwen3.5:9b");
+  expect(input.sources).toEqual([{ document_id: fixture.hit.document_id, ordinal: 0 }]);
+  await expect(detail).toContainText("http://127.0.0.1:11434/api/chat");
+  await detail.getByText("查看完整模型请求与指纹").click();
+  await expect(detail).toContainText('"think": false'); await expect(detail).toContainText('"keep_alive": 30');
+  await expect(detail.getByRole("button", { name: "保存一次授权" })).toBeDisabled();
+  await detail.getByLabel("我同意将当前问题", { exact: false }).check();
+  await expect(detail.getByRole("button", { name: "保存一次授权" })).toBeDisabled();
+  await detail.getByLabel("我理解未来执行", { exact: false }).check();
+  await panel(page).screenshot({ path: testInfo.outputPath("ollama-answer-preview.png") });
+  await detail.getByRole("button", { name: "保存一次授权" }).click();
+  expect(fixture.executions()).toBe(0);
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail).toContainText("正在执行一次问答"); fixture.complete();
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail).toContainText(fixture.answer.answer);
+  await page.reload(); await fixture.open();
+  await expect(detail).toContainText(fixture.answer.answer);
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  await detail.getByRole("button", { name: "删除本次结果" }).click();
+  await expect(detail).toContainText("已取消执行，结果已清除");
+  expect(fixture.executions()).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("changing the runtime preset never rewrites an existing authorization or retries a mismatched execution", async ({ page }) => {
+  const fixture = await executionFixture(page, { mode: "target_changed" });
+  await page.getByLabel("问题或检索内容", { exact: false }).fill("何时开会？");
+  await page.getByRole("button", { name: "检索资料", exact: true }).click();
+  await fixture.open();
+  await panel(page).getByRole("combobox", { name: "本地运行器", exact: true }).selectOption("ollama");
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText("请求协议：local-knowledge-answer-v2");
+  await expect(detail).toContainText("http://127.0.0.1:11435/v1/chat/completions");
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(panel(page).getByRole("alert")).toContainText("当前执行目标与已确认请求不同");
+  await panel(page).getByRole("button", { name: "查询原请求" }).click();
+  await expect(detail).toContainText("请求协议：local-knowledge-answer-v2");
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toBeDisabled();
+  expect(fixture.calls.filter(call => call.path === base && call.method === "POST")).toHaveLength(0);
+  expect(fixture.executions()).toBe(1);
 });
 
 test("a lost execution response recovers unknown without offering another send", async ({ page }, testInfo) => {

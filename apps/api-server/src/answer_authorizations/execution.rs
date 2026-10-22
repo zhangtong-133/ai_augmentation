@@ -8,7 +8,7 @@ use axum::{
 };
 use personal_ai_domain::UserId;
 use personal_ai_knowledge::{answer::validate_output, retrieval::SearchHit};
-use personal_ai_llm::{AnswerSource, LlmError, local_answer::preview};
+use personal_ai_llm::{AnswerSource, LlmError, local_answer::preview_for};
 use personal_ai_storage::{
     StorageError, StorageResult,
     answer_authorizations::{AnswerAuthorization, PreparedAnswer},
@@ -153,9 +153,14 @@ pub(super) async fn execute(
         .preview
         .ok_or_else(|| conflict("answer_authorization_conflict"))?;
     let sources = sources(&prepared);
-    let fingerprint = preview(runtime.target(), &prepared.question, &sources)
-        .and_then(|preview| preview.fingerprint())
-        .map_err(|_| conflict("answer_execution_target_changed"))?;
+    let fingerprint = preview_for(
+        runtime.backend(),
+        runtime.target(),
+        &prepared.question,
+        &sources,
+    )
+    .and_then(|preview| preview.fingerprint())
+    .map_err(|_| conflict("answer_execution_target_changed"))?;
     if fingerprint != prepared.request_sha256 {
         return Err(conflict("answer_execution_target_changed"));
     }

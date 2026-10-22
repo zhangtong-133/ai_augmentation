@@ -145,6 +145,10 @@ local-model-test: ## 验收显存预算、监控故障与停止边界
 	node scripts/test-local-model-budget.mjs
 	python3 scripts/test-local-model-install.py
 
+.PHONY: ollama-answer-admission-test
+ollama-answer-admission-test: ## 用元数据夹具验证 macOS Ollama 准入和在途检查；不运行模型
+	node scripts/test-ollama-answer-admission.mjs
+
 local-review: ## 显式执行已批准的原本地核验请求（OWNER/REQUEST）
 	node scripts/local-model.mjs review "$(OWNER)" "$(REQUEST)"
 

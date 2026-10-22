@@ -57,14 +57,14 @@ cargo run -p api-server
 | 外部原文存储 | `OBJECT_STORE_ENABLED=true`，配置桶及凭据 | [存储](docs/design/sprint-2-object-storage.md)、[迁移与清理](docs/design/sprint-2-original-maintenance.md)；不自动搬迁旧数据 |
 | 索引与检索 | `KNOWLEDGE_INDEX_ENABLED=true`，配置模型、维度及 Qdrant | `POST/GET /api/documents/{id}/index-job`、`POST /api/knowledge/search` |
 | 引用问答 | 已启用索引，再设置 `KNOWLEDGE_ANSWER_ENABLED=true` 和 `OPENAI_CHAT_MODEL` | `POST /api/knowledge/answer`；模型须支持严格结构化输出 |
-| 私有本地问答执行 | native API 显式设置 `LOCAL_ANSWER_EXECUTION_ENABLED=true` 及固定目标/资源 guard | [单次执行设计](docs/design/answer-execution.md)；保存授权不发送，用户须另行点击执行一次 |
+| 私有本地问答执行 | native API 显式设置 `LOCAL_ANSWER_EXECUTION_ENABLED=true`、`LOCAL_ANSWER_BACKEND` 及固定目标/资源 guard | [单次执行设计](docs/design/answer-execution.md)、[macOS Ollama 接入](docs/design/ollama-answer-execution.md)；保存授权不发送，用户须另行点击执行一次 |
 | RSS 手动采集 | `RSS_COLLECTION_MODE=public` | [订阅管理、预览、明确确认和状态恢复](docs/design/sprint-4-rss-http.md)；默认 `disabled`，管理和预览仍可用 |
 | 消息快照缓存 | `MESSAGE_CACHE_ENABLED=true`，配置 `REDIS_URL` | 固定 30 分钟 TTL；关闭或故障时从 PostgreSQL 读取，不丢失消息 |
 | 独立本地学习核验 | `LEARNING_LOCAL_ENABLED=true`，显式运行项目模型服务 | [官方 llama.cpp/Qwen 部署](docs/design/local-model.md)、逐次分享/本机计算同意；预留 6 GiB 游戏显存，保留 vLLM 替换端口 |
 
-本地问答执行目前使用[既有 Linux/WSL2 NVIDIA 受监督服务](docs/design/local-model.md)：native API 必须与模型、监督进程和本项目工作区位于同一主机环境。启用时还须导出 `LOCAL_ANSWER_ENDPOINT`、`LOCAL_ANSWER_MODEL`、`LOCAL_ANSWER_GUARD_SCRIPT`（项目 `scripts/local-model.mjs` 的绝对路径）；可选 `LOCAL_ANSWER_NODE_BINARY` 默认 `node`。当前服务目标为 `http://127.0.0.1:11435`，模型别名须与显式启动的监督服务一致；API 不启动模型。资源 guard 只读核对监督身份、模型配置、睡眠状态和显存预算，每次发送仍保留至少 6 GiB 余量保护。
+本地问答执行支持两种明确选择的后端。`LOCAL_ANSWER_BACKEND=local`（默认）使用[既有 Linux/WSL2 NVIDIA 受监督服务](docs/design/local-model.md)，目标通常为 `http://127.0.0.1:11435`，guard 为项目 `scripts/local-model.mjs`。`LOCAL_ANSWER_BACKEND=ollama` 使用[macOS ARM64 本机已有 Ollama](docs/design/ollama-answer-execution.md)，目标通常为 `http://127.0.0.1:11434`，guard 为 `scripts/ollama-answer-admission.mjs`。native API 必须与运行器同机；启用时导出 `LOCAL_ANSWER_ENDPOINT`、`LOCAL_ANSWER_MODEL` 和 guard 脚本绝对路径，可选 `LOCAL_ANSWER_NODE_BINARY` 默认 `node`。API 不启动运行器、不下载模型；Ollama 使用独立 `ollama-local-answer-v1` 单请求预览，旧 v2 授权不能改为原生 Ollama 请求。
 
-这些 `LOCAL_ANSWER_*` 配置只供 native API，标准 Compose 不透传。标准 API 镜像没有 Node、宿主 `/proc` 模型进程和 `.local-model` 监督环境；仅在 `.env` 打开开关不能启用容器内执行。模型合成评估与工程开发分开：[历史实验](docs/design/ollama-answer-evidence-role.md)的失败保持原样，不阻塞预览、授权和执行生命周期开发，也不代表具体模型已经通过质量验收。
+这些 `LOCAL_ANSWER_*` 配置只供 native API，标准 Compose 不透传；镜像没有 Node 或宿主运行器的身份与资源检查环境，仅打开 `.env` 开关不能启用容器内执行。Ollama 在领取前、发送前、运行期间及返回前核对身份和统一内存估计余量，使用有限 30 秒驻留；取消或检查失败停止等待，不停止共享 Ollama。模型合成评估与工程开发分开：[历史实验](docs/design/ollama-answer-evidence-role.md)的失败保持原样，不阻塞功能交付，也不代表具体模型已经通过质量验收。
 
 知识库接口需要登录会话；POST 还需 `X-Requested-With: personal-ai`。同步分批索引接口仍保留，但不更新异步任务进度。协议和限制见 [索引任务](docs/design/sprint-2-index-jobs.md)、[检索与问答](docs/design/sprint-2-retrieval-qa.md)。模型超时或任务恢复可能重复计费，真实模型需单独评估。
 

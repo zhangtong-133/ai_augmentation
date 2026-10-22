@@ -289,7 +289,7 @@ struct Message {
     thinking: Option<String>,
     tool_calls: Option<Vec<serde_json::Value>>,
 }
-struct Parser<'a> {
+pub(crate) struct Parser<'a> {
     model: &'a str,
     bytes: usize,
     line: Vec<u8>,
@@ -297,7 +297,7 @@ struct Parser<'a> {
     done: bool,
 }
 impl<'a> Parser<'a> {
-    fn new(model: &'a str) -> Self {
+    pub(crate) fn new(model: &'a str) -> Self {
         Self {
             model,
             bytes: 0,
@@ -306,7 +306,7 @@ impl<'a> Parser<'a> {
             done: false,
         }
     }
-    fn push(&mut self, data: &[u8]) -> LlmResult<()> {
+    pub(crate) fn push(&mut self, data: &[u8]) -> LlmResult<()> {
         self.bytes = self.bytes.checked_add(data.len()).ok_or_else(invalid)?;
         if self.bytes > MAX_WIRE {
             return Err(invalid());
@@ -353,7 +353,7 @@ impl<'a> Parser<'a> {
         self.done = record.done;
         Ok(())
     }
-    fn finish(self) -> LlmResult<String> {
+    pub(crate) fn finish(self) -> LlmResult<String> {
         if !self.done || !self.line.is_empty() || self.text.trim().is_empty() {
             return Err(invalid());
         }

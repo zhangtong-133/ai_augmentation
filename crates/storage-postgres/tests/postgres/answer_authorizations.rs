@@ -63,6 +63,7 @@ impl Fixture {
             question: "会议什么时候？".into(),
             endpoint: "http://127.0.0.1:11435".into(),
             model: "qwen3:4b-q4_K_M".into(),
+            backend: personal_ai_llm::local_answer::AnswerBackend::Local,
             sources: vec![SourceSelection {
                 document_id: self.document.clone(),
                 ordinal: 0,
@@ -145,6 +146,70 @@ async fn answer_authorizations_are_private_immutable_and_survive_reconnect() {
             .iter()
             .all(|r| r.preview.is_none())
     );
+    f.cleanup().await;
+}
+#[tokio::test]
+#[ignore = "需要一次性 TEST_DATABASE_URL"]
+async fn answer_authorizations_persist_native_backend_and_require_new_intent_and_consent() {
+    use personal_ai_llm::local_answer::{AnswerBackend, OLLAMA_PROFILE, PROFILE};
+    let f = Fixture::new().await;
+    let mut input = f.input();
+    let local = f.store.prepare_answer(&f.owner, &input).await.unwrap();
+    assert_eq!(local.preview.as_ref().unwrap().request.profile(), PROFILE);
+    let stored: String =
+        sqlx::query_scalar("SELECT backend FROM answer_authorizations WHERE request_id=$1")
+            .bind(Uuid::parse_str(&input.request_id).unwrap())
+            .fetch_one(&f.pool)
+            .await
+            .unwrap();
+    assert_eq!(stored, "local");
+    input.backend = AnswerBackend::Ollama;
+    assert!(matches!(
+        f.store.prepare_answer(&f.owner, &input).await,
+        Err(StorageError::Conflict(_))
+    ));
+    input.request_id = Uuid::new_v4().to_string();
+    let native = f.store.prepare_answer(&f.owner, &input).await.unwrap();
+    assert_eq!(
+        native.preview.as_ref().unwrap().request.profile(),
+        OLLAMA_PROFILE
+    );
+    assert_ne!(native.digest, local.digest);
+    assert!(matches!(
+        f.store
+            .approve_answer(&f.owner, &input.request_id, &approval(&local))
+            .await,
+        Err(StorageError::Conflict(_))
+    ));
+    f.store
+        .approve_answer(&f.owner, &input.request_id, &approval(&native))
+        .await
+        .unwrap();
+    let reopened = PostgresStore::connect(&std::env::var("TEST_DATABASE_URL").unwrap())
+        .await
+        .unwrap();
+    let saved = reopened
+        .get_answer_authorization(&f.owner, &input.request_id)
+        .await
+        .unwrap();
+    assert_eq!(saved.status, "authorized");
+    assert_eq!(saved.digest, native.digest);
+    assert_eq!(
+        saved.preview.unwrap().request.fingerprint().unwrap(),
+        native.preview.unwrap().request.fingerprint().unwrap()
+    );
+    // Altering only the persisted backend cannot reinterpret an existing authorization.
+    sqlx::query("UPDATE answer_authorizations SET backend='local' WHERE request_id=$1")
+        .bind(Uuid::parse_str(&input.request_id).unwrap())
+        .execute(&f.pool)
+        .await
+        .unwrap();
+    let invalid = reopened
+        .get_answer_authorization(&f.owner, &input.request_id)
+        .await
+        .unwrap();
+    assert_eq!(invalid.status, "invalidated");
+    assert!(invalid.preview.is_none());
     f.cleanup().await;
 }
 #[tokio::test]
@@ -385,7 +450,7 @@ async fn answer_authorizations_enforce_active_and_lifetime_quotas() {
         .await
         .unwrap();
     f.store.prepare_answer(&f.owner, &f.input()).await.unwrap();
-    sqlx::query("INSERT INTO answer_authorizations SELECT user_id,gen_random_uuid(),endpoint,model,NULL,sources,intent_sha256,digest,'cancelled',created_ms,expires_ms FROM answer_authorizations CROSS JOIN generate_series(1,979) WHERE request_id=$1").bind(Uuid::parse_str(&items[0].request_id).unwrap()).execute(&f.pool).await.unwrap();
+    sqlx::query("INSERT INTO answer_authorizations(user_id,request_id,endpoint,model,question,sources,intent_sha256,digest,status,created_ms,expires_ms) SELECT user_id,gen_random_uuid(),endpoint,model,NULL,sources,intent_sha256,digest,'cancelled',created_ms,expires_ms FROM answer_authorizations CROSS JOIN generate_series(1,979) WHERE request_id=$1").bind(Uuid::parse_str(&items[0].request_id).unwrap()).execute(&f.pool).await.unwrap();
     f.store
         .cancel_answer(&f.owner, &items[1].request_id)
         .await

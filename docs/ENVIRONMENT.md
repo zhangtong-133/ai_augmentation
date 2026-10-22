@@ -23,28 +23,33 @@ make browser-install
 - Docker：先确认 `docker info` 能访问当前 context。沙箱内 socket 权限错误不等于 daemon 停止，不应因此修改 socket 权限或重装 Docker。
 - 网络：网页导入禁用系统代理，API 必须能直连公网 DNS 与 HTTP/HTTPS。模型服务、依赖下载与 Docker 拉取的连通性需分别检查。
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
-- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-residency.md)，默认复用已驻留的同一模型/运行器/上下文、空闲 30 秒释放；`RESIDENCY=cold` 保留逐次卸载对照。仍逐次检查统一内存估计余量，尚未接入私有问答或学习/RSS 执行。
-- 证据角色候选：通过 `CANDIDATE=evidence-role` 显式选择 [v20 合成实验](design/ollama-answer-evidence-role.md)，仅支持 Ollama reuse。先离线预览并冻结全部请求，实际运行继续逐次检查身份与资源；完整报告使用 report v8 / gate v14，不与旧候选或不同运行时混合。当前完整双轮 132/142，质量门槛失败；Rust、Node 和前端验收通过，默认 v15-reuse 与私有执行关闭状态保持。
+- 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 的[私有问答单次执行](design/ollama-answer-execution.md)使用已安装的 Ollama 和模型，单独预览原生请求、确认并执行；领取前、发送前、运行期间和返回前检查身份与统一内存估计余量，`keep_alive=30`。学习/RSS 尚未接入此适配。[合成问答评估](design/ollama-answer-residency.md)保留独立的 reuse/cold 实验和质量记录。
+- 证据角色候选：通过 `CANDIDATE=evidence-role` 显式选择 [v20 合成实验](design/ollama-answer-evidence-role.md)，仅支持 Ollama reuse。先离线预览并冻结全部请求，实际运行继续逐次检查身份与资源；完整报告使用 report v8 / gate v14，不与旧候选或不同运行时混合。该历史完整双轮 132/142，质量门槛失败；实验默认仍为 v15-reuse，实验成绩不控制私有问答工程的启用开关。
 
 ## 本地问答单次执行
 
 2026-10-22 起，问答的工程闭环与具体模型的质量验收分别推进。页面已接入精确请求预览、双重确认、单独点击执行和持久化结果恢复；本机 Qwen 的历史质量失败继续保留，不阻塞工程交付。协议和引用校验仍是强制条件，模型答案仍需用户核对，详见[执行设计](design/answer-execution.md)。
 
-执行默认关闭。以下变量仅供与受监督模型同机运行的原生 API 进程显式导出，启动 API 本身不会加载模型或执行请求：
+执行默认关闭。以下变量仅供与所选模型运行器同机运行的原生 API 进程显式导出，启动 API 本身不会加载模型或执行请求：
 
 | 变量 | 默认 / 要求 |
 |---|---|
 | `LOCAL_ANSWER_EXECUTION_ENABLED` | 未设置或 `false` 关闭；仅 `true` 启用 |
-| `LOCAL_ANSWER_ENDPOINT` | 启用时必填，固定回环 HTTP 地址；现有监督器使用 `http://127.0.0.1:11435` |
-| `LOCAL_ANSWER_MODEL` | 启用时必填，必须匹配用户预览和监督状态中的模型 alias |
-| `LOCAL_ANSWER_GUARD_SCRIPT` | 启用时必填，可信资源检查脚本绝对路径；现有实现为项目的 `scripts/local-model.mjs` |
+| `LOCAL_ANSWER_BACKEND` | 默认 `local`（llama.cpp）；macOS ARM64 的原生 Ollama 使用 `ollama` |
+| `LOCAL_ANSWER_ENDPOINT` | 启用时必填，固定回环 HTTP 地址；local 示例 `http://127.0.0.1:11435`，Ollama 示例 `http://127.0.0.1:11434` |
+| `LOCAL_ANSWER_MODEL` | 启用时必填，必须匹配用户完整预览及当前运行器；Ollama 页面预设为 `qwen3.5:9b` |
+| `LOCAL_ANSWER_GUARD_SCRIPT` | 启用时必填，可信资源检查脚本绝对路径；local 使用 `scripts/local-model.mjs`，Ollama 使用 `scripts/ollama-answer-admission.mjs` |
 | `LOCAL_ANSWER_NODE_BINARY` | 默认 `node`；显式设置时使用 Node 可执行文件绝对路径 |
 
-现有资源检查依赖 Linux/WSL2 的 `/proc`、NVIDIA 和该项目的 `.local-model` 监督状态。部署者先显式启动 `make local-model-start`，再启动配置好的原生 API。检查子进程只接收 `answer-admit`、固定 endpoint 和 model，不接收问题、材料或会话；每次检查限时 3 秒，失败拒绝发送。领取前和实际发送前各检查一次，模型监督器继续检查显存预算。API 进程一次仅允许一个执行，发送后遇到取消或超时会停止等待，不能保证模型服务立即停止计算；原授权不会恢复或自动重发。
+`local` 资源检查依赖 Linux/WSL2 的 `/proc`、NVIDIA 和该项目的 `.local-model` 监督状态。部署者先显式启动 `make local-model-start`，再启动配置好的原生 API。领取前和实际发送前各检查一次，每次检查限时 3 秒，模型监督器继续检查显存预算。
 
-标准 Compose API 镜像没有 Node、宿主模型及其监督环境，因此不透传这些变量。macOS 的 Ollama 实验运行器也未接入此生产 guard；本轮通过本地 HTTP/SSE 夹具验收执行契约，没有启用真实模型。更换运行器需要实现相应的资源检查，固定目标或请求变化后必须重新预览和确认。
+`ollama` 使用已有 macOS ARM64 Ollama（至少 0.40.1，且提供身份与 think 能力元数据），运行专用 `answer-admit` / `answer-monitor` 检查；API 首次成功准入固定模型和运行器身份，变化后拒绝新执行或停止等待，直到部署者显式重启 API。领取前、发送前、运行期间每 2 秒和返回结果前检查，单次检查上限 10 秒、脚本总截止 7 秒。准入统一内存估计至少保留 6 GiB 加 512 MiB；冷加载还计入 1.5 倍模型大小，复用同一模型/运行器/上下文时额外计入 1 GiB 推理缓冲。在途检查只要求基础余量，不重复扣除加载预算。授权保存模型别名和完整请求，权重 SHA 的固定仅属于 API 进程内准入。详见[Ollama 执行设计与导出示例](design/ollama-answer-execution.md)。
 
-迁移 `0043_answer_executions.sql` 追加执行与审计表，不修改旧授权或质量报告。详情读取会重新核对权威来源；来源改变、取消或失败后清除问题和结果正文。列表仅含元数据。结果未知时只查询原请求，系统不会扫描旧记录自动恢复执行。
+检查子进程只接收检查模式、固定 endpoint 和 model，不接收问题、材料或会话。API 进程一次仅允许一个执行；取消、超时或资源检查失败会停止等待，不停止或卸载共享 Ollama，也不能保证其立即停止计算。该保护不提供共享服务的外部排他。原授权不会恢复或自动重发。
+
+标准 Compose API 镜像没有 Node、宿主模型及其监督环境，因此不透传这些变量。Ollama 需在同机运行 native API；Web 和数据服务仍可单独使用 Compose。固定目标、后端或完整请求变化后必须重新预览和确认；Ollama 使用独立 `ollama-local-answer-v1`，不能转换或复用旧 `local-knowledge-answer-v2` 授权。工程验收使用确定性 HTTP/SSE/NDJSON 夹具，不以真实 Qwen 质量成绩作为启用前置。
+
+迁移 `0043_answer_executions.sql` 追加执行与审计表；`0044_answer_authorization_backend.sql` 保存后端选择，旧记录默认 `local`，保留原请求字节和摘要。详情读取会重新核对权威来源；来源改变、取消或失败后清除问题和结果正文。列表仅含元数据。结果未知时只查询原请求，系统不会扫描旧记录自动恢复执行。
 
 ## CI 故障排查
 
