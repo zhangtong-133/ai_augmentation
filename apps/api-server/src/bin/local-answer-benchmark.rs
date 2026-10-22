@@ -15,6 +15,7 @@ enum Backend {
     Guarded,
     QuestionFirst,
     EvidenceBound,
+    EvidenceRole,
 }
 impl Backend {
     fn preview(
@@ -23,6 +24,14 @@ impl Backend {
         target: &LocalTarget,
     ) -> Result<serde_json::Value, &'static str> {
         match self {
+            Self::EvidenceRole => serde_json::to_value(
+                ollama_answer::question::guarded::evidence_role::preview(
+                    target,
+                    case.question,
+                    &case.sources(),
+                )
+                .map_err(|_| "invalid preview")?,
+            ),
             Self::EvidenceBound => serde_json::to_value(
                 ollama_answer::question::guarded::evidence_bound::preview(
                     target,
@@ -64,6 +73,13 @@ impl Backend {
     }
     fn provider(self, target: LocalTarget) -> Result<Box<dyn AnswerProvider>, &'static str> {
         match self {
+            Self::EvidenceRole => {
+                ollama_answer::question::guarded::evidence_role::EvidenceRoleAnswers::new(
+                    target,
+                    self.guard(),
+                )
+                .map(|v| Box::new(v) as Box<dyn AnswerProvider>)
+            }
             Self::EvidenceBound => {
                 ollama_answer::question::guarded::evidence_bound::EvidenceBoundAnswers::new(
                     target,
@@ -98,7 +114,7 @@ impl Backend {
         Arc::new(StdioGuard {
             next: tokio::sync::Mutex::new(0),
             stages: match self {
-                Self::Guarded | Self::QuestionFirst | Self::EvidenceBound => {
+                Self::Guarded | Self::QuestionFirst | Self::EvidenceBound | Self::EvidenceRole => {
                     &[AnswerStage::Plan, AnswerStage::Select, AnswerStage::Verify]
                 }
                 Self::Question => &[AnswerStage::Plan, AnswerStage::Verify],
@@ -119,6 +135,15 @@ impl Backend {
                 .map_err(|_| LlmError::InvalidResponse("invalid diagnostic".into()))
         }
         match self {
+            Self::EvidenceRole => {
+                ollama_answer::question::guarded::evidence_role::EvidenceRoleAnswers::new(
+                    target,
+                    self.guard(),
+                )?
+                .answer_with_diagnostics(case.question, &case.sources())
+                .await
+                .and_then(metadata)
+            }
             Self::EvidenceBound => {
                 ollama_answer::question::guarded::evidence_bound::EvidenceBoundAnswers::new(
                     target,
@@ -203,6 +228,15 @@ fn manifest(
     backend: Backend,
 ) -> Result<serde_json::Value, &'static str> {
     let (profile, digest) = match backend {
+        Backend::EvidenceRole => (
+            ollama_answer::question::guarded::evidence_role::PROFILE,
+            ollama_answer::question::guarded::evidence_role::preview(
+                target,
+                case.question,
+                &case.sources(),
+            )
+            .and_then(|v| v.fingerprint()),
+        ),
         Backend::EvidenceBound => (
             ollama_answer::question::guarded::evidence_bound::PROFILE,
             ollama_answer::question::guarded::evidence_bound::preview(
@@ -265,6 +299,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
                     "guarded" => "guarded",
                     "question-first" => "question-first",
                     "evidence-bound" => "evidence-bound",
+                    "evidence-role" => "evidence-role",
                     _ => return Err("invalid answer candidate"),
                 });
             }
@@ -309,6 +344,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
         (Backend::Ollama(Residency::Reuse), Some("guarded")) => Backend::Guarded,
         (Backend::Ollama(Residency::Reuse), Some("question-first")) => Backend::QuestionFirst,
         (Backend::Ollama(Residency::Reuse), Some("evidence-bound")) => Backend::EvidenceBound,
+        (Backend::Ollama(Residency::Reuse), Some("evidence-role")) => Backend::EvidenceRole,
         (Backend::Ollama(_), Some("independent") | None) | (Backend::LlamaCpp, None) => backend,
         _ => return Err("experimental candidate requires explicit Ollama reuse"),
     };
@@ -321,7 +357,7 @@ fn options(args: &[String]) -> Result<(&[String], QualitySuite, Backend), &'stat
 async fn run(args: &[String]) -> Result<(), &'static str> {
     if args == ["--help"] {
         println!(
-            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\nlocal-answer-benchmark diagnose CASE ENDPOINT MODEL --use-local-benchmark --guard-native-stages --backend ollama\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）；--candidate independent|question|guarded|question-first|evidence-bound 默认 independent；question/guarded/question-first/evidence-bound 必须显式选择 Ollama reuse。question-first 仅调整 guarded 的完整用户 JSON 顺序，问题置于资料之前；evidence-bound 另将核对 schema 的 stated/unavailable 绑定非空证据；question 两步；guarded/question-first/evidence-bound 三步 plan/select/verify，每步独立授权，首步只读问题。\n仅内置合成材料；diagnose 只增加有界语义计数，不能计入质量门槛；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
+            "local-answer-benchmark manifest ENDPOINT MODEL\nlocal-answer-benchmark preview CASE ENDPOINT MODEL\nlocal-answer-benchmark case CASE ENDPOINT MODEL --use-local-benchmark [--guard-native-stages]\nlocal-answer-benchmark diagnose CASE ENDPOINT MODEL --use-local-benchmark --guard-native-stages --backend ollama\n可在末尾添加 --suite baseline|challenge|coverage|extraction|decision|mixed|availability|support --backend llama.cpp|ollama；Ollama 可选 --residency cold|reuse（底层默认 cold，宿主入口默认 reuse）；--candidate independent|question|guarded|question-first|evidence-bound|evidence-role 默认 independent；question/guarded/question-first/evidence-bound/evidence-role 必须显式选择 Ollama reuse。question-first 仅调整 guarded 的完整用户 JSON 顺序，问题置于资料之前；evidence-bound 另将核对 schema 的 stated/unavailable 绑定非空证据；evidence-role 核对事实、明确缺失、命令、无关或缺少证据，由本地映射支持状态；question 两步；guarded/question-first/evidence-bound/evidence-role 三步 plan/select/verify，每步独立授权，首步只读问题。\n仅内置合成材料；diagnose 只增加有界语义计数，不能计入质量门槛；完整真实评估请用 make local-answer-benchmark 或 make ollama-answer-benchmark，逐次检查资源，不自动重试。"
         );
         return Ok(());
     }
@@ -830,6 +866,72 @@ mod tests {
         assert_eq!(serde_json::json!(total), frozen["case_count"]);
     }
     #[test]
+    fn evidence_role_candidate_freezes_all_conditions_and_only_changes_verification_contract() {
+        let target = target("http://127.0.0.1:11434", "qwen3.5:9b").unwrap();
+        let frozen: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-evidence-role-manifests-ollama-v20.json"
+        ))
+        .unwrap();
+        let original: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/answer-independent-manifests-ollama-v14.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            frozen["execution_profile"],
+            ollama_answer::question::guarded::evidence_role::PROFILE
+        );
+        assert_eq!(
+            frozen["native_stages"],
+            serde_json::json!(["plan", "select", "verify"])
+        );
+        assert_eq!(frozen["keep_alive_seconds"], 30);
+        let mut total = 0;
+        for (name, suite) in [
+            ("baseline", QualitySuite::Baseline),
+            ("challenge", QualitySuite::Challenge),
+            ("coverage", QualitySuite::Coverage),
+            ("extraction", QualitySuite::Extraction),
+            ("decision", QualitySuite::Decision),
+            ("mixed", QualitySuite::Mixed),
+            ("availability", QualitySuite::Availability),
+            ("support", QualitySuite::Support),
+        ] {
+            let cases = suite.cases();
+            assert_eq!(
+                cases.len(),
+                frozen["suites"][name].as_object().unwrap().len()
+            );
+            for (index, case) in cases.iter().enumerate() {
+                let actual = manifest(case, &target, suite, Backend::EvidenceRole).unwrap();
+                assert_eq!(actual["case"], original[name][index]["case"]);
+                assert_eq!(actual["request_sha256"], frozen["suites"][name][case.id]);
+                let old = Backend::EvidenceBound.preview(case, &target).unwrap();
+                let mut new = Backend::EvidenceRole.preview(case, &target).unwrap();
+                assert_ne!(
+                    new["verification_body"]["format"],
+                    old["verification_body"]["format"]
+                );
+                let declared = new["verification_body"]["messages"][0]["content"]
+                    .as_str()
+                    .unwrap();
+                assert!(declared.ends_with(&new["verification_body"]["format"].to_string()));
+                new["verification_body"]["format"] = old["verification_body"]["format"].clone();
+                new["verification_body"]["messages"][0]["content"] =
+                    old["verification_body"]["messages"][0]["content"].clone();
+                new["profile"] = old["profile"].clone();
+                // Includes exact planning, selection and user bytes, native options and budgets.
+                assert_eq!(new, old);
+                total += 1;
+            }
+        }
+        assert_eq!(serde_json::json!(total), frozen["case_count"]);
+        assert_eq!(total, 71);
+        assert_eq!(
+            Backend::EvidenceRole.guard().stages,
+            &[AnswerStage::Plan, AnswerStage::Select, AnswerStage::Verify]
+        );
+    }
+    #[test]
     fn residency_requires_explicit_ollama_backend_and_rejects_invalid_or_repeated_options() {
         for args in [
             vec!["--residency", "reuse"],
@@ -967,7 +1069,13 @@ mod tests {
     }
     #[test]
     fn experimental_candidates_require_explicit_ollama_reuse_and_preserve_default_selection() {
-        for candidate in ["question", "guarded", "question-first", "evidence-bound"] {
+        for candidate in [
+            "question",
+            "guarded",
+            "question-first",
+            "evidence-bound",
+            "evidence-role",
+        ] {
             for suffix in [
                 vec!["--candidate", candidate],
                 vec!["--backend", "ollama", "--candidate", candidate],
@@ -1009,6 +1117,7 @@ mod tests {
                     | ("guarded", Backend::Guarded)
                     | ("question-first", Backend::QuestionFirst)
                     | ("evidence-bound", Backend::EvidenceBound)
+                    | ("evidence-role", Backend::EvidenceRole)
             ));
         }
         let args = ["--backend", "ollama", "--residency", "reuse"].map(str::to_owned);

@@ -21,6 +21,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
+- [x] [Ollama 证据角色审计实验](design/ollama-answer-evidence-role.md)：v20 保留 v19 的问题分类和选择请求，以五种证据角色映射支持，沿用严格解码及数量/集合检查；新增 report v8 / gate v14。完整双轮 132/142，门槛失败；定点诊断中两步一致选中的命令由 instruction 映射正确拒绝，但仍有五题各两轮误弃权。稳定需求身份与问答质量尚未解决，默认 v15-reuse，私有执行关闭。
+
 - [x] [Ollama 逐项需求与证据位置诊断](design/ollama-answer-requirement-diagnostics.md)：三步合成诊断保留原序列中的类型、支持和有界 catalog 位置；宿主从逐项记录重算全部汇总，兼容历史 v1。Ollama 0.40.7 上 v17/v19 三题各一次，v19 复现两题多加未问属性、一题一致选择伪 SYSTEM 命令；v17 一题正确弃权仍依赖集合分歧。原请求及历史完整门槛保持，诊断不补分。
 
 - [x] [Ollama 支持状态与证据约束实验](design/ollama-answer-evidence-bound.md)：v19 仅改变 v18 核对 schema 与匹配声明，要求 stated/unavailable 带非空证据；原 71 道、用户字节和严格解码保持，新增 report v7/gate v13 及完整比较入口。完整双轮全部协议完成，质量 132/142，低于 v17 的 136/142；整题两次改善、六次退步，全部旧失败与新回归保留。六题预定诊断发现沉默题正确弃权仍依赖证据分歧；质量门槛失败，默认 v15-reuse、私有执行关闭。
@@ -59,7 +61,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 - [x] [macOS Ollama 问答候选与独立质量挑战](design/ollama-answer-quality.md)：复用已安装 Qwen3.5-9B，固定 llamacpp 运行器、上下文/输出、统一内存保护与逐题卸载；保留旧 4/7 记录及全部 v2 授权指纹。新增 8 题冻结挑战和离线双轮门槛，v3 原基准两轮 7/7、挑战两轮 7/8，因 `partial_answer` 未通过质量门槛，私有执行继续关闭。
 
-本地问答当前下一步：保留八套全部条件和历史失败，解决稳定需求映射、实体/属性支持、未被问及缺项及资料命令与事实的区分。v19 将非空支持证据写入 schema，完整双轮均协议完成，但质量 132/142，相对 v17 136/142 为两次整题改善、六次退步；沉默题正确弃权仍依赖证据分歧，结构合法不能替代语义正确。下一候选须在首次推理前冻结请求，保留严格拒绝并完成完整双轮门槛后，再推进多请求精确预览/同意与单次私有执行器。最新完整结果和新增回归见[证据约束实验](design/ollama-answer-evidence-bound.md)；v18 的[顺序实验停止记录](design/ollama-answer-question-first.md)、原[三步实验](design/ollama-answer-guarded.md)、[问题独立分类](design/ollama-answer-question.md)、[独立语义核对](design/ollama-answer-independent.md)及[有限驻留验收](design/ollama-answer-residency.md)保持。
+本地问答当前下一步：保留八套全部条件和历史失败，解决稳定需求映射、实体/属性支持及充分资料被误弃权的问题。[v20 证据角色审计](design/ollama-answer-evidence-role.md)在 Ollama 0.40.7 完整双轮 132/142；一致选命令的已知题可由角色映射正确拒绝，但五题各两轮误弃权，不能据此启用私有执行。当前成绩不与 0.40.3 的历史完整成绩合并比较；角色分类也不能代替稳定需求绑定。后续候选仍须先冻结请求、保留严格拒绝并通过完整双轮门槛，再推进多请求精确预览/同意与单次私有执行器。历史候选、报告与边界保持。
 
 2026-10-10 用户明确资源优先级：主要给 PC 游戏留出显存，继续执行[至少 6 GiB 余量与模型监督](design/local-model.md#显存约束)。游戏并行及 FPS/卡顿实测为[可选观察](design/gpu-observation.md#可选游戏观察)，不作为后续开发或发布前置；历史记录中的游戏未测事实保留。后续继续推进问答质量和功能闭环。
 

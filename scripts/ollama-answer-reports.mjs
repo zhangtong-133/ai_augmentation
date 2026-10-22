@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { lstat, realpath } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { readReport } from "./local-quality-report.mjs";
-import { EVIDENCE_BOUND_PROFILE, GUARDED_PROFILE, PROFILE, QUESTION_PROFILE, QUESTION_FIRST_PROFILE, REUSE_PROFILE, SUITES, parseOptions } from "./ollama-answer-benchmark-lib.mjs";
+import { EVIDENCE_BOUND_PROFILE, EVIDENCE_ROLE_PROFILE, GUARDED_PROFILE, PROFILE, QUESTION_PROFILE, QUESTION_FIRST_PROFILE, REUSE_PROFILE, SUITES, parseOptions } from "./ollama-answer-benchmark-lib.mjs";
 
 const reportCount = Object.keys(SUITES).length * 2;
 
@@ -36,10 +36,10 @@ export async function readQualityReports(files, base) {
 
 export async function expectedManifests(reports, load) {
   const profile = reports[0].runtime.execution_profile;
-  assert.ok([PROFILE, REUSE_PROFILE, QUESTION_PROFILE, GUARDED_PROFILE, QUESTION_FIRST_PROFILE, EVIDENCE_BOUND_PROFILE].includes(profile));
+  assert.ok([PROFILE, REUSE_PROFILE, QUESTION_PROFILE, GUARDED_PROFILE, QUESTION_FIRST_PROFILE, EVIDENCE_BOUND_PROFILE, EVIDENCE_ROLE_PROFILE].includes(profile));
   const target = parseOptions(["--endpoint", reports[0].runtime.endpoint, "--model", reports[0].runtime.model_alias,
     "--residency", profile === PROFILE ? "cold" : "reuse",
-    "--candidate", profile === EVIDENCE_BOUND_PROFILE ? "evidence-bound" : profile === QUESTION_FIRST_PROFILE ? "question-first" : profile === GUARDED_PROFILE ? "guarded" : profile === QUESTION_PROFILE ? "question" : "independent"]);
+    "--candidate", profile === EVIDENCE_ROLE_PROFILE ? "evidence-role" : profile === EVIDENCE_BOUND_PROFILE ? "evidence-bound" : profile === QUESTION_FIRST_PROFILE ? "question-first" : profile === GUARDED_PROFILE ? "guarded" : profile === QUESTION_PROFILE ? "question" : "independent"]);
   const expected = {};
   for (const suite of Object.keys(SUITES)) expected[suite] = await load(target, suite);
   return expected;

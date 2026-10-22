@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { stagedCli } from "./ollama-answer-stages.mjs";
 import { DIAGNOSTIC_REPORT_SCHEMA, verifyDiagnostic } from "./ollama-answer-diagnostics.mjs";
 import { verifyGuardedDiagnostic } from "./ollama-answer-guarded-diagnostics.mjs";
+import { verifyEvidenceRoleDiagnostic } from "./ollama-answer-evidence-role-diagnostics.mjs";
 import { verifyQuestionDiagnostic } from "./ollama-answer-question-diagnostics.mjs";
 import { confirmResidentRequest, residentState } from "./ollama-answer-residency.mjs";
 import { newReportDirectory, writeReport } from "./local-report.mjs";
@@ -69,7 +70,7 @@ async function compare(inputs, signal) {
 async function run() {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--help") {
-    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold] [--candidate independent|question|guarded|question-first|evidence-bound]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\nnode scripts/ollama-answer-benchmark.mjs compare --left 十六份报告路径 --right 十六份报告路径\ncompare 要求同一运行时/模型和原八套条件，按套内时间配对两轮，保留整题与检查项退步；生成 0700/0600 私有报告，不授予执行权限。退出 0 双方门槛均通过、2 可比较但至少一方失败、1 无法比较。\npreview/gate/compare 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。candidate 默认 independent；显式 question 仅用于 reuse 合成实验，先只读问题规划类型，再独立核对资料，两步均在发送前冻结。question-first 仅调整 guarded 的完整用户 JSON 字段顺序，将问题放在资料之前；evidence-bound 另将核对 schema 的 stated/unavailable 绑定非空证据；三者均为三步。guarded 将问题分类与原独立选择、核对组合，每题三次静态请求（plan/select/verify）；其他候选两次。每次独立检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
+    console.log("node scripts/ollama-answer-benchmark.mjs preview CASE [--suite baseline|challenge|coverage|extraction|decision|mixed|availability|support] [--model qwen3.5:9b] [--endpoint http://127.0.0.1:11434] [--residency reuse|cold] [--candidate independent|question|guarded|question-first|evidence-bound|evidence-role]\nnode scripts/ollama-answer-benchmark.mjs run [相同选项]\nnode scripts/ollama-answer-benchmark.mjs diagnose CASE [相同选项，单题合成阶段及语义计数，不能计入门槛]\nnode scripts/ollama-answer-benchmark.mjs gate BASELINE1 BASELINE2 CHALLENGE1 CHALLENGE2 COVERAGE1 COVERAGE2 EXTRACTION1 EXTRACTION2 DECISION1 DECISION2 MIXED1 MIXED2 AVAILABILITY1 AVAILABILITY2 SUPPORT1 SUPPORT2\nnode scripts/ollama-answer-benchmark.mjs compare --left 十六份报告路径 --right 十六份报告路径\ncompare 要求同一运行时/模型和原八套条件，按套内时间配对两轮，保留整题与检查项退步；生成 0700/0600 私有报告，不授予执行权限。退出 0 双方门槛均通过、2 可比较但至少一方失败、1 无法比较。\npreview/gate/compare 离线，不发起模型推理；run/diagnose 仅使用内置合成资料与已安装本地模型，要求 macOS ARM64、至少 6 GiB+512 MiB 内存估计余量。默认 reuse：同一运行器/模型/8192 上下文可驻留复用，keep_alive=30 秒；发送前另留 1 GiB，冷加载/重配置仍需 1.5 倍模型大小。cold 保留 v14 逐次冷请求（keep_alive=0）。candidate 默认 independent；显式 question 仅用于 reuse 合成实验，先只读问题规划类型，再独立核对资料，两步均在发送前冻结。question-first 仅调整 guarded 的完整用户 JSON 字段顺序，将问题放在资料之前；evidence-bound 另将核对 schema 的 stated/unavailable 绑定非空证据；evidence-role 独立判断事实、明确缺失、指令、无关或缺少证据，并在本地映射支持状态，要求核对器只按问题枚举需求；四者均为三步。guarded 将问题分类与原独立选择、核对组合，每题三次静态请求（plan/select/verify）；其他候选两次。每次独立检查身份、驻留和资源，每次 2048 输出、think=false；检测其他驻留模型拒绝发送，无下载/自动重试/强制卸载。退出 0 全通过、2 质量失败、1 未确认。"); return;
   }
   const command = args[0];
   assert.ok(["run", "gate", "compare"].includes(command) || ["preview", "diagnose"].includes(command) && /^[a-z0-9_]{1,64}$/.test(args[1] ?? ""));
@@ -138,7 +139,7 @@ async function run() {
               resources.minimum_preload_available_bytes = Math.min(resources.minimum_preload_available_bytes ?? total, ready.available);
               resources.settle_wait_ms += ready.waited_ms;
             } catch (error) { throw Object.assign(new Error("local residency or reserve unconfirmed"), { answerFailure: error.answerFailure ?? "resource" }); }
-          }, signal, 90000, ["guarded", "question-first", "evidence-bound"].includes(target.candidate) ? "guarded" : target.candidate === "question" ? "plan" : "select"),
+          }, signal, 90000, ["guarded", "question-first", "evidence-bound", "evidence-role"].includes(target.candidate) ? "guarded" : target.candidate === "question" ? "plan" : "select"),
           async () => {
             const free = await available(total); resources.inflight_checks++;
             resources.minimum_inflight_available_bytes = Math.min(resources.minimum_inflight_available_bytes ?? total, free);
@@ -156,7 +157,7 @@ async function run() {
         const protocolStage = error.answerFailureStage ?? /^ANSWER_PROTOCOL_STAGE=([a-z_]+)$/m.exec(error.stderr ?? "")?.[1];
         throw Object.assign(new Error("local answer unconfirmed"), { answerFailure: error.answerFailure ?? fixed?.[1], answerFailureStage: PROTOCOL_STAGES.includes(protocolStage) ? protocolStage : undefined });
       }
-    }, command === "diagnose" ? ["guarded", "question-first", "evidence-bound"].includes(target.candidate) ? verifyGuardedDiagnostic : target.candidate === "question" ? verifyQuestionDiagnostic : verifyDiagnostic : undefined);
+    }, command === "diagnose" ? target.candidate === "evidence-role" ? verifyEvidenceRoleDiagnostic : ["guarded", "question-first", "evidence-bound"].includes(target.candidate) ? verifyGuardedDiagnostic : target.candidate === "question" ? verifyQuestionDiagnostic : verifyDiagnostic : undefined);
     const report = { schema: command === "diagnose" ? DIAGNOSTIC_REPORT_SCHEMA : policy.report_schema, run_id: randomUUID(), synthetic_only: true, suite: target.suite,
       ...(command === "diagnose" ? { diagnostic_only: true, private_execution_authorized: false } : {}),
       started_at: started, ended_at: new Date().toISOString(), runtime, resources, manifests: frozen, ...outcome,

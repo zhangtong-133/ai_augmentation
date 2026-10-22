@@ -54,7 +54,7 @@ test("rounds pair chronologically within each suite regardless of argument order
 });
 
 test("all six profiles keep separate gates and cost metadata", () => {
-  for (const options of [{ residency: "cold" }, {}, { candidate: "question" }, { candidate: "guarded" }, { candidate: "question-first" }, { candidate: "evidence-bound" }]) {
+  for (const options of [{ residency: "cold" }, {}, { candidate: "question" }, { candidate: "guarded" }, { candidate: "question-first" }, { candidate: "evidence-bound" }, { candidate: "evidence-role" }]) {
     const a = answerReports(options), b = answerReports({ ...options, offset: 100 });
     const result = compare(a, b);
     assert.equal(result.left.execution_profile, executionPolicy(options.residency ?? "reuse", options.candidate).profile);
@@ -118,7 +118,7 @@ test("full worst-case transitions fit private report bounds and contain no corpu
 });
 
 test("expected manifests are rebuilt for each exact profile without runtime or model access", async () => {
-  for (const options of [{ residency: "cold" }, {}, { candidate: "question" }, { candidate: "guarded" }, { candidate: "question-first" }, { candidate: "evidence-bound" }]) {
+  for (const options of [{ residency: "cold" }, {}, { candidate: "question" }, { candidate: "guarded" }, { candidate: "question-first" }, { candidate: "evidence-bound" }, { candidate: "evidence-role" }]) {
     const { reports, expected } = answerReports(options), calls = [];
     assert.deepEqual(await expectedManifests(reports, async (target, suite) => {
       calls.push(suite); assert.equal(target.residency, options.residency ?? "reuse");

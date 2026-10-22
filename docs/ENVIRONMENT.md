@@ -24,6 +24,7 @@ make browser-install
 - 网络：网页导入禁用系统代理，API 必须能直连公网 DNS 与 HTTP/HTTPS。模型服务、依赖下载与 Docker 拉取的连通性需分别检查。
 - 本机测试：HTTP 适配器测试需要监听回环端口；受限环境需允许本机网络访问。确认服务端口没有冲突后再启动 Compose。
 - 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-residency.md)，默认复用已驻留的同一模型/运行器/上下文、空闲 30 秒释放；`RESIDENCY=cold` 保留逐次卸载对照。仍逐次检查统一内存估计余量，尚未接入私有问答或学习/RSS 执行。
+- 证据角色候选：通过 `CANDIDATE=evidence-role` 显式选择 [v20 合成实验](design/ollama-answer-evidence-role.md)，仅支持 Ollama reuse。先离线预览并冻结全部请求，实际运行继续逐次检查身份与资源；完整报告使用 report v8 / gate v14，不与旧候选或不同运行时混合。当前完整双轮 132/142，质量门槛失败；Rust、Node 和前端验收通过，默认 v15-reuse 与私有执行关闭状态保持。
 
 ## CI 故障排查
 

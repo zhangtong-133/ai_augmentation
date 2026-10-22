@@ -113,8 +113,8 @@ function fixtures(residency = "cold", candidate = "independent") {
   const reports = Object.keys(SUITES).flatMap(suite => [suite, suite]).map((suite, index) => ({
     schema: policy.report_schema, run_id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`, synthetic_only: true, suite,
     runtime: { ...runtimeIdentity({ ...target, residency, candidate }, version, tags, show), platform: "darwin", arch: "arm64", resource_policy: policy.resource_policy, total_memory: 32 * 1024 ** 3 }, started_at: new Date(10000 + index * 10000).toISOString(), ended_at: new Date(11000 + index * 10000).toISOString(),
-    resources: { preload_checks: ["guarded", "question-first", "evidence-bound"].includes(candidate) ? 3 : 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
-      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: ["guarded", "question-first", "evidence-bound"].includes(candidate) ? 2 : 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
+    resources: { preload_checks: ["guarded", "question-first", "evidence-bound", "evidence-role"].includes(candidate) ? 3 : 2, inflight_checks: 1, minimum_preload_available_bytes: RESERVE_BYTES + 1500, minimum_inflight_available_bytes: RESERVE_BYTES, settle_wait_ms: 0,
+      ...(residency === "reuse" ? { cold_checks: 1, reload_checks: 0, reuse_checks: ["guarded", "question-first", "evidence-bound", "evidence-role"].includes(candidate) ? 2 : 1, minimum_loading_available_bytes: RESERVE_BYTES + 1500, minimum_reuse_available_bytes: RESERVE_BYTES + REUSE_HEADROOM_BYTES } : {}) },
     manifests: structuredClone(expected[suite]), total_cases: 1, passed_cases: 1, complete: true, not_run: [], exit_code: 0,
     results: [{ id: suite, request_sha256: "b".repeat(64), elapsed_ms: 1, protocol_valid: true, citation_valid: true, quality_pass: true,
       checks: ["expected_status", "required_terms", "expected_citations", "forbidden_terms"].map(name => ({ name, passed: true })) }],
@@ -433,4 +433,32 @@ test("evidence-bound reports require a separate gate and three fresh native perm
     report => report.diagnostic_only = true,
   ]) { const copy = structuredClone(reports); mutate(copy[1]); assert.throws(() => qualityGate(copy, expected)); }
   assert.throws(() => qualityGate(fixtures("reuse", "guarded").reports, expected));
+});
+test("evidence-role gate keeps all eight double rounds, three permits and strict report separation", () => {
+  const { reports, expected } = fixtures("reuse", "evidence-role");
+  const result = qualityGate(reports, expected);
+  assert.equal(result.schema, "ollama-answer-quality-gate-v14");
+  assert.equal(result.runtime.execution_profile, "ollama-knowledge-answer-v20-evidence-role");
+  assert.equal(reports[0].schema, "ollama-answer-quality-report-v8");
+  assert.equal(result.native_requests_per_case, 3);
+  assert.equal(result.rounds_per_suite, 2);
+  assert.equal(result.private_execution_authorized, false);
+  assert.equal(parseOptions(["--candidate", "evidence-role"]).candidate, "evidence-role");
+  assert.throws(() => parseOptions(["--candidate", "evidence-role", "--residency", "cold"]));
+  for (const mutate of [
+    copy => copy.pop(),
+    copy => copy[1].schema = "ollama-answer-quality-report-v7",
+    copy => copy[1].runtime.execution_profile = "ollama-knowledge-answer-v19-evidence-bound",
+    copy => copy[1].resources.preload_checks = 2,
+    copy => copy[1].resources.reuse_checks = 1,
+    copy => copy[1].results[0].semantic_diagnostic = {},
+    copy => copy[1].diagnostic_only = true,
+    copy => copy[1].basis = ["asserted_fact"],
+  ]) { const copy = structuredClone(reports); mutate(copy); assert.throws(() => qualityGate(copy, expected)); }
+  assert.throws(() => qualityGate(fixtures("reuse", "evidence-bound").reports, expected));
+  const failed = structuredClone(reports);
+  failed[0].results[0].checks[3].passed = false;
+  failed[0].results[0].quality_pass = false;
+  failed[0].passed_cases = 0; failed[0].exit_code = 2;
+  assert.equal(qualityGate(failed, expected).passed, false);
 });

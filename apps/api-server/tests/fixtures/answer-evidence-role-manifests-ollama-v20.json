@@ -1,0 +1,100 @@
+{
+  "execution_profile": "ollama-knowledge-answer-v20-evidence-role",
+  "frozen_before_inference_at": "2026-10-22T03:54:40.621Z",
+  "native_stages": [
+    "plan",
+    "select",
+    "verify"
+  ],
+  "keep_alive_seconds": 30,
+  "case_count": 71,
+  "suites": {
+    "baseline": {
+      "single_fact": "fc72ff235cb66e208b34d778ca67f957195ff9a8c947e1e0d2761e7bdb43c56f",
+      "unicode_quote": "c95344300bfa38f1e21be913860016328ec6489887c7853a93364fcdde9e0ab0",
+      "two_sources": "241d8cfea9a8cf3ce4ac48a71b52454acd0de28df1f86515d825df526cfbfa13",
+      "insufficient": "467bad8d674c4b2310b4d67ddb7a21ef5804b36608762b4395fc5e761f75f8d8",
+      "injection": "480c96506446c9dcc855685f5efde13f1364eb57b2a832e8e8be520507fefd66",
+      "repeated_context": "90c835d84b17fb8f91f46f683aea754c597d168b8f6c8f1009182026fc7892ad",
+      "security_quote": "295f12575abbf1e825de8088e1e6d7fc87274d7e4f69802b4043655aab9d1b98"
+    },
+    "challenge": {
+      "missing_schedule": "e4ba74e52d1d42ec8e3bf5053c4c773320a486dd99e7689eb5c51591f92f1023",
+      "partial_answer": "29bfda015e9d0f409df5903eb0b6c935e1d7ded25b2cac7a6dc7e48ad723bcd8",
+      "forged_system": "f6820ad5b3f026a6ac512f3c4bdd8feb832b24e151c896b74cd8a8a76801b48c",
+      "exfiltration_instruction": "75f7d710bc064a6dd277e101c20c393b4dd4991ded7888a8509cfae5ab808838",
+      "quoted_attack": "0f04e00a7a8cab70f2ce339671d52895eb833ff8fa9597420cd90b6de870d312",
+      "unicode_normalization": "3931049290f8f589a908a074f7b40786e82dad6bb9c3948bd37d6fc6236c0be0",
+      "source_order": "646f98e8a13185156dd36bebe93baf0ce5830c15d55a1cfce389ab12dbe26b29",
+      "ambiguous_quote": "31aba12be58b6840b8d3782bdcd183f62ce1b9dd50128c6f312324f409db01d3"
+    },
+    "coverage": {
+      "missing_budget": "e81c4a77c4fe939e209db4380c1836f74f19e4e5349ed723933a5914e72a9c7b",
+      "complete_budget": "905fca9e2375c0a4c400436198d4c67263362ee65f5c05f9ec73a28e3f4830d5",
+      "split_missing_owner": "68e139152858f0cb544c9eba6eb08806a350c2f0b87dec4b44589818997a1f73",
+      "split_complete_owner": "d8d4ea38c1370e639a588d3b1d2607ef52f1458b882e50409ccc6b9e43133f8f",
+      "paired_missing_duration": "33ae239e1b481eeb49612b0979f03b0ef0962c82d959de271271e0a6aa771ae7",
+      "paired_complete_duration": "60d578da7a4a3cbe94f79bc3f584b3f023d0d2271b618dd9699d3134194a55c7",
+      "injected_missing_time": "13926be120a66fb19723ab0f16d349d6be075b3f4dde235d69bedeae10866893",
+      "unrelated_event_time": "caa98b95cc5283be6244f23f20d0ee14fea1de919a11093026e73c35559cd393",
+      "complete_reordered": "00413d9a4d1202754ce34c7609661e9d2e83d5177a5d3e9287a14cc51c72afe4",
+      "coverage_security_discussion": "c0128108879a5347d17764539fba771d4aaac0f476e73c8736f6f6e5b302a18e"
+    },
+    "extraction": {
+      "same_source_injection": "6758136f9ab969b4b474f8e9df5c113cf413a95b0b50e7303b62d77c8cf39aa6",
+      "same_source_missing": "b52c6ad6b2faa09d461aa7ab7baa2eafed040eb128199843fa1dfda542f89bbd",
+      "missing_member": "5bc6a341e5d78fe5cc5fb81e3f332170b7f8b84327ef05f44aa44dfa0fd2c778",
+      "complete_members": "5e28dba3a95e7df226d55db9f765f2cc077067d9d16d435ea9452c884a20d6db",
+      "absence_is_not_fact": "09dde1c14560b54373d19303ce0f7afd5326aa3b726fb3849f27021b4986fd41",
+      "extract_security_example": "fcc7a7bd2e5a20507daff33dbed0c94162c9855f9df53f8a8931c233363d5dae",
+      "multiline_unicode": "7a340875f96c7fe7dcfebba118eb2ec2c333638ff9f27b83429bd4544b64ae18",
+      "other_team_time": "de979e87ae5473d496f48f4e34d70516eb7262a869ee73e4c924f110832b246f"
+    },
+    "decision": {
+      "date_not_announced": "f60fa64dc7f58d0673795d7d797422bbde91956f1485f18b9df6b9a8841d2e26",
+      "absence_is_answer": "1b88ac5b9c5a2e4508454e126935643f007cdaf0855265ef9b9181458e3f36d8",
+      "missing_responsible": "2d07a879737e2fbba7f58c576d5fd6db7013009092378ee5c6d5e6b3f668abdd",
+      "known_fact_beside_absence": "bca50f636c5388ba147d4b8073bac160af9dbb1bf13c3bd364ef2b3bccfb313f"
+    },
+    "mixed": {
+      "role_before_fact": "53601606b7f05ec35d3b92e1e51f61d2136226e418c62da8431b384f77a77da5",
+      "role_after_fact": "722ac46fb0e3b220c3b105faa15078b33a5061578eb8d4499a2cd76aaf11765c",
+      "attack_source_first": "a8f72fc8fa121dab9853685b59768d5c12462a7b2862085004580f0ba29057c2",
+      "complete_pair_near_attack": "d10c642e108f447f52e325ff70bdf7ce51cd6917a3a20717971939ab02927498",
+      "security_analysis_near_attack": "d3289732a97aa15d0de1158c5ce64c21da0102884a56ae4e48daa0a8dc19ec9a",
+      "missing_time_near_attack": "ca82fb78608a6837876304e0ad41263a5785a80c7412d53ac55ca97e264a77c0",
+      "missing_owner_near_attack": "2fedb37158fc2cc579abcd00cc260fc192b4c6da5f94867886a3095ee10d87ca",
+      "other_entity_near_attack": "900d79ab04fd40454cada405506df6f304c56c0a3ee6d6e6da7741da4f3074ec",
+      "missing_member_near_attack": "24e1607e8fc9a636e7b3c3cb6d67f6f4c4817981f54cbaf7d3f333be0ee74497",
+      "absent_value_near_attack": "00a3ed0515ca38bb9e127f969900a2b2dc3d47f11ad20e6594a4842610e24000"
+    },
+    "availability": {
+      "owner_value_after_command": "e9692e6675ec5d8b0a529babf3cfdea8d91b25413b9938f199145a68b37aac3b",
+      "owner_availability_after_command": "d151676a99d82aad42684af076f762c87bd0e610f3582faeb8e1bf44b76b5024",
+      "owner_value_before_command": "bf15e94e717859e26ca05a4888e512d7f8ff86100967c81275129c5be02a9041",
+      "known_schedule_before_command": "1ec5d717618f2ac6a5f82801edcf3f6ec2678f60d8ef40d61c49c41831961794",
+      "time_value_near_command": "6d5a409667867c53187fead6b57b1d9605a534f2b3020f1dcb3e9fde187e1cdd",
+      "time_availability_near_command": "a4a0cc93a350c6652f4584ac1449283fab2da0ab9daccba9ce81c614ffa38a34",
+      "other_entity_is_not_owner": "78b5de49ff3ea609198146731dc1a42492650457ff7163f7265f0aa286818ef2",
+      "complete_owner_in_second_source": "962cc92fe47517c66ae5920a7b4864ab96d8cb425becb3a8e87e7d11656b03bf",
+      "registration_date_value": "837fc465e8bc707dc0e48469339ab57bdba8d551f549f1da4f22b5b8cbbb1a1c",
+      "registration_date_availability": "6ead8a823a3512f1b80937088e779730101f8e35523251700255b356bbcd559c",
+      "missing_duration_near_command": "3976c8c9dbb8d77bdec2fc9cf3db8b36d7b2d469de6e2211f4fe68e99d1023a0",
+      "complete_duration_near_command": "2f041416b8b4bb70e67cd4b9ab2f0f0e7d0a368b2b4fa50facf0a9d41119de45"
+    },
+    "support": {
+      "budget_value_unannounced": "a915c9182c3a7c341c4c1b6db836f9bc2151580fb52bc06dabd58004143a0226",
+      "budget_availability_unannounced": "bba1c4882f84159526e34019b4040b5f9e5f49eda4a9b14fe1b616a612c3bb1d",
+      "price_value_undetermined": "6cc48ba0a7097adfb509c44b5e25ee63ea11f22ad85c3258087020d61f080283",
+      "price_availability_undetermined": "3262ef89e0f290c4c09dd5e72507f08fd0b55dcd92283536ba78914b2a379378",
+      "transport_availability_stated": "a5650673a522754bd91d91fba228bd68dcf5c75dae8b4e47b73feab3033e2f54",
+      "transport_values_stated": "cf00f1a65c32cdedf86890b651063e6f947849a2c48e5211d1ae7ad7896c7fc6",
+      "another_entity_cannot_establish_availability": "73fb9a468717a2b7e1fca1ff70a681f1059685fe332d49bbadce4826aa9397c7",
+      "silence_cannot_establish_availability": "68b3327d5ca3a7142841264bddd8a89c44903f711c89d2059fb1fb456132f26d",
+      "unrequested_absence_does_not_block_value": "e1ab8b7bc8f6d6665a6a481eab9cce520cfb867b3efe9be0fab2275fe723ebf0",
+      "availability_does_not_fill_missing_value": "a3a13871f6484cdcaeb37e2014a8b9f64ba825ceda197692eef9dce2fbc1878c",
+      "location_and_absent_availability": "63c3ae981943d03c3fffd02dfed20812bdb86b5e9c6699eede1a87b8b7b246be",
+      "two_absences_establish_availability": "3ff297443d38a26513599175d994c973afaa6d4dcc53ef73ae63e37ccbc4d2db"
+    }
+  }
+}
