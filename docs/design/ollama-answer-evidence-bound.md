@@ -1,5 +1,7 @@
 # Ollama 支持状态与证据约束实验
 
+2026-10-22 后续：[逐项诊断 v2](ollama-answer-requirement-diagnostics.md)已覆盖下述三道新增回归；在新的 Ollama 0.40.7 上观察到多加未问属性与一致选择命令。当前记录的 0.40.3 完整双轮、六题旧汇总和门槛保持，不用新诊断补分。
+
 2026-10-15：新增显式合成候选 `ollama-knowledge-answer-v19-evidence-bound`。针对 [v18 停止记录](ollama-answer-question-first.md)中的空证据支持矛盾，把未变本地解码器的约束同时表达在核对输出 schema 中。完整双轮协议完成，但质量为 **132/142**，低于 v17 的 136/142；三题各两轮新增质量退步，门槛失败。默认 v15-reuse，私有执行关闭。
 
 ```sh

@@ -250,7 +250,7 @@ ollama-answer-benchmark: ## 在 macOS ARM64 显式评估已有 Ollama；默认�
 ollama-answer-benchmark-preview: ## 离线预览 Ollama 静态请求与驻留策略（CASE、SUITE、RESIDENCY=reuse/cold、CANDIDATE=independent/question/guarded/question-first/evidence-bound）
 	node scripts/ollama-answer-benchmark.mjs preview "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",) $(if $(CANDIDATE),--candidate "$(CANDIDATE)",)
 
-ollama-answer-diagnose: ## 显式诊断一题合成请求，记录固定阶段及有界语义计数；不能计入质量门槛（CASE、SUITE）
+ollama-answer-diagnose: ## 显式诊断一题合成请求，记录固定阶段及有界语义诊断；三步候选含逐项证据位置，不能计入质量门槛（CASE、SUITE、CANDIDATE）
 	node scripts/ollama-answer-benchmark.mjs diagnose "$(CASE)" $(if $(MODEL),--model "$(MODEL)",) $(if $(SUITE),--suite "$(SUITE)",) $(if $(RESIDENCY),--residency "$(RESIDENCY)",) $(if $(CANDIDATE),--candidate "$(CANDIDATE)",)
 
 ollama-answer-quality-gate: ## 离线核对同一候选的八套语料各两轮，REPORTS 为十六份私有报告路径

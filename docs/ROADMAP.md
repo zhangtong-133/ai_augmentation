@@ -21,6 +21,8 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 ## 最近交付
 
+- [x] [Ollama 逐项需求与证据位置诊断](design/ollama-answer-requirement-diagnostics.md)：三步合成诊断保留原序列中的类型、支持和有界 catalog 位置；宿主从逐项记录重算全部汇总，兼容历史 v1。Ollama 0.40.7 上 v17/v19 三题各一次，v19 复现两题多加未问属性、一题一致选择伪 SYSTEM 命令；v17 一题正确弃权仍依赖集合分歧。原请求及历史完整门槛保持，诊断不补分。
+
 - [x] [Ollama 支持状态与证据约束实验](design/ollama-answer-evidence-bound.md)：v19 仅改变 v18 核对 schema 与匹配声明，要求 stated/unavailable 带非空证据；原 71 道、用户字节和严格解码保持，新增 report v7/gate v13 及完整比较入口。完整双轮全部协议完成，质量 132/142，低于 v17 的 136/142；整题两次改善、六次退步，全部旧失败与新回归保留。六题预定诊断发现沉默题正确弃权仍依赖证据分歧；质量门槛失败，默认 v15-reuse、私有执行关闭。
 
 - [x] [Ollama 原问题前置顺序实验](design/ollama-answer-question-first.md)：v18 只重排 v17 两份完整用户 JSON 的字段，原 71 道条件、字段值、字节长度及三步判定保持；新 profile、report v6/gate v12 与比较器入口已接入。前七套双轮 114/118，`forged_system` 两轮恢复，但支持组首轮 `silence_cannot_establish_availability` 在 verification_decision 被协议拒绝，新增协议回归；按冻结规则停止，保留十四份完整及一份部分报告。剩余十六题和十一道诊断未运行，不能给出完整双轮分数或正式比较；默认 v15-reuse 与私有执行关闭状态保持。

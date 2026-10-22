@@ -52,9 +52,12 @@ fn count_mismatch_abstains_and_never_bypasses_strict_verification() {
     assert!(answer.insufficient_evidence);
     assert_eq!(meta.verifier_kind_disagreements, None);
     assert!(!meta.question.requirements_agree);
+    assert_eq!(meta.trace.planned_kinds.len(), 2);
+    assert_eq!(meta.trace.checks.len(), 1);
     for checks in [
         json!([]),
         json!([{"evidence":["secret"],"kind":"value","support":"stated"}]),
+        json!([{"evidence":["s1u1","s1u1"],"kind":"value","support":"stated"}]),
         json!([{"evidence":["s1u1"],"kind":null,"support":"stated"}]),
         json!([{"evidence":["s1u1"],"kind":"value","support":"stated","extra":"secret"}]),
     ] {
@@ -72,6 +75,75 @@ fn count_mismatch_abstains_and_never_bypasses_strict_verification() {
         .unwrap_err()
         .to_string();
         assert!(error.contains("verification_decision"));
+    }
+}
+#[test]
+fn trace_preserves_check_order_when_global_unions_and_aggregate_counts_match() {
+    let checks = json!([
+        {"evidence":["s1u1"],"kind":"value","support":"stated"},
+        {"evidence":["s1u2"],"kind":"value","support":"unavailable"}
+    ]);
+    let (_, first) = evaluate(
+        json!(["availability", "availability"]),
+        json!(["s1u2", "s1u1"]),
+        checks.clone(),
+    )
+    .unwrap();
+    let (_, reversed) = evaluate(
+        json!(["availability", "availability"]),
+        json!(["s1u1", "s1u2"]),
+        json!([checks[1], checks[0]]),
+    )
+    .unwrap();
+    let first = serde_json::to_value(first).unwrap();
+    let reversed = serde_json::to_value(reversed).unwrap();
+    assert_eq!(first["question"], reversed["question"]);
+    assert_eq!(first["evidence_agrees"], true);
+    assert_eq!(reversed["evidence_agrees"], true);
+    assert_eq!(first["trace"]["selected_positions"], json!([1, 2]));
+    assert_eq!(
+        first["trace"]["checks"][0]["evidence_positions"],
+        json!([1])
+    );
+    assert_eq!(
+        reversed["trace"]["checks"][0]["evidence_positions"],
+        json!([2])
+    );
+    assert_eq!(first["schema"], "ollama-answer-guarded-diagnostic-v2");
+}
+#[test]
+fn trace_positions_follow_eligible_catalog_order_without_exposing_source_ids_or_keys() {
+    let sources = vec![
+        AnswerSource {
+            id: 42,
+            text: "秘密。\n秘密。\n有效。\n".into(),
+        },
+        AnswerSource {
+            id: 7,
+            text: "日期为周四。".into(),
+        },
+    ];
+    let catalog = contract::catalog(&sources).unwrap();
+    let selected =
+        contract::decode_selection(r#"{"evidence":["s7u1","s42u5"]}"#, &sources, &catalog).unwrap();
+    let (_, meta) = decode(
+        r#"{"checks":[{"evidence":["s7u1","s42u5"],"kind":"fact","support":"unsupported"}]}"#,
+        decode_plan(r#"{"kinds":["fact"]}"#).unwrap(),
+        &selected,
+        &sources,
+    )
+    .unwrap();
+    let value = serde_json::to_value(meta).unwrap();
+    assert_eq!(
+        value["trace"],
+        json!({
+            "catalog_size":2,"selected_positions":[1,2],"planned_kinds":["fact"],
+            "checks":[{"kind":"fact","support":"unsupported","evidence_positions":[1,2]}]
+        })
+    );
+    let text = value.to_string();
+    for private in ["s7u1", "s42u5", "秘密", "有效", "周四", "42"] {
+        assert!(!text.contains(private));
     }
 }
 #[test]

@@ -62,6 +62,21 @@ pub struct GuardedDiagnostics {
     evidence_agrees: bool,
     verifier_kind_disagreements: Option<usize>,
     question: QuestionDiagnostics,
+    trace: GuardedTrace,
+}
+/// Only bounded enums and catalog positions survive strict decoding; no model text or keys.
+#[derive(Debug, Serialize)]
+struct GuardedTrace {
+    catalog_size: usize,
+    selected_positions: Vec<usize>,
+    planned_kinds: Vec<contract::Kind>,
+    checks: Vec<CheckTrace>,
+}
+#[derive(Debug, Serialize)]
+struct CheckTrace {
+    kind: contract::Kind,
+    support: contract::Support,
+    evidence_positions: Vec<usize>,
 }
 fn decode(
     text: &str,
@@ -86,12 +101,32 @@ fn decode(
     let agrees = selected.keys == keys;
     let checks: Vec<_> = verification
         .checks
-        .into_iter()
+        .iter()
         .map(|check| json!({"evidence":check.evidence,"support":check.support}))
         .collect();
+    let planned_kinds = plan.kinds.clone();
     // This validates every key and applies only the source-blind planner's kinds.
     let (mut answer, question) =
         super::decode(&json!({"checks":checks}).to_string(), plan, sources)?;
+    // Construct the trace only after every original key, quote and decision was validated.
+    let catalog = contract::catalog(sources)?;
+    let trace = GuardedTrace {
+        catalog_size: catalog.len(),
+        selected_positions: contract::evidence_positions(&catalog, &selected.keys),
+        planned_kinds,
+        checks: verification
+            .checks
+            .into_iter()
+            .map(|check| CheckTrace {
+                kind: check.kind,
+                support: check.support,
+                evidence_positions: contract::evidence_positions(
+                    &catalog,
+                    &check.evidence.into_iter().collect(),
+                ),
+            })
+            .collect(),
+    };
     if !agrees {
         answer = ModelAnswer {
             answer: String::new(),
@@ -102,11 +137,12 @@ fn decode(
     Ok((
         answer,
         GuardedDiagnostics {
-            schema: "ollama-answer-guarded-diagnostic-v1",
+            schema: "ollama-answer-guarded-diagnostic-v2",
             selected_excerpts: selected.keys.len(),
             evidence_agrees: agrees,
             verifier_kind_disagreements: disagreements,
             question,
+            trace,
         },
     ))
 }

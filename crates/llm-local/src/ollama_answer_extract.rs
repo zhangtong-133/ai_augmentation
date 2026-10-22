@@ -114,7 +114,7 @@ pub(super) struct Check {
     pub(super) kind: Kind,
     pub(super) support: Support,
 }
-#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(try_from = "String")]
 pub(super) enum Kind {
@@ -133,7 +133,7 @@ impl TryFrom<String> for Kind {
         }
     }
 }
-#[derive(Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[serde(try_from = "String")]
 pub(super) enum Support {
@@ -157,6 +157,14 @@ type Spans = BTreeMap<usize, Vec<(usize, usize)>>;
 pub(super) struct Selected {
     pub(super) keys: HashSet<String>,
     spans: Spans,
+}
+/// Stable one-based positions in the frozen catalog, never source ids or model keys.
+pub(super) fn evidence_positions(catalog: &[Excerpt], keys: &HashSet<String>) -> Vec<usize> {
+    catalog
+        .iter()
+        .enumerate()
+        .filter_map(|(index, excerpt)| keys.contains(&excerpt.key).then_some(index + 1))
+        .collect()
 }
 pub(super) fn parse<T: serde::de::DeserializeOwned>(text: &str, stage: &str) -> LlmResult<T> {
     let error = super::protocol_error;
