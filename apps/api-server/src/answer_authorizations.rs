@@ -1,9 +1,11 @@
-//! Preparation only: these routes never dispatch an answer or claim a grant.
+//! Exact preview, explicit consent and owner-scoped, one-time local execution.
+mod execution;
 use crate::{ApiError, AppState, auth};
 use axum::{
     Json, Router,
     extract::{Path, State, rejection::JsonRejection},
     http::{HeaderMap, StatusCode, header},
+    middleware,
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -30,6 +32,18 @@ pub(super) fn routes() -> Router<AppState> {
             "/api/knowledge/answer-authorizations/{id}/cancel",
             post(cancel),
         )
+        .route(
+            "/api/knowledge/answer-authorizations/{id}/execute",
+            post(execution::execute),
+        )
+        .layer(middleware::map_response(no_store))
+}
+async fn no_store(mut response: Response) -> Response {
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
 }
 fn unavailable() -> ApiError {
     ApiError(
@@ -83,7 +97,7 @@ async fn list(
     let store = store(&state)?;
     finish(&state, &headers, &owner, async {
         let items = store.list_answer_authorizations(&owner).await?;
-        Ok(serde_json::json!({"items":items,"execution_available":false}))
+        execution::list_view(&state, &owner, items).await
     })
     .await
 }
@@ -93,12 +107,11 @@ async fn detail(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
     let owner = auth::current_user(&state, &headers).await?.id;
-    finish(
-        &state,
-        &headers,
-        &owner,
-        store(&state)?.get_answer_authorization(&owner, &id),
-    )
+    let store = store(&state)?;
+    finish(&state, &headers, &owner, async {
+        let item = store.get_answer_authorization(&owner, &id).await?;
+        execution::view(&state, &owner, item).await
+    })
     .await
 }
 async fn prepare(
@@ -109,12 +122,11 @@ async fn prepare(
     let owner = auth::current_user(&state, &headers).await?.id;
     auth::mutation_guard(&headers)?;
     let input = body(payload)?;
-    finish(
-        &state,
-        &headers,
-        &owner,
-        store(&state)?.prepare_answer(&owner, &input),
-    )
+    let store = store(&state)?;
+    finish(&state, &headers, &owner, async {
+        let item = store.prepare_answer(&owner, &input).await?;
+        execution::view(&state, &owner, item).await
+    })
     .await
 }
 async fn approve(
@@ -126,12 +138,11 @@ async fn approve(
     let owner = auth::current_user(&state, &headers).await?.id;
     auth::mutation_guard(&headers)?;
     let input = body(payload)?;
-    finish(
-        &state,
-        &headers,
-        &owner,
-        store(&state)?.approve_answer(&owner, &id, &input),
-    )
+    let store = store(&state)?;
+    finish(&state, &headers, &owner, async {
+        let item = store.approve_answer(&owner, &id, &input).await?;
+        execution::view(&state, &owner, item).await
+    })
     .await
 }
 async fn cancel(
@@ -141,11 +152,29 @@ async fn cancel(
 ) -> Result<impl IntoResponse, ApiError> {
     let owner = auth::current_user(&state, &headers).await?.id;
     auth::mutation_guard(&headers)?;
-    finish(
-        &state,
-        &headers,
-        &owner,
-        store(&state)?.cancel_answer(&owner, &id),
-    )
+    let store = store(&state)?;
+    finish(&state, &headers, &owner, async {
+        let item = match store.cancel_answer(&owner, &id).await {
+            Ok(item) => item,
+            Err(StorageError::Conflict(_)) => {
+                // A concurrent execute may have consumed the authorization first.
+                // Apply this user cancellation to its durable execution instead.
+                let existing = store.get_answer_authorization(&owner, &id).await?;
+                if existing.status != "consumed" {
+                    return Err(StorageError::Conflict(
+                        "answer authorization changed".into(),
+                    ));
+                }
+                let executions = state
+                    .answer_executions
+                    .as_deref()
+                    .ok_or_else(|| StorageError::Conflict("answer execution unavailable".into()))?;
+                executions.cancel_answer_execution(&owner, &id).await?;
+                existing
+            }
+            Err(error) => return Err(error),
+        };
+        execution::view(&state, &owner, item).await
+    })
     .await
 }

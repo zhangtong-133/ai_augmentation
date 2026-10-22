@@ -146,6 +146,8 @@ impl Fixture {
             indexing: None,
             answering: None,
             answer_authorizations: None,
+            answer_executions: None,
+            answer_execution: None,
             web_importer: Arc::new(personal_ai_web_import::PublicWebImporter::default()),
             documents: store.clone(),
             store: store.clone(),

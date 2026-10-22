@@ -26,6 +26,26 @@ make browser-install
 - 本地模型：WSL/Linux 的 llama.cpp 安装与 NVIDIA 显存监督不直接适用于 Mac。macOS ARM64 可显式使用[已有 Ollama 的合成问答评估](design/ollama-answer-residency.md)，默认复用已驻留的同一模型/运行器/上下文、空闲 30 秒释放；`RESIDENCY=cold` 保留逐次卸载对照。仍逐次检查统一内存估计余量，尚未接入私有问答或学习/RSS 执行。
 - 证据角色候选：通过 `CANDIDATE=evidence-role` 显式选择 [v20 合成实验](design/ollama-answer-evidence-role.md)，仅支持 Ollama reuse。先离线预览并冻结全部请求，实际运行继续逐次检查身份与资源；完整报告使用 report v8 / gate v14，不与旧候选或不同运行时混合。当前完整双轮 132/142，质量门槛失败；Rust、Node 和前端验收通过，默认 v15-reuse 与私有执行关闭状态保持。
 
+## 本地问答单次执行
+
+2026-10-22 起，问答的工程闭环与具体模型的质量验收分别推进。页面已接入精确请求预览、双重确认、单独点击执行和持久化结果恢复；本机 Qwen 的历史质量失败继续保留，不阻塞工程交付。协议和引用校验仍是强制条件，模型答案仍需用户核对，详见[执行设计](design/answer-execution.md)。
+
+执行默认关闭。以下变量仅供与受监督模型同机运行的原生 API 进程显式导出，启动 API 本身不会加载模型或执行请求：
+
+| 变量 | 默认 / 要求 |
+|---|---|
+| `LOCAL_ANSWER_EXECUTION_ENABLED` | 未设置或 `false` 关闭；仅 `true` 启用 |
+| `LOCAL_ANSWER_ENDPOINT` | 启用时必填，固定回环 HTTP 地址；现有监督器使用 `http://127.0.0.1:11435` |
+| `LOCAL_ANSWER_MODEL` | 启用时必填，必须匹配用户预览和监督状态中的模型 alias |
+| `LOCAL_ANSWER_GUARD_SCRIPT` | 启用时必填，可信资源检查脚本绝对路径；现有实现为项目的 `scripts/local-model.mjs` |
+| `LOCAL_ANSWER_NODE_BINARY` | 默认 `node`；显式设置时使用 Node 可执行文件绝对路径 |
+
+现有资源检查依赖 Linux/WSL2 的 `/proc`、NVIDIA 和该项目的 `.local-model` 监督状态。部署者先显式启动 `make local-model-start`，再启动配置好的原生 API。检查子进程只接收 `answer-admit`、固定 endpoint 和 model，不接收问题、材料或会话；每次检查限时 3 秒，失败拒绝发送。领取前和实际发送前各检查一次，模型监督器继续检查显存预算。API 进程一次仅允许一个执行，发送后遇到取消或超时会停止等待，不能保证模型服务立即停止计算；原授权不会恢复或自动重发。
+
+标准 Compose API 镜像没有 Node、宿主模型及其监督环境，因此不透传这些变量。macOS 的 Ollama 实验运行器也未接入此生产 guard；本轮通过本地 HTTP/SSE 夹具验收执行契约，没有启用真实模型。更换运行器需要实现相应的资源检查，固定目标或请求变化后必须重新预览和确认。
+
+迁移 `0043_answer_executions.sql` 追加执行与审计表，不修改旧授权或质量报告。详情读取会重新核对权威来源；来源改变、取消或失败后清除问题和结果正文。列表仅含元数据。结果未知时只查询原请求，系统不会扫描旧记录自动恢复执行。
+
 ## CI 故障排查
 
 GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Clippy 错误时先比较日志中的 `rustc`/Clippy 版本；本机较旧版本通过不能证明当前 CI 通过。2026-10-09 的 [失败构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37893764769) 使用 Rust 1.99，新的 `assert_is_empty` 检查拒绝了 Ollama 测试中的布尔空集合断言。当前测试改为比较带元素类型的空数组，保留原断言并输出失败时的实际引用列表。
@@ -44,6 +64,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-22，macOS ARM64 / OrbStack，问答执行闭环夹具 | Rust 1.96.1 fmt/Clippy 与 367 项工作区测试、最终 Clippy 复核；前端 lint/typecheck/build 及 16 项单测、6 项显存预算 Node；300 项真实服务集成（含 186 项 PostgreSQL、6 项授权/执行 HTTP）、生产镜像/index smoke 与 16 项桌面/窄屏 UI；截图、隔离资源清理已核对 | 预览和确认不发送，单次领取、取消竞态、晚到丢弃、引用校验、持久化恢复及默认关闭均通过。未调用真实模型，未跑其他页面全量 UI、MinIO/公网导入、Linux/NVIDIA 实机、游戏/vLLM；当前 guard 需 native Linux/WSL2 同机监督环境，macOS Ollama 尚需单独适配，见[执行记录](design/answer-execution.md) |
 | 2026-10-22，macOS ARM64 / OrbStack，Ollama 0.40.7 / 逐项诊断 v2 | Rust 1.96.1 完整检查、58 项问答及显存 Node、前端 lint/typecheck/build 和 11 项单元测试；281 项 core smoke、生产镜像 v14–v19 各 71 道冻结清单；v17/v19 三题各一次，17 份历史 v1 与六份 v2 诊断严格重读，三份历史 gate 逐字段保持 | 新诊断定位两题多加未问属性、一题一致选择伪 SYSTEM 命令；v17 一题正确弃权仍依赖证据分歧。不同运行时观察不合并，不代表质量修复；默认及私有执行状态保持。两测试栈资源、模型自动释放、锁与私有权限已核对；未重跑完整模型双轮、浏览器/index/MinIO/公网、游戏/vLLM，见[诊断记录](design/ollama-answer-requirement-diagnostics.md) |
 | 2026-10-15，macOS ARM64 / OrbStack，Ollama 0.40.3 / v19-evidence-bound 约束实验 | Rust 1.96/1.99 各完整检查及 351 项测试、43 项问答及 10 项显存预算/观测 Node、前端 lint/typecheck/build 及 11 项单元测试；281 项 core smoke、生产镜像 v14–v19 各 71 道冻结清单；完整双轮 142 题协议及原文范围校验完成、六题单次诊断 | 质量 132/142，低于 v17 的 136/142；正式比较保留两次整题改善、六次退步，gate v13 失败。沉默题通过仍依赖证据分歧；默认及私有执行状态保持。报告权限、模型自动释放、锁及测试栈清空已核对；未跑本机浏览器/index/MinIO/公网、游戏/vLLM，见[实验记录](design/ollama-answer-evidence-bound.md) |
 | 2026-10-15，macOS ARM64 / OrbStack，Ollama 0.40.3 / v18-question-first 顺序实验 | Rust 1.96/1.99 各完整检查及 348 项测试、42 项问答及 10 项显存预算/观测 Node、前端 lint/typecheck/build 及 11 项单元测试；281 项 core smoke、生产镜像 v14–v18 各 71 道冻结清单 | 前七套双轮 114/118；支持首轮第八题 verification_decision 协议拒绝，按冻结规则停止；125 题协议完成、1 题拒绝、16 题未发，不能给出完整总分。十四份完整/一份部分报告保留，gate/compare 拒收；未运行预定十一题诊断，默认及私有执行状态保持。模型释放、锁及测试栈清空已核对；未跑浏览器/index/MinIO/公网、游戏/vLLM，见[实验记录](design/ollama-answer-question-first.md) |

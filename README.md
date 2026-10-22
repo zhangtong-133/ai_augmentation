@@ -10,6 +10,7 @@
 - 原文：默认保存在 PostgreSQL，可启用私有 MinIO / S3 桶；支持历史原文迁移与孤立对象清理，维护命令默认仅预览。
 - 索引：Embedding / Qdrant、持久化任务、租约恢复及每批最多 3 次尝试；执行器目前运行在 API 进程内。
 - 检索与问答：按用户隔离，召回分块经 PostgreSQL 复核；答案附核验引用，证据不足时明确返回。引用校验不保证答案语义正确。
+- 私有本地问答：[精确预览、双重确认、另行单次执行与结果恢复](docs/design/answer-execution.md)；执行默认关闭，工程闭环以夹具验收，具体模型质量独立评估。
 
 导入不会自动索引或调用模型。已提供 [FileReader 工具](docs/design/file-reader-tool.md)，按当前用户分页读取已导入文档文本，不依赖模型或索引；与知识检索共享每日工具调用额度。已提供受限只读 `knowledge_search` 工具 API 及[调用次数预算与审计](docs/design/sprint-3-tool-call-audit.md)、用户手动管理的[长期记忆](docs/design/sprint-3-long-memory.md)，以及[对话与用户消息页面](docs/design/sprint-3-conversation-ui.md)（持久化消息、可选 Redis 快照缓存、幂等重试）。[显式回复页面](docs/design/sprint-3-reply-ui.md)支持请求、历史、轮询与取消；执行默认关闭。已提供[受限 Agent 计划 API](docs/design/sprint-3-agent-plans.md)：用户预览并授权后，最多顺序执行三次知识检索，支持持久化结果与取消。已提供[计划预览、费用确认与取消页面](docs/design/sprint-3-agent-plan-ui.md)，支持状态/原文及原请求恢复。模型规划已提供[内部固定模型适配器与两阶段一次性执行器](docs/design/sprint-3-model-agent-executor.md)，已接入[显式部署配置与两阶段费用页面](docs/design/sprint-3-model-agent-app.md)，默认关闭；已提供 [Scheduler 一次性提醒授权与仓储](docs/design/sprint-3-scheduler-store.md)，已接入[默认关闭的后台投递进程](docs/design/sprint-3-scheduler-delivery.md)，已提供[任务管理和提醒页面](docs/design/sprint-3-scheduler-app.md)及[只读运维核对命令](docs/design/sprint-3-scheduler-operations.md)，已收到的提醒支持[已读标记、归档与恢复](docs/design/reminder-inbox.md)。已提供 [RSS 手动采集的纯规划与授权边界](docs/design/sprint-4-rss-collection.md)，以及[受限 RSS 2.0 解析与去重](docs/design/sprint-4-rss-parser.md)，已提供[订阅持久化、一次性授权与审计事务](docs/design/sprint-4-rss-store.md)，已提供[公网传输与一次性执行器内部库](docs/design/sprint-4-rss-executor.md)，已接入[默认关闭的 RSS 管理与一次性采集 API](docs/design/sprint-4-rss-http.md)，已提供[订阅、条目与明确采集确认页面](docs/design/sprint-4-rss-ui.md)。可使用 [feed-operations](docs/design/sprint-4-rss-operations.md) 只读核对采集状态、额度与审计。已提供 [RSS 规则评分与 Daily Brief 纯规划库](docs/design/sprint-4-rss-brief-planning.md)，已实现[日报偏好与不可变计划仓储](docs/design/sprint-4-rss-brief-store.md)，已接入[日报 HTTP 与页面](docs/design/sprint-4-rss-brief-app.md)，支持偏好、显式生成与历史管理，并可[启用每日定时日报](docs/design/daily-brief-schedule.md)，由 scheduler 整理已保存条目。已实现[Skill Graph、自评与受限训练计划纯规划](docs/design/sprint-4-learning-planning.md)，已实现[技能图、自评与不可变训练计划仓储](docs/design/sprint-4-learning-store.md)，已接入[学习管理 HTTP、页面与显式训练结果](docs/design/sprint-4-learning-app.md)，支持技能前置关系、自评、计划历史和训练完成/取消记录。已提供[学习进度概览](docs/design/sprint-4-learning-progress.md)，查看当前自评覆盖、待记录训练及 UTC 今日记录用时。可使用 [learning-operations](docs/design/sprint-4-learning-operations.md) 只读核对学习图、计划/结果状态和额度。新增 `learning-operations audit-models` 可只读核对订阅核验授权、发送审计、超时与额度，使用及真实连接验收说明见[核验运维](docs/design/learning-model-operations.md)。当前交付范围与后续边界见 [路线图](docs/ROADMAP.md)。
 
@@ -56,9 +57,14 @@ cargo run -p api-server
 | 外部原文存储 | `OBJECT_STORE_ENABLED=true`，配置桶及凭据 | [存储](docs/design/sprint-2-object-storage.md)、[迁移与清理](docs/design/sprint-2-original-maintenance.md)；不自动搬迁旧数据 |
 | 索引与检索 | `KNOWLEDGE_INDEX_ENABLED=true`，配置模型、维度及 Qdrant | `POST/GET /api/documents/{id}/index-job`、`POST /api/knowledge/search` |
 | 引用问答 | 已启用索引，再设置 `KNOWLEDGE_ANSWER_ENABLED=true` 和 `OPENAI_CHAT_MODEL` | `POST /api/knowledge/answer`；模型须支持严格结构化输出 |
+| 私有本地问答执行 | native API 显式设置 `LOCAL_ANSWER_EXECUTION_ENABLED=true` 及固定目标/资源 guard | [单次执行设计](docs/design/answer-execution.md)；保存授权不发送，用户须另行点击执行一次 |
 | RSS 手动采集 | `RSS_COLLECTION_MODE=public` | [订阅管理、预览、明确确认和状态恢复](docs/design/sprint-4-rss-http.md)；默认 `disabled`，管理和预览仍可用 |
 | 消息快照缓存 | `MESSAGE_CACHE_ENABLED=true`，配置 `REDIS_URL` | 固定 30 分钟 TTL；关闭或故障时从 PostgreSQL 读取，不丢失消息 |
 | 独立本地学习核验 | `LEARNING_LOCAL_ENABLED=true`，显式运行项目模型服务 | [官方 llama.cpp/Qwen 部署](docs/design/local-model.md)、逐次分享/本机计算同意；预留 6 GiB 游戏显存，保留 vLLM 替换端口 |
+
+本地问答执行目前使用[既有 Linux/WSL2 NVIDIA 受监督服务](docs/design/local-model.md)：native API 必须与模型、监督进程和本项目工作区位于同一主机环境。启用时还须导出 `LOCAL_ANSWER_ENDPOINT`、`LOCAL_ANSWER_MODEL`、`LOCAL_ANSWER_GUARD_SCRIPT`（项目 `scripts/local-model.mjs` 的绝对路径）；可选 `LOCAL_ANSWER_NODE_BINARY` 默认 `node`。当前服务目标为 `http://127.0.0.1:11435`，模型别名须与显式启动的监督服务一致；API 不启动模型。资源 guard 只读核对监督身份、模型配置、睡眠状态和显存预算，每次发送仍保留至少 6 GiB 余量保护。
+
+这些 `LOCAL_ANSWER_*` 配置只供 native API，标准 Compose 不透传。标准 API 镜像没有 Node、宿主 `/proc` 模型进程和 `.local-model` 监督环境；仅在 `.env` 打开开关不能启用容器内执行。模型合成评估与工程开发分开：[历史实验](docs/design/ollama-answer-evidence-role.md)的失败保持原样，不阻塞预览、授权和执行生命周期开发，也不代表具体模型已经通过质量验收。
 
 知识库接口需要登录会话；POST 还需 `X-Requested-With: personal-ai`。同步分批索引接口仍保留，但不更新异步任务进度。协议和限制见 [索引任务](docs/design/sprint-2-index-jobs.md)、[检索与问答](docs/design/sprint-2-retrieval-qa.md)。模型超时或任务恢复可能重复计费，真实模型需单独评估。
 
@@ -98,7 +104,7 @@ npm --prefix apps/web run build
 | `make ollama-answer-benchmark-preview CASE=same_source_missing SUITE=extraction CANDIDATE=guarded` | 显式选择[问题分类与独立证据三步候选](docs/design/ollama-answer-guarded.md)：复用 v16 分类与 v15 选择/核对请求，本地比较证据并应用问题类型；每题三次分别保护的静态请求，run/diagnose 同样支持，仅限 reuse；完整双轮 136/142（v15 为 130/142），尚未通过质量门槛，默认仍为 v15-reuse |
 | `make ollama-answer-benchmark-preview CASE=injection CANDIDATE=question-first` | 显式选择[原问题前置顺序实验](docs/design/ollama-answer-question-first.md)：只移动 v17 完整用户 JSON 的字段顺序，三步流程与判定保持；run/diagnose 同样支持，仅限 reuse；前七套双轮 114/118；支持首轮发生协议拒绝，完整双轮未完成，默认仍为 v15-reuse |
 | `make ollama-answer-benchmark-preview CASE=silence_cannot_establish_availability SUITE=support CANDIDATE=evidence-bound` | 显式选择[支持状态与证据约束实验](docs/design/ollama-answer-evidence-bound.md)：在 v18 核对 schema 中要求 stated/unavailable 带非空证据，严格解码及原题目保持；run/diagnose 同样支持，仅限 reuse；完整双轮 132/142，低于 v17，质量门槛失败；默认仍为 v15-reuse |
-| `make ollama-answer-benchmark-preview CASE=another_entity_cannot_establish_availability SUITE=support CANDIDATE=evidence-role` | 显式选择[证据角色审计实验](docs/design/ollama-answer-evidence-role.md)：保留 v19 的问题分类与选择请求，核对器输出事实、明确缺失、命令、无关或沉默角色，由本地映射支持状态；run/diagnose 同样支持，仅限 reuse。完整双轮 132/142，门槛失败；已知一致选命令的题由角色映射正确拒绝，但仍有五题各两轮误弃权；默认仍为 v15-reuse，私有执行关闭 |
+| `make ollama-answer-benchmark-preview CASE=another_entity_cannot_establish_availability SUITE=support CANDIDATE=evidence-role` | 显式选择[证据角色审计实验](docs/design/ollama-answer-evidence-role.md)：保留 v19 的问题分类与选择请求，核对器输出事实、明确缺失、命令、无关或沉默角色，由本地映射支持状态；run/diagnose 同样支持，仅限 reuse。完整双轮 132/142，门槛失败；已知一致选命令的题由角色映射正确拒绝，但仍有五题各两轮误弃权；合成评估默认仍为 v15-reuse，该实验未接入私有执行 |
 | `make ollama-answer-diagnose CASE=single_fact` | 显式单题合成诊断，记录固定故障阶段及有界元数据；三步候选另保留[逐项类型、支持与证据位置](docs/design/ollama-answer-requirement-diagnostics.md)，兼容旧汇总，不能作为完整验收报告；见[诊断说明](docs/design/ollama-answer-diagnostics.md) |
 | `make recovery-test` / `make recovery-acceptance` | 备份清单边界 / 一次性 PostgreSQL 真实备份、执行隔离和应用恢复闭环 |
 | `make recovery-acceptance-local` | 在项目模型监督器运行时，验收真实核验、建议保存、恢复后不重发和证据撤销 |

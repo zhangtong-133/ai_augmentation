@@ -2,6 +2,8 @@
 
 2026-10-22：新增显式合成候选 `ollama-knowledge-answer-v20-evidence-role`。针对[逐项诊断](ollama-answer-requirement-diagnostics.md)发现的命令被声明为支持，将核对器的直接 `support` 输出改为证据角色 `basis`，由本地决定支持状态。完整双轮质量 **132/142**，门槛未通过；命令一致入选的已知题由角色映射正确拒绝，但仍有五道题各两轮误弃权。默认 v15-reuse，私有 Ollama 问答执行关闭。
 
+同日后续：[产品单次执行与结果恢复](answer-execution.md)已独立接入既有 v2 精确预览和授权，默认关闭，以确定性夹具验收生命周期。本机 Qwen 的合成质量门槛不再阻塞通用产品开发；本页 v20 请求、实验失败和质量门槛保持，不把实验候选替换到已有私有授权，也不据此声称具体模型通过质量验收。
+
 ```sh
 make ollama-answer-benchmark-preview CASE=another_entity_cannot_establish_availability SUITE=support CANDIDATE=evidence-role
 make ollama-answer-benchmark SUITE=support CANDIDATE=evidence-role
@@ -107,4 +109,4 @@ Rust 1.96.1 的 `make check` 通过：rustfmt、Clippy `-D warnings` 和 359 项
 
 协议仍按需求数量和顺序配对，没有稳定的实体/属性 identity。两个同 kind 的需求可能换位，资料仍可能诱导增加未问检查；不能通过丢弃多余项来宣称修复。这些缺口须独立设计稳定需求映射，并保留完整旧失败和独立盲测。
 
-本轮无数据库迁移、业务配置开关或页面改动。只有质量门槛通过后才可继续多请求精确预览、授权与单次私有执行器；本候选和报告本身不授予私有材料执行权限。游戏并行/FPS 与 vLLM 保持独立可选观察，不作为本次开发前置。
+本轮实验没有数据库迁移、业务配置开关或页面改动；后续[通用产品执行闭环](answer-execution.md)另行交付，不以本候选全题通过为开发前置。本候选仍仅限内置合成评估，其三请求 profile 未接入 v2 私有授权；若未来接入，须重新提供与实际请求一致的精确预览、目标绑定和用户逐次确认，不能复用旧授权。本候选和报告本身不授予私有材料执行权限。游戏并行/FPS 与 vLLM 保持独立可选观察，不作为开发前置。

@@ -13,13 +13,13 @@ use personal_ai_storage::{
 };
 use sqlx::{PgConnection, Postgres, Row, Transaction, postgres::PgRow};
 use uuid::Uuid;
-fn invalid() -> StorageError {
+pub(super) fn invalid() -> StorageError {
     StorageError::InvalidData("invalid answer authorization".into())
 }
-fn conflict() -> StorageError {
+pub(super) fn conflict() -> StorageError {
     StorageError::Conflict("answer authorization unavailable".into())
 }
-fn key(s: &str) -> StorageResult<Uuid> {
+pub(super) fn key(s: &str) -> StorageResult<Uuid> {
     Uuid::parse_str(s)
         .ok()
         .filter(|v| !v.is_nil() && v.to_string() == s)
@@ -75,13 +75,22 @@ async fn materials(
     Ok(result)
 }
 async fn rebuild(tx: &mut PgConnection, owner: Uuid, row: &PgRow) -> StorageResult<PreparedAnswer> {
+    let question = row
+        .get::<Option<String>, _>("question")
+        .ok_or_else(invalid)?;
+    rebuild_with_question(tx, owner, row, &question).await
+}
+pub(super) async fn rebuild_with_question(
+    tx: &mut PgConnection,
+    owner: Uuid,
+    row: &PgRow,
+    question: &str,
+) -> StorageResult<PreparedAnswer> {
     let bindings: Vec<SourceBinding> =
         serde_json::from_value(row.get("sources")).map_err(|_| invalid())?;
     let input = AnswerPreparation {
         request_id: row.get::<Uuid, _>("request_id").to_string(),
-        question: row
-            .get::<Option<String>, _>("question")
-            .ok_or_else(invalid)?,
+        question: question.into(),
         endpoint: row.get("endpoint"),
         model: row.get("model"),
         sources: bindings.iter().map(|b| b.selection.clone()).collect(),
@@ -103,7 +112,7 @@ async fn rebuild(tx: &mut PgConnection, owner: Uuid, row: &PgRow) -> StorageResu
     }
     Ok(preview)
 }
-async fn read(
+pub(super) async fn read(
     tx: &mut PgConnection,
     owner: Uuid,
     request: Uuid,
@@ -135,7 +144,7 @@ async fn read(
     Ok(item)
 }
 impl PostgresStore {
-    async fn answer_tx(&self, owner: Uuid) -> StorageResult<Transaction<'_, Postgres>> {
+    pub(super) async fn answer_tx(&self, owner: Uuid) -> StorageResult<Transaction<'_, Postgres>> {
         let mut tx = self.pool.begin().await.map_err(map_error)?;
         sqlx::query("SET LOCAL statement_timeout='5s'")
             .execute(&mut *tx)

@@ -151,6 +151,20 @@ async function answerBenchmarkCase() {
   finally { process.removeListener("SIGINT", halt); process.removeListener("SIGTERM", halt); }
 }
 
+// Read-only admission for the API's explicitly configured single-request answer adapter.
+// Receives only target metadata; private questions and evidence never enter this process.
+async function answerAdmission() {
+  const args = process.argv.slice(3);
+  if (args.length !== 2 || args[0] !== endpoint) throw new Error("问答执行目标与受监督服务不一致");
+  const state = await owner();
+  if (!state || state.stale) throw new Error("先显式启动受显存保护的本项目模型服务");
+  const choice = await activeChoice(state);
+  if (args[1] !== choice.config.model_alias || state.endpoint !== endpoint || state.model !== args[1]) {
+    throw new Error("问答执行模型与受监督服务不一致");
+  }
+  await readyToSend(choice);
+}
+
 try {
   if (command === "start") await start(); else if (command === "status") await status(); else if (command === "stop") await stop();
   else if (command === "check") { const choice = await modelChoice(modelCommandOptions(process.argv.slice(3))); const gpu = await readGpu(); if (!canLoad(gpu, choice.config.load_budget_mib)) throw new Error("模型加载预算不足"); console.log("显存预算核对通过"); }
@@ -158,6 +172,7 @@ try {
   else if (command === "value") await runReview(false, true);
   else if (command === "probe") await runReview(true);
   else if (command === "answer-benchmark-case") await answerBenchmarkCase();
+  else if (command === "answer-admit") await answerAdmission();
   else if (command === "benchmark-case") await benchmarkCase();
   else throw new Error("用法：node scripts/local-model.mjs start|status|stop|check|probe|review|value OWNER REQUEST|benchmark-case CASE");
 } catch (error) { console.error(error.message); process.exitCode = 1; }

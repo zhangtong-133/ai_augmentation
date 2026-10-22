@@ -137,7 +137,7 @@ export function RetrievalPanel() {
         <ol>{result.citations.map(hit => <Evidence key={hit.id} hit={hit} citation={hit} />)}</ol>
       </>}
     </section>}
-    <small>检索与回答在刷新、退出或切换账户后清空。已保存的授权可手动恢复。答案与来源仅按文本展示。</small>
+    <small>本次检索与即时回答在刷新、退出或切换账户后清空。已保存的授权和执行结果可手动恢复。答案与来源仅按文本展示。</small>
     <AnswerAuthorizationsPanel key={JSON.stringify(result)} query={result?.query ?? ""} sources={result?.kind === "search" ? result.hits : []} />
   </section>;
 }

@@ -41,6 +41,16 @@ indexTest("exact consent persists and cancels without dispatching inference", as
   await panel(page).getByRole("button", { name: "刷新授权记录" }).click();
   await panel(page).getByRole("button", { name: `已保存授权 · ${grant.request_id}`, exact: true }).click();
   await expect(detail).toContainText("状态：已保存授权");
+  expect(dispatches).toBe(0);
+  expect(grant.execution_available).toBe(false);
+  const closed = await page.evaluate(async ({ url, digest }) => {
+    const response = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", "X-Requested-With": "personal-ai" }, body: JSON.stringify({ digest }) });
+    return { status: response.status, body: await response.json() };
+  }, { url: `${base}/${grant.request_id}/execute`, digest: grant.digest });
+  expect(closed.status).toBe(503);
+  expect(closed.body.error.code).toBe("answer_execution_disabled");
+  const unchanged = await page.evaluate(async url => (await fetch(url)).json(), `${base}/${grant.request_id}`);
+  expect(unchanged.status).toBe("authorized"); expect(unchanged.execution).toBeNull();
   await detail.getByRole("button", { name: "取消该授权" }).click();
   await expect(detail).toContainText("状态：已取消");
   await expect(detail.locator("pre")).toHaveCount(0);
@@ -50,7 +60,7 @@ indexTest("exact consent persists and cancels without dispatching inference", as
   await expect(panel(page).getByRole("list", { name: "最近授权记录" }).locator("li")).toHaveCount(0);
   const foreign = await page.evaluate(async url => (await fetch(url)).status, `${base}/${grant.request_id}`);
   expect(foreign).toBe(404);
-  expect(dispatches).toBe(0);
+  expect(dispatches).toBe(1); // Only the explicit, disabled execute request above.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -65,7 +75,7 @@ test("lost preview response recovers original request and invalidation clears co
     if (request.method() === "POST" && path === base) {
       creations++; const input = request.postDataJSON();
       expect(input.sources).toEqual([{ document_id: hit.document_id, ordinal: 0 }]);
-      saved = { request_id: input.request_id, status: "draft", digest: "a".repeat(64), created_at_unix_ms: Date.now(), expires_at_unix_ms: Date.now() + 600000,
+      saved = { request_id: input.request_id, status: "draft", digest: "a".repeat(64), created_at_unix_ms: Date.now(), expires_at_unix_ms: Date.now() + 600000, execution_available: false, execution: null,
         preview: { question: input.question, materials: [hit], request_sha256: "b".repeat(64), request: { endpoint: "http://127.0.0.1:11435/v1/chat/completions", profile: "local-knowledge-answer-v2", body: { model: "fixture", messages: [{ content: unsafe }] } } } };
       await route.abort("failed"); return;
     }
@@ -94,4 +104,185 @@ test("lost preview response recovers original request and invalidation clears co
   await expect(detail.getByRole("checkbox")).toHaveCount(0);
   await expect(detail.locator("pre")).toHaveCount(0);
   expect(creations).toBe(1); expect(approvals).toBe(1);
+});
+
+// These fixtures exercise the browser contract; the real database/runtime flow is
+// covered by the API acceptance suite, without calling a real model.
+async function executionFixture(page, { initial = "authorized", available = true, mode = "normal" } = {}) {
+  const unsafe = '<img src=x onerror="window.injected=true">';
+  const quote = "会议安排在周五。";
+  const hit = { document_id: randomUUID(), ordinal: 0, title: "执行夹具", source: unsafe, text: `😀${quote}尾声 ${unsafe}`, score: 1 };
+  const answer = { status: "answered", answer: `${unsafe}\n会议安排在周五。[1]`, citations: [{ ...hit, id: 1, quote, quote_start: 1, quote_end: 1 + Array.from(quote).length }] };
+  const create = (id = randomUUID(), status = "authorized", question = "何时开会？") => ({
+    request_id: id, status, digest: "a".repeat(64), created_at_unix_ms: Date.now(), expires_at_unix_ms: Date.now() + 600000,
+    execution_available: available, execution: null,
+    preview: { question, materials: [hit], request_sha256: "b".repeat(64), request: { endpoint: "http://127.0.0.1:11435/v1/chat/completions", profile: "local-knowledge-answer-v2", body: { model: "fixture", messages: [{ content: hit.text }] } } },
+  });
+  const control = { current: initial ? create(undefined, initial) : null, calls: [], answer, hit, release: null };
+  const question = () => control.current.preview?.question ?? control.current.execution?.question ?? "何时开会？";
+  control.complete = (result = structuredClone(answer)) => {
+    const savedQuestion = question();
+    control.current.status = "consumed"; control.current.preview = null;
+    control.current.execution = { status: "succeeded", request_sha256: "b".repeat(64), started_at_unix_ms: Date.now(), deadline_at_unix_ms: Date.now() + 55000,
+      sent_at_unix_ms: Date.now(), finished_at_unix_ms: Date.now(), question: savedQuestion, result };
+  };
+  control.terminal = status => {
+    control.complete(null); control.current.execution.status = status; control.current.execution.question = null;
+  };
+  await page.route("**/api/knowledge/search", route => route.fulfill({ json: { hits: [hit] } }));
+  await page.route("**/api/knowledge/answer-authorizations**", async route => {
+    const request = route.request(); const path = new URL(request.url()).pathname;
+    control.calls.push({ method: request.method(), path });
+    if (path === base && request.method() === "POST") {
+      const input = request.postDataJSON(); control.current = create(input.request_id, "draft", input.question);
+    } else if (path === base) {
+      const items = control.current ? [{ ...control.current, preview: null, execution: control.current.execution ? { ...control.current.execution, question: null, result: null } : null }] : [];
+      await route.fulfill({ json: { execution_available: available, items } }); return;
+    } else if (path.endsWith("/approve")) {
+      expect(request.postDataJSON()).toEqual({ digest: control.current.digest, acknowledge_sharing: true, acknowledge_local_compute: true });
+      control.current.status = "authorized";
+    } else if (path.endsWith("/execute")) {
+      expect(request.postDataJSON()).toEqual({ digest: control.current.digest });
+      expect(control.current.status).toBe("authorized");
+      control.terminal("running"); control.current.execution.sent_at_unix_ms = null; control.current.execution.finished_at_unix_ms = null;
+      if (mode === "lost") { control.terminal("unknown"); await route.abort("failed"); return; }
+      if (mode === "held") {
+        // A late valid body must not undo the cancellation that was already read.
+        const late = structuredClone(control.current);
+        late.execution.status = "succeeded"; late.execution.result = answer; late.execution.question = "何时开会？";
+        await new Promise(resolve => { control.release = async () => { await route.fulfill({ status: 202, json: late }).catch(() => {}); resolve(); }; });
+        return;
+      }
+      await route.fulfill({ status: 202, json: control.current }); return;
+    } else if (path.endsWith("/cancel")) {
+      if (control.current.execution) control.terminal("cancelled");
+      else { control.current.status = "cancelled"; control.current.preview = null; }
+    } else {
+      expect(path).toBe(`${base}/${control.current.request_id}`);
+    }
+    await route.fulfill({ json: control.current });
+  });
+  const owner = await createAccount(); await page.goto("/"); await login(page, owner);
+  control.open = async () => {
+    await panel(page).getByRole("button", { name: "刷新授权记录" }).click();
+    await panel(page).getByRole("button", { name: new RegExp(`${control.current.request_id}$`) }).click();
+  };
+  control.executions = () => control.calls.filter(call => call.path.endsWith("/execute")).length;
+  return control;
+}
+
+test("a separate execution click persists text and Unicode citations through refresh and deletion", async ({ page }, testInfo) => {
+  const fixture = await executionFixture(page, { initial: null });
+  await page.getByLabel("问题或检索内容", { exact: false }).fill("何时开会？");
+  await page.getByRole("button", { name: "检索资料", exact: true }).click();
+  await panel(page).getByRole("checkbox").check();
+  await panel(page).getByRole("button", { name: "创建精确预览" }).click();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await detail.getByLabel("我同意将当前问题", { exact: false }).check();
+  await detail.getByLabel("我理解未来执行", { exact: false }).check();
+  await detail.getByRole("button", { name: "保存一次授权" }).click();
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toBeEnabled();
+  expect(fixture.executions()).toBe(0);
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail).toContainText("正在执行一次问答");
+  expect(fixture.executions()).toBe(1);
+  fixture.complete();
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail).toContainText(fixture.answer.answer);
+  await expect(detail).toContainText("模型结果，待你核对");
+  await expect(detail.locator("img, a, script")).toHaveCount(0);
+  expect(await page.evaluate(() => window.injected)).toBeUndefined();
+  await detail.getByText("查看引用原文与位置", { exact: true }).click();
+  await expect(detail.locator("mark")).toHaveText(fixture.answer.citations[0].quote);
+  await panel(page).screenshot({ path: testInfo.outputPath("answer-execution-succeeded.png") });
+  await page.reload(); await fixture.open();
+  await expect(detail).toContainText(fixture.answer.answer);
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  expect(fixture.executions()).toBe(1);
+  await detail.getByRole("button", { name: "删除本次结果" }).click();
+  await expect(detail).toContainText("已取消执行，结果已清除");
+  await expect(detail.locator("pre, blockquote, .answerText")).toHaveCount(0);
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail.locator(".answerText")).toHaveCount(0);
+  expect(fixture.executions()).toBe(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("a lost execution response recovers unknown without offering another send", async ({ page }, testInfo) => {
+  const fixture = await executionFixture(page, { mode: "lost" }); await fixture.open();
+  await panel(page).getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(panel(page).getByRole("alert")).toContainText("系统不会自动重发");
+  await panel(page).getByRole("button", { name: "查询原请求" }).click();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText("结果未知，不会重发");
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  await panel(page).screenshot({ path: testInfo.outputPath("answer-execution-unknown.png") });
+  await page.reload(); await fixture.open();
+  await expect(detail).toContainText("结果未知，不会重发");
+  expect(fixture.executions()).toBe(1);
+});
+
+test("cancelling an in-flight execution suppresses its late result", async ({ page }, testInfo) => {
+  const fixture = await executionFixture(page, { mode: "held" }); await fixture.open();
+  await panel(page).getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect.poll(() => typeof fixture.release).toBe("function");
+  await panel(page).getByRole("button", { name: "取消该授权", exact: true }).click();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText("已取消执行，结果已清除");
+  await fixture.release();
+  await expect(detail.locator("pre, blockquote, .answerText")).toHaveCount(0);
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail).toContainText("已取消执行，结果已清除");
+  await panel(page).screenshot({ path: testInfo.outputPath("answer-execution-cancelled.png") });
+  expect(fixture.executions()).toBe(1);
+});
+
+test("disabled, failed and consumed grants never expose a send action", async ({ page }) => {
+  const fixture = await executionFixture(page, { available: false }); await fixture.open();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText("当前部署尚未启用");
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  fixture.terminal("failed"); await fixture.open();
+  await expect(detail).toContainText("执行失败，不会重发");
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  fixture.complete({ status: "insufficient_evidence", answer: null, citations: [] }); await fixture.open();
+  await expect(detail).toContainText("证据不足，模型未给出答案");
+  await expect(detail.locator(".answerText, blockquote")).toHaveCount(0);
+  fixture.current.execution = null; await fixture.open();
+  await expect(detail).toContainText("此授权已领取，不能再次执行");
+  await expect(detail.getByRole("button", { name: "执行一次", exact: true })).toHaveCount(0);
+  expect(fixture.executions()).toBe(0);
+});
+
+test("logout suppresses an execution body arriving in the previous account", async ({ page }) => {
+  const fixture = await executionFixture(page, { mode: "held" }); await fixture.open();
+  await panel(page).getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect.poll(() => typeof fixture.release).toBe("function");
+  await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await fixture.release();
+  await expect(panel(page)).toHaveCount(0);
+  await expect(page.getByText(fixture.answer.answer, { exact: true })).toHaveCount(0);
+  const other = await createAccount(); await login(page, other);
+  await expect(panel(page).getByRole("region", { name: "精确授权详情" })).toHaveCount(0);
+  expect(fixture.executions()).toBe(1);
+});
+
+test("invalid citation positions reject the whole body and source invalidation clears a restored result", async ({ page }) => {
+  const fixture = await executionFixture(page);
+  fixture.complete();
+  // The emoji uses two UTF-16 units, but quote positions are Unicode scalars.
+  fixture.current.execution.result.citations[0].quote_start++;
+  fixture.current.execution.result.citations[0].quote_end++;
+  await fixture.open();
+  await expect(panel(page).getByRole("alert")).toContainText("格式异常");
+  await expect(panel(page).locator(".answerText, blockquote")).toHaveCount(0);
+  fixture.complete();
+  await panel(page).getByRole("button", { name: "查询原请求" }).click();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await expect(detail).toContainText(fixture.answer.answer);
+  fixture.terminal("invalidated");
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail).toContainText("来源已失效，结果已清除");
+  await expect(detail.locator("pre, blockquote, .answerText")).toHaveCount(0);
+  expect(fixture.executions()).toBe(0);
 });

@@ -1,5 +1,9 @@
 mod agent_plans;
 mod answer_authorizations;
+mod answer_execution_runtime;
+pub use answer_execution_runtime::{
+    AnswerExecutionGuard, AnswerExecutionPermit, AnswerExecutionRuntime, answer_execution_from_env,
+};
 mod model_agent_config;
 mod model_agents;
 pub use model_agents::ModelAgentRuntime;
@@ -106,6 +110,9 @@ pub struct AppState {
     pub memories: Arc<dyn personal_ai_storage::long_memory::LongMemoryStore>,
     pub answer_authorizations:
         Option<Arc<dyn personal_ai_storage::answer_authorizations::AnswerAuthorizationStore>>,
+    pub answer_executions:
+        Option<Arc<dyn personal_ai_storage::answer_executions::AnswerExecutionStore>>,
+    pub answer_execution: Option<Arc<AnswerExecutionRuntime>>,
     pub answering: Option<Arc<dyn personal_ai_llm::AnswerProvider>>,
     pub indexing: Option<Arc<Indexing>>,
     pub web_importer: Arc<dyn personal_ai_knowledge::web::WebImporter>,

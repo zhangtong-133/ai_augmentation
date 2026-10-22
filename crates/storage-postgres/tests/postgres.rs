@@ -1,5 +1,7 @@
 #[path = "postgres/answer_authorizations.rs"]
 mod answer_authorizations;
+#[path = "postgres/answer_executions.rs"]
+mod answer_executions;
 use personal_ai_domain::{User, UserId};
 use personal_ai_storage::{MetadataStore, StorageError};
 use personal_ai_storage_postgres::PostgresStore;

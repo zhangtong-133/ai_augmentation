@@ -1,5 +1,7 @@
 use super::*;
 use personal_ai_storage_postgres::PostgresStore;
+#[path = "answer_authorization_tests/execution.rs"]
+mod execution;
 const BASE: &str = "/api/knowledge/answer-authorizations";
 async fn json_body(response: axum::response::Response) -> serde_json::Value {
     serde_json::from_slice(&to_bytes(response.into_body(), 32768).await.unwrap()).unwrap()
@@ -15,6 +17,7 @@ async fn answer_authorization_routes_check_session_and_csrf_before_store() {
         ("GET", format!("{BASE}/{id}")),
         ("POST", format!("{BASE}/{id}/approve")),
         ("POST", format!("{BASE}/{id}/cancel")),
+        ("POST", format!("{BASE}/{id}/execute")),
     ] {
         assert_eq!(
             auth_request(app.clone(), method, &path, None, "{}", true)
@@ -144,12 +147,12 @@ async fn answer_authorization_http_persists_exact_private_consent_without_infere
             "POST",
             &format!("{path}/execute"),
             Some(&cookie),
-            "{}",
+            &json!({"digest":saved["digest"]}).to_string(),
             true
         )
         .await
         .status(),
-        StatusCode::NOT_FOUND
+        StatusCode::SERVICE_UNAVAILABLE
     );
     sqlx::query("UPDATE documents SET title='changed' WHERE id=$1")
         .bind(Uuid::parse_str(&document.summary.id).unwrap())
