@@ -64,6 +64,16 @@ test("non-success states cannot carry an answer and executions require a consume
   const grant = fixture(); grant.status = "authorized";
   assert.equal(isGrant(grant), false);
 });
+test("succeeded details require a saved result and question while cleared states expose neither", () => {
+  for (const field of ["question", "result"]) {
+    const grant = fixture(); grant.execution[field] = null;
+    assert.equal(isGrant(grant), false);
+  }
+  for (const status of ["failed", "unknown", "cancelled", "invalidated"]) {
+    const grant = fixture(); grant.execution.status = status; grant.execution.result = null;
+    assert.equal(isGrant(grant), false);
+  }
+});
 test("invalid timestamps, capabilities and execution protocol fail closed", () => {
   for (const mutate of [
     grant => { grant.execution_available = "true"; },

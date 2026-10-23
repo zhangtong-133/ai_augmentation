@@ -57,7 +57,9 @@ function isExecution(value: unknown, metadata: boolean): value is Execution {
     && optionalTimestamp(execution.sent_at_unix_ms) && optionalTimestamp(execution.finished_at_unix_ms)
     && (execution.question === null || typeof execution.question === "string")
     && (metadata ? execution.question === null && execution.result === null
-      : execution.result === null || execution.status === "succeeded" && isAnswerResult(execution.result));
+      : execution.status === "succeeded"
+        ? typeof execution.question === "string" && isAnswerResult(execution.result)
+        : execution.result === null && (execution.status === "running" || execution.question === null));
 }
 export function isGrant(value: unknown, metadata = false): value is Grant {
   if (!value || typeof value !== "object") return false;

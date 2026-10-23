@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { executionStatuses, isGrant, statuses, type Citation, type Grant, type Source } from "./answer-authorization-types";
+import { AnswerExecutionHttpError, observeAnswerExecution } from "../lib/answer-execution-observer";
 const base = "/api/knowledge/answer-authorizations";
 function metadata(grant: Grant): Grant {
   return { ...grant, preview: null, execution: grant.execution ? { ...grant.execution, question: null, result: null } : null };
@@ -41,12 +42,61 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [watching, setWatching] = useState(false);
+  const [observationNotice, setObservationNotice] = useState("");
   const [attempted, setAttempted] = useState<Set<string>>(() => new Set());
   const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => { pending.current?.abort(); pending.current = null; }, []);
+  const observer = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const pause = () => {
+      if (!observer.current || !document.hidden && navigator.onLine) return;
+      observer.current.abort(); observer.current = null; setWatching(false);
+      setObservationNotice(document.hidden ? "页面已离开前台，自动跟踪已暂停。返回后可继续跟踪。" : "网络已断开，自动跟踪已暂停。联网后可继续跟踪。");
+    };
+    document.addEventListener("visibilitychange", pause);
+    window.addEventListener("offline", pause);
+    return () => {
+      pending.current?.abort(); pending.current = null;
+      observer.current?.abort(); observer.current = null;
+      document.removeEventListener("visibilitychange", pause);
+      window.removeEventListener("offline", pause);
+    };
+  }, []);
 
-  async function run(path: string, id: string, payload?: unknown, listing = false, executing = false) {
+  function stopObservation() {
+    observer.current?.abort(); observer.current = null; setWatching(false);
+  }
+  function remember(item: Grant) {
+    setGrant(item); setRecover("");
+    setItems(previous => [metadata(item), ...previous.filter(a => a.request_id !== item.request_id)].slice(0, 20));
+  }
+  async function observe(item: Grant) {
+    if (observer.current || item.execution?.status !== "running") return;
+    if (document.hidden || !navigator.onLine) {
+      setObservationNotice("自动跟踪已暂停。请在前台且联网时继续跟踪或查询状态。"); return;
+    }
+    const controller = new AbortController(); observer.current = controller;
+    const valid = () => observer.current === controller && !controller.signal.aborted;
+    setWatching(true); setError(""); setObservationNotice("");
+    try {
+      const outcome = await observeAnswerExecution(item, controller.signal, current => { if (valid()) remember(current); });
+      if (valid()) setObservationNotice(outcome === "timeout" ? "已跟踪两分钟，暂未取得最终状态。可继续跟踪或查询原请求，系统不会重新执行。" : "本次执行状态已更新。");
+    } catch (e) {
+      if (!valid()) return;
+      setGrant(null); setRecover(item.request_id);
+      if (e instanceof AnswerExecutionHttpError) {
+        if (e.status === 401) { setItems([]); setRecover(""); }
+        if (e.status === 404) setRecover("");
+        setError(`${failure(e.status)} 自动跟踪已停止。`);
+      } else setError("自动跟踪已中断或状态格式异常，请查询原请求。系统不会重新执行。");
+    } finally {
+      if (observer.current === controller) { observer.current = null; setWatching(false); }
+    }
+  }
+
+  async function run(path: string, id: string, payload?: unknown, { listing = false, executing = false, follow = true }: { listing?: boolean; executing?: boolean; follow?: boolean } = {}) {
     if (pending.current) return;
+    stopObservation(); setObservationNotice("");
     const controller = new AbortController(); pending.current = controller;
     setBusy(true); setSending(executing); setError("");
     if (!executing) setGrant(null);
@@ -74,8 +124,9 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
         setItems(list.items);
       } else {
         if (!isGrant(data) || data.request_id !== id) throw new Error("授权预览格式异常，请查询原请求状态。");
-        setGrant(data); setRecover("");
-        setItems(previous => [metadata(data), ...previous.filter(a => a.request_id !== id)].slice(0, 20));
+        remember(data);
+        if (follow) void observe(data);
+        else if (data.execution?.status === "running") setObservationNotice("当前状态已核对，自动跟踪保持暂停。");
       }
     } catch (e) {
       if (pending.current === controller) {
@@ -107,7 +158,7 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
     if (!grant || grant.status !== "authorized" || !grant.execution_available || grant.execution || pending.current || attempted.has(grant.request_id)) return;
     if (Date.now() >= grant.expires_at_unix_ms) { setError("授权已过期，请查询原请求状态。"); return; }
     setAttempted(previous => new Set(previous).add(grant.request_id));
-    void run(`${base}/${grant.request_id}/execute`, grant.request_id, { digest: grant.digest }, false, true);
+    void run(`${base}/${grant.request_id}/execute`, grant.request_id, { digest: grant.digest }, { executing: true });
   }
   function cancel() {
     if (!grant || pending.current && !sending) return;
@@ -132,14 +183,15 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
       <label>本地模型名称<input value={model} onChange={e => setModel(e.target.value)} /></label>
       <button type="button" onClick={prepare} disabled={!selected.length}>创建精确预览</button>
     </fieldset> : <p>先检索资料，再选择片段创建预览；已有授权可从下方恢复。</p>}
-    <button type="button" disabled={busy} onClick={() => void run(base, "", undefined, true)}>刷新授权记录</button>
+    <button type="button" disabled={busy} onClick={() => void run(base, "", undefined, { listing: true })}>刷新授权记录</button>
     {busy && <p role="status">{sending ? "正在提交本次执行，可取消；不会自动重发…" : "正在读取或保存授权…"}</p>}
     {error && <p role="alert">{error}</p>}
     {recover && <p>待确认请求：<code>{recover}</code> <button type="button" disabled={busy} onClick={() => void run(`${base}/${recover}`, recover)}>查询原请求</button></p>}
     <ul aria-label="最近授权记录">{items.map(item => <li key={item.request_id}>
-      <button type="button" disabled={busy} onClick={() => void run(`${base}/${item.request_id}`, item.request_id)}>{statuses[item.status]} · {item.request_id}</button>
+      <button type="button" disabled={busy} onClick={() => void run(`${base}/${item.request_id}`, item.request_id)}>{item.execution ? executionStatuses[item.execution.status] : statuses[item.status]} · {item.request_id}</button>
     </li>)}</ul>
     {grant && <section aria-label="精确授权详情">
+      <button type="button" disabled={busy} onClick={() => { stopObservation(); setObservationNotice(""); setGrant(null); }}>关闭授权详情</button>
       <p role="status">状态：{statuses[grant.status]}。保存授权不会执行模型。</p>
       <p>请求：<code>{grant.request_id}</code></p>
       <p>有效期至：{new Date(grant.expires_at_unix_ms).toLocaleString()}</p>
@@ -162,10 +214,18 @@ export function AnswerAuthorizationsPanel({ query, sources }: { query: string; s
           : <p>当前部署尚未启用本地问答执行；已保存的授权不会自动执行。</p>}
       </>}
       {grant.execution && <section aria-label="本次执行结果">
-        <h4>{executionStatuses[grant.execution.status]}</h4>
+        <h4 role="status">{executionStatuses[grant.execution.status]}</h4>
         <p>此授权已领取，不会再次执行。刷新只读取持久化状态。</p>
         <p>开始时间：{new Date(grant.execution.started_at_unix_ms).toLocaleString()}</p>
-        <button type="button" disabled={busy} onClick={() => void run(`${base}/${grant.request_id}`, grant.request_id)}>查询执行状态</button>
+        {grant.execution.finished_at_unix_ms !== null && <p>结束时间：{new Date(grant.execution.finished_at_unix_ms).toLocaleString()}</p>}
+        {grant.execution.status === "running" && <section aria-label="问答执行自动跟踪">
+          <p>{grant.execution.sent_at_unix_ms === null ? "已领取请求，正在等待发送。" : "请求已发送，正在等待保存结果。"}</p>
+          {watching ? <><p role="status">正在自动跟踪，结果保存后会自动展示。每轮最长两分钟。</p>
+            <button type="button" onClick={() => { stopObservation(); setObservationNotice("已暂停自动跟踪，问答仍可能继续。可继续跟踪或查询状态。"); }}>暂停自动跟踪</button></>
+            : <button type="button" disabled={busy} onClick={() => void observe(grant)}>继续自动跟踪</button>}
+        </section>}
+        {observationNotice && <p role="status">{observationNotice}</p>}
+        <button type="button" disabled={busy} onClick={() => void run(`${base}/${grant.request_id}`, grant.request_id, undefined, { follow: watching })}>查询执行状态</button>
         {grant.execution.status === "succeeded" && grant.execution.result && <>
           {grant.execution.question !== null && <h5>本次问题：{grant.execution.question}</h5>}
           <p>这是模型结果，待你核对。摘录已与原文逐字校验，不能保证模型结论正确。</p>

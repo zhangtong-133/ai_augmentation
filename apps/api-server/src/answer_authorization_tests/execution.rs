@@ -184,9 +184,15 @@ impl Fixture {
             true,
         )
         .await;
-        assert_eq!(response.status(), expected);
+        let status = response.status();
         assert_eq!(response.headers()["cache-control"], "no-store");
-        json_body(response).await
+        let result = json_body(response).await;
+        assert_eq!(
+            status, expected,
+            "{method} {suffix}, {:?} mode {}: {result}",
+            self.backend, self.model.mode
+        );
+        result
     }
     async fn authorized(&self, model: &str) -> serde_json::Value {
         self.authorized_for(model, self.backend).await
@@ -214,7 +220,9 @@ impl Fixture {
         .await
     }
     async fn terminal(&self, id: &str) -> serde_json::Value {
-        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        // A detail operation itself can wait up to 15 seconds. Do not cancel it
+        // after only five seconds when the CI runner is busy scheduling tests.
+        tokio::time::timeout(std::time::Duration::from_secs(20), async {
             loop {
                 let item = self
                     .request("GET", &format!("/{id}"), json!({}), StatusCode::OK)
@@ -226,7 +234,12 @@ impl Fixture {
             }
         })
         .await
-        .unwrap()
+        .unwrap_or_else(|_| {
+            panic!(
+                "execution did not finish: {:?} mode {}",
+                self.backend, self.model.mode
+            )
+        })
     }
     async fn cleanup(self) {
         self.model.release.notify_waiters();

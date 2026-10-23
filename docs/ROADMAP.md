@@ -1,5 +1,19 @@
 # 交付路线图
 
+## 当前开发顺序（2026-10-23）
+
+产品工程按可完成的用户流程交付，不再等待本机小模型的质量门槛，也不继续扩展已能直接调用的 Ollama 运行器。每个阶段通过对应工程验收后提交推送；模型选型、真实任务质量与资源实测单独记录。
+
+| 阶段 | 状态 | 交付目标 |
+| --- | --- | --- |
+| 问答执行反馈 | 已交付 | [自动跟踪与结果展示](design/answer-execution-observation.md)，暂停/继续、断网和后台暂停、异常核对；保持单次执行 |
+| 工作台组织 | 下一阶段 | 按知识、阅读、学习和提醒组织入口，清晰定位当前任务和历史结果，补齐导航及恢复交互 |
+| 阅读到训练 | 待开发 | 用户显式选择评分阅读材料进入训练，保留可追溯来源和删除失效边界 |
+
+其他场景的临时正文展示、可选 API 金额评分、全局残留向量后台回收保留独立待办。具体顺序和各阶段边界见 [v1 完成计划](design/v1-completion-plan.md#当前产品交付顺序2026-10-23)。以下功能与实验记录保留历史事实；旧批次中的“下一步”不覆盖本节当前顺序。
+
+## 已有能力概览
+
 已完成知识库闭环、工具、长期记忆、对话/用户消息页面和 Redis 快照缓存。显式回复已提供[持久化请求与夹具执行器](design/sprint-3-model-replies.md)及[测试回复页面](design/sprint-3-reply-ui.md)，包含双入口故障交互验收。默认关闭，部署者显式启用付费模式后可调用固定模型。已实现[费用预留/结算纯规划与供应商边界设计](design/sprint-3-reply-budget.md)，已落地金额账本与事务预留/结算，已提供[固定模型离线计数与单次发送适配](design/sprint-3-reply-provider.md)，已提供[预算凭据领取与持久化配置停用](design/sprint-3-reply-dispatch.md)，已提供[供应商内部执行器与故障恢复](design/sprint-3-reply-executor.md)，已接入[显式部署配置、事务预留入口与页面金额确认](design/sprint-3-paid-replies.md)。已提供[配置查询、显式停用与金额账本审计命令](design/sprint-3-reply-operations.md)。已提供[工具调用次数预算与持久化审计](design/sprint-3-tool-call-audit.md)，现有知识检索工具已接入一次性执行入口。已提供[固定只读 Agent 计划与精确用户授权](design/sprint-3-agent-plans.md)，每计划最多三次知识检索，复用次数审计并支持取消/删除及一次性派发。已提供[计划预览、费用授权与取消页面](design/sprint-3-agent-plan-ui.md)，支持原请求恢复及双入口浏览器验收。已提供[模型检索建议的纯规划与两阶段金额/次数授权](design/sprint-3-model-agent-budget.md)，已落地[第一阶段规划请求仓储与事务预算](design/sprint-3-model-planning-store.md)，已落地[检索/回答阶段预算与一次性领取](design/sprint-3-model-execution-store.md)，已落地[检索证据保存与受限回答协议](design/sprint-3-model-evidence.md)，已提供[固定模型适配器与一次性执行器](design/sprint-3-model-agent-executor.md)，已接入[显式部署配置、两阶段 HTTP 授权与页面](design/sprint-3-model-agent-app.md)，已提供[模型 Agent 配置查询、主动停用与共享账本核对](design/sprint-3-model-agent-operations.md)，已实现 [Scheduler 一次性提醒授权、取消与任务仓储](design/sprint-3-scheduler-store.md)，已接入[后台领取、租约恢复与幂等站内提醒投递](design/sprint-3-scheduler-delivery.md)，已接入[Scheduler 管理/提醒 API 与页面](design/sprint-3-scheduler-app.md)，已提供[Scheduler 运维查询与积压/租约核对](design/sprint-3-scheduler-operations.md)，已提供 [MCP 本地 stdio 只读知识检索桥接](design/sprint-3-mcp-stdio.md)。已提供 [MCP 宿主专属可撤销凭据与授权 API](design/sprint-3-mcp-credentials.md)。已提供 [MCP 凭据管理与费用授权页面](design/sprint-3-mcp-credential-ui.md)。已提供 [MCP 凭据只读运维核对](design/sprint-3-mcp-operations.md)。已提供 [RSS 订阅与只读采集纯规划边界](design/sprint-4-rss-collection.md)。已实现[受限 RSS 2.0 解析器与条目身份/去重纯函数](design/sprint-4-rss-parser.md)。已实现[RSS 订阅仓储、一次性采集授权与审计事务](design/sprint-4-rss-store.md)。已实现[RSS 公网传输与一次性执行器](design/sprint-4-rss-executor.md)。已接入[默认关闭的 RSS 管理与一次性采集 HTTP 接口](design/sprint-4-rss-http.md)。已实现[RSS 订阅与采集确认页面](design/sprint-4-rss-ui.md)。已提供[RSS 只读运维核对与状态诊断](design/sprint-4-rss-operations.md)。已实现[RSS 规则评分与 Daily Brief 纯规划](design/sprint-4-rss-brief-planning.md)。已实现[日报偏好与不可变计划仓储](design/sprint-4-rss-brief-store.md)。已接入[Daily Brief HTTP 与页面](design/sprint-4-rss-brief-app.md)。已实现[Skill Graph、自评与受限训练计划纯规划](design/sprint-4-learning-planning.md)。已实现[技能图、自评记录与不可变训练计划仓储](design/sprint-4-learning-store.md)。已接入[学习 HTTP、页面与显式训练结果记录](design/sprint-4-learning-app.md)，并提供[学习数据只读运维核对与额度诊断](design/sprint-4-learning-operations.md)和[学习进度概览](design/sprint-4-learning-progress.md)。阶段边界见 [Sprint 3 设计](design/sprint-3-tools-memory-scheduler.md)。
 
 Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有下列待补齐项，不代表产品设想全部实现：RSS 手动采集需明确确认，周期采集后台、用户授权 HTTP 和配置页面已接入；学习基于自评和显式训练记录；付费模型及公网采集需部署者主动启用。
@@ -10,18 +24,24 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 已实现[模型核验分享预览与严格返回协议](design/learning-model-review.md)：私有只读接口和完整材料预览页面已接入，无迁移、无模型请求。已接入[连接绑定、精确授权、取消与历史页面](design/learning-model-authorization.md)（0038 迁移），已接入[一次性执行和建议回看](design/learning-model-execution.md)（0039 迁移、显式本机命令），网页批准不自动发送，真实 Pro 实测仍待完成。
 
-## 原始 v1 尚未补齐
+## v1 工程状态与独立验收
 
-- [ ] AI 信息价值评分：已实现[候选分享与严格返回协议](design/rss-value-protocol.md)；已实现[API/订阅用量授权仓储](design/rss-value-reviews.md)，已提供 [ChatGPT 本地登录和调用](design/chatgpt-local.md)，已实现[用户连接绑定与撤销](design/subscription-connections.md)，已接入[连接管理 HTTP](design/subscription-connections-http.md)，已接入[连接管理页面](design/subscription-connections-ui.md)，已实现[订阅评分内部执行器](design/rss-value-execution.md)，已接入[本地订阅评分命令](design/rss-value-local.md)，已接入[用户评分 HTTP](design/rss-value-http.md)，已接入[评分授权与结果页面](design/rss-value-ui.md)，已接入[私有阅读视图](design/rss-value-reading.md)，订阅评分阅读链路代码已完成；[独立本地评分](design/rss-value-local-model.md)的精确授权、真实合成材料评分、阅读及删除/恢复闭环也已通过；真实材料排序质量、真实 Pro 实测和可选 API 金额路径仍待完成。当前日报保留关键词规则评分。
-- [ ] 基于训练证据的能力评估：已定义[证据与确认协议](design/learning-evidence.md)，已提供只读材料检查、结构化证据保存/删除与页面；已实现[用户核验与版本确认](design/learning-review-confirmation.md)，已接入[订阅模型核验执行与建议回看](design/learning-model-execution.md)，真实订阅及质量验收仍待完成；模型建议须由用户复核，完成训练不自动提高分数。
-- [x] [订阅核验只读运维与固定验收入口](design/learning-model-operations.md)：授权/派发/发送审计、超时与配额诊断、最小列权限及人工确认/来源删除闭环；真实订阅质量仍需用户验收。
-- [ ] 流式模型输出及独立本地模型适配：已接入[内部文本序列与订阅传输终态保护](design/model-streaming.md)、[请求绑定的运行时增量通知](design/learning-model-progress.md)、私有状态接口与页面；[学习核验临时正文](design/learning-text-stream.md)及[独立本地模型](design/local-model.md)三阶段已交付。官方 llama.cpp/Qwen 真实协议、显存保护与停止释放已验收，保留 vLLM 替换端口；其他模型场景的流式展示、真实用户闭环与质量仍待完成。
+- [x] AI 信息价值评分工程链路：已提供[订阅授权与评分](design/rss-value-ui.md)、[独立本地评分](design/rss-value-local-model.md)和[私有阅读视图](design/rss-value-reading.md)，包括精确预览、一次发送、结果读取和删除/恢复。当前 Daily Brief 继续使用关键词规则评分，尚未接入模型评分。
+- [x] 训练证据核验与用户确认工程链路：已提供[结构化证据](design/learning-evidence.md)、[人工核验与版本确认](design/learning-review-confirmation.md)、[模型核验执行和建议回看](design/learning-model-execution.md)。完成训练不自动提高能力分数，模型建议仍须用户复核。
+- [x] [订阅核验只读运维与固定验收入口](design/learning-model-operations.md)：授权/派发/发送审计、超时与配额诊断、最小列权限及人工确认/来源删除闭环。
+- [x] 学习场景的流式输出和本地模型工程链路：[流式协议](design/model-streaming.md)、[临时正文](design/learning-text-stream.md)及[独立本地模型](design/local-model.md)三阶段均已交付；问答的两种本地后端也已接入预览、确认和单次执行。
+- [ ] 其他模型场景的临时正文展示；问答当前只跟踪持久化状态与完整结果，不宣称逐字流式输出已完成。
+- [ ] 模型评分用于日报、可选 API 金额评分，以及上方工作台组织和阅读到训练的产品衔接。
+
+真实材料排序质量、训练建议质量和真实 Pro 可用性仍待独立实测；它们不再使已完成的工程链路长期标为“未实现”，也不阻塞其他产品阶段。具体模型的语义质量不能由协议、引用或夹具通过来证明。
 
 残留向量已提供[按用户显式核对与清理](design/vector-maintenance.md)；全局自动发现与后台回收仍未实现。
 
 ## 最近交付
 
-2026-10-22 调整：当前主线是请求预览、明确确认、单次执行和结果恢复，使用确定性夹具验收权限、持久化与交互。具体模型的质量、延迟和资源表现单列评估；本机 Qwen 的合成题成绩不作为其他功能开发的前置条件。后续按实际部署与用户任务补齐运行器适配和体验，历史实验与失败保留供模型选型参考。
+- [x] [问答执行自动跟踪与结果展示](design/answer-execution-observation.md)：提交成功或主动打开运行详情后自动读取保存状态和结果；支持暂停、单次查询、继续、关闭、断网/后台暂停及严格请求绑定。取消、退出和晚到响应隔离保持，历史列表增加执行状态。376 项 Rust、Rust 1.99 最终 Clippy、前端检查及 32 项单测、302 项隔离服务集成、46 项双入口浏览器验收通过，截图和资源清理已核对；另有十轮共 70 项授权/执行 HTTP 复验通过。无迁移、配置变更或真实模型调用。
+
+2026-10-22 调整：当前主线是请求预览、明确确认、单次执行和结果恢复，使用确定性夹具验收权限、持久化与交互。具体模型的质量、延迟和资源表现单列评估；本机 Qwen 的合成题成绩不作为其他功能开发的前置条件。现有本地调用已经接通，后续按实际用户任务补齐产品体验，历史实验与失败保留供模型选型参考。
 
 - [x] [macOS Ollama 私有问答执行适配](design/ollama-answer-execution.md)：已有 Ollama 接入独立 `ollama-local-answer-v1` 精确预览、双重确认、用户单次执行和结果恢复；旧 v2 授权不转换。新增统一内存准入、运行期间检查和 API 进程内身份固定；共享 Ollama 不自动停止。376 项工作区测试、前端检查、302 项隔离服务集成及 22 项双入口浏览器验收通过，截图已检查、测试容器/网络/数据已清理；本机只读身份与预算检查通过，未发送真实推理请求或重跑质量门槛。
 
@@ -67,7 +87,7 @@ Foundation 至 Sprint 4 已记录的阶段交付项已完成；原始 v1 仍有�
 
 - [x] [macOS Ollama 问答候选与独立质量挑战](design/ollama-answer-quality.md)：复用已安装 Qwen3.5-9B，固定 llamacpp 运行器、上下文/输出、统一内存保护与逐题卸载；保留旧 4/7 记录及全部 v2 授权指纹。新增 8 题冻结挑战和离线双轮门槛，v3 原基准两轮 7/7、挑战两轮 7/8，因 `partial_answer` 未通过质量门槛，私有执行继续关闭。
 
-本地问答当前下一步：[执行闭环](design/answer-execution.md)与 [macOS Ollama 适配](design/ollama-answer-execution.md)均已交付，后续以实际用户任务完善操作反馈和可用性；模型质量继续独立观察，不作为产品工程的开工条件。默认部署执行关闭，启用时绑定实际请求与用户同意，并核对所选模型、运行器、profile 和资源预算。[v20 证据角色审计](design/ollama-answer-evidence-role.md)在 Ollama 0.40.7 的完整双轮仍为 132/142，五题各两轮误弃权；原八套条件、历史失败和不同运行时不可混合比较的边界保持。稳定需求映射与模型质量继续独立改进，不阻塞其余功能开发；会话、所有者、来源、引用和单次发送保护不降低。
+本地问答当前下一步：[执行闭环](design/answer-execution.md)、[macOS Ollama 接线](design/ollama-answer-execution.md)和[自动跟踪](design/answer-execution-observation.md)均已交付，下一阶段优先工作台组织和任务/历史入口；模型质量继续独立观察，不作为产品工程的开工条件。默认部署执行关闭，启用时绑定实际请求与用户同意，并核对所选模型、运行器、profile 和资源预算。[v20 证据角色审计](design/ollama-answer-evidence-role.md)在 Ollama 0.40.7 的完整双轮仍为 132/142，五题各两轮误弃权；原八套条件、历史失败和不同运行时不可混合比较的边界保持。稳定需求映射与模型质量继续独立改进，不阻塞其余功能开发；会话、所有者、来源、引用和单次发送保护不降低。
 
 下方历史批次中的“下一步”与质量门槛保留当时记录；当前工程顺序以上述执行闭环为准，不沿用“本机模型全题通过后才能开发”的前置条件。
 

@@ -40,7 +40,7 @@ fn matching_evidence_cannot_turn_instruction_unrelated_or_missing_basis_into_sup
         )
         .unwrap();
         assert!(answer.insufficient_evidence);
-        assert!(answer.answer.is_empty());
+        assert_eq!(answer.answer, "");
         assert_eq!(answer.citations, [] as [personal_ai_llm::AnswerCitation; 0]);
         let value = serde_json::to_value(metadata).unwrap();
         assert_eq!(value["guarded"]["evidence_agrees"], true);

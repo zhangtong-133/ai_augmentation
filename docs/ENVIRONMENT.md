@@ -53,6 +53,8 @@ make browser-install
 
 ## CI 故障排查
 
+2026-10-23 核对 [Ollama 接线后的 CI 39743676082](https://github.com/zhangtong-133/ai_augmentation/actions/runs/39743676082)：smoke、objects、web 通过；Rust 1.99 拒绝新增的 `answer.answer.is_empty()` 断言，已改成 `assert_eq!(answer.answer, "")`，本机同版本最终全仓 Clippy 已通过。index 作业曾在问答夹具执行入口收到 503，原断言未记录错误响应；现补充方法、后端、夹具模式和响应，并将终态总等待从五秒调至二十秒，覆盖接口本身十五秒的等待上限。独立一次性数据库最终十轮 70 项 HTTP 通过；旧 503 未重现，不能据此宣称其根因已经修复，后续根据新 CI 的完整诊断继续核对。实际执行超时、资源检查和无自动重发策略均保持。
+
 GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Clippy 错误时先比较日志中的 `rustc`/Clippy 版本；本机较旧版本通过不能证明当前 CI 通过。2026-10-09 的 [失败构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/37893764769) 使用 Rust 1.99，新的 `assert_is_empty` 检查拒绝了 Ollama 测试中的布尔空集合断言。当前测试改为比较带元素类型的空数组，保留原断言并输出失败时的实际引用列表。
 
 2026-10-12 检查[上一轮 v13 构建](https://github.com/zhangtong-133/ai_augmentation/actions/runs/38042115645)，其余 smoke、web、index、objects 作业均成功；同一 Rust 1.99 规则再次拒绝新增的 `answer.citations.is_empty()` 断言。v14 测试统一使用带元素类型的空数组比较，继续保留 `-D warnings`，本机默认 1.96 不变。复核时另装指定 Rust 1.99.0 / Clippy 0.1.99，独立构建目录完整 fmt、Clippy `-D warnings` 与 326 项测试通过，直接验证 CI 差异；默认仍为 1.96。
@@ -69,6 +71,7 @@ GitHub Actions 使用 `stable` Rust，可能比本机工具链更新。排查 Cl
 
 | 日期 / 环境 | 已通过 | 边界 |
 |---|---|---|
+| 2026-10-23，macOS ARM64 / OrbStack，问答自动跟踪 | `make check` 376 项工作区测试、Rust 1.99 最终 Clippy；前端 lint/typecheck/build、32 项单测；302 项隔离服务集成、46 项桌面/移动浏览器；独立数据库十轮 70 项授权/执行 HTTP；截图与测试资源清理已核对 | 自动读取持久化状态、暂停/继续、取消/退出/晚到隔离通过，无迁移或配置变更。未运行其他页面全量 UI、MinIO/公网导入或真实模型；旧 CI 的单次 503 未重现，保留诊断，见[设计](design/answer-execution-observation.md) |
 | 2026-10-22，macOS ARM64 / OrbStack，问答执行闭环夹具 | Rust 1.96.1 fmt/Clippy 与 367 项工作区测试、最终 Clippy 复核；前端 lint/typecheck/build 及 16 项单测、6 项显存预算 Node；300 项真实服务集成（含 186 项 PostgreSQL、6 项授权/执行 HTTP）、生产镜像/index smoke 与 16 项桌面/窄屏 UI；截图、隔离资源清理已核对 | 预览和确认不发送，单次领取、取消竞态、晚到丢弃、引用校验、持久化恢复及默认关闭均通过。未调用真实模型，未跑其他页面全量 UI、MinIO/公网导入、Linux/NVIDIA 实机、游戏/vLLM；当前 guard 需 native Linux/WSL2 同机监督环境，macOS Ollama 尚需单独适配，见[执行记录](design/answer-execution.md) |
 | 2026-10-22，macOS ARM64 / OrbStack，Ollama 0.40.7 / 逐项诊断 v2 | Rust 1.96.1 完整检查、58 项问答及显存 Node、前端 lint/typecheck/build 和 11 项单元测试；281 项 core smoke、生产镜像 v14–v19 各 71 道冻结清单；v17/v19 三题各一次，17 份历史 v1 与六份 v2 诊断严格重读，三份历史 gate 逐字段保持 | 新诊断定位两题多加未问属性、一题一致选择伪 SYSTEM 命令；v17 一题正确弃权仍依赖证据分歧。不同运行时观察不合并，不代表质量修复；默认及私有执行状态保持。两测试栈资源、模型自动释放、锁与私有权限已核对；未重跑完整模型双轮、浏览器/index/MinIO/公网、游戏/vLLM，见[诊断记录](design/ollama-answer-requirement-diagnostics.md) |
 | 2026-10-15，macOS ARM64 / OrbStack，Ollama 0.40.3 / v19-evidence-bound 约束实验 | Rust 1.96/1.99 各完整检查及 351 项测试、43 项问答及 10 项显存预算/观测 Node、前端 lint/typecheck/build 及 11 项单元测试；281 项 core smoke、生产镜像 v14–v19 各 71 道冻结清单；完整双轮 142 题协议及原文范围校验完成、六题单次诊断 | 质量 132/142，低于 v17 的 136/142；正式比较保留两次整题改善、六次退步，gate v13 失败。沉默题通过仍依赖证据分歧；默认及私有执行状态保持。报告权限、模型自动释放、锁及测试栈清空已核对；未跑本机浏览器/index/MinIO/公网、游戏/vLLM，见[实验记录](design/ollama-answer-evidence-bound.md) |

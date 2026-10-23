@@ -134,16 +134,27 @@ async function executionFixture(page, { initial = "authorized", available = true
       } }
       : { endpoint: "http://127.0.0.1:11435/v1/chat/completions", profile: "local-knowledge-answer-v2", body: { model: "fixture", messages: [{ content: hit.text }] } } },
   });
-  const control = { current: initial ? create(undefined, initial) : null, calls: [], answer, hit, release: null };
+  const control = { current: initial ? create(undefined, initial) : null, calls: [], answer, hit, release: null, read: null, reads: 0, releaseRead: null };
   const question = () => control.current.preview?.question ?? control.current.execution?.question ?? "何时开会？";
   control.complete = (result = structuredClone(answer)) => {
     const savedQuestion = question();
+    const execution = control.current.execution;
     control.current.status = "consumed"; control.current.preview = null;
-    control.current.execution = { status: "succeeded", request_sha256: "b".repeat(64), started_at_unix_ms: Date.now(), deadline_at_unix_ms: Date.now() + 55000,
+    control.current.execution = { request_sha256: "b".repeat(64), started_at_unix_ms: Date.now(), deadline_at_unix_ms: Date.now() + 90000,
+      ...execution, status: "succeeded",
       sent_at_unix_ms: Date.now(), finished_at_unix_ms: Date.now(), question: savedQuestion, result };
   };
   control.terminal = status => {
     control.complete(null); control.current.execution.status = status; control.current.execution.question = null;
+  };
+  control.holdNextRead = () => {
+    control.read = async route => {
+      control.read = null;
+      const late = structuredClone(control.current);
+      late.execution.status = "succeeded"; late.execution.result = answer; late.execution.question = "何时开会？";
+      late.execution.finished_at_unix_ms = Date.now();
+      await new Promise(resolve => { control.releaseRead = async () => { await route.fulfill({ json: late }).catch(() => {}); resolve(); }; });
+    };
   };
   await page.route("**/api/knowledge/search", route => route.fulfill({ json: { hits: [hit] } }));
   await page.route("**/api/knowledge/answer-authorizations**", async route => {
@@ -178,6 +189,8 @@ async function executionFixture(page, { initial = "authorized", available = true
       else { control.current.status = "cancelled"; control.current.preview = null; }
     } else {
       expect(path).toBe(`${base}/${control.current.request_id}`);
+      control.reads++;
+      if (control.read) { await control.read(route); return; }
     }
     await route.fulfill({ json: control.current });
   });
@@ -204,10 +217,12 @@ test("a separate execution click persists text and Unicode citations through ref
   expect(fixture.executions()).toBe(0);
   await detail.getByRole("button", { name: "执行一次", exact: true }).click();
   await expect(detail).toContainText("正在执行一次问答");
+  await expect(detail).toContainText("正在自动跟踪");
+  await panel(page).screenshot({ path: testInfo.outputPath("answer-execution-tracking.png") });
   expect(fixture.executions()).toBe(1);
   fixture.complete();
-  await detail.getByRole("button", { name: "查询执行状态" }).click();
   await expect(detail).toContainText(fixture.answer.answer);
+  await expect(panel(page).getByRole("list", { name: "最近授权记录" })).toContainText("结果已保存，待核对");
   await expect(detail).toContainText("模型结果，待你核对");
   await expect(detail.locator("img, a, script")).toHaveCount(0);
   expect(await page.evaluate(() => window.injected)).toBeUndefined();
@@ -253,7 +268,6 @@ test("Ollama preview requires its own confirmation before one native execution a
   expect(fixture.executions()).toBe(0);
   await detail.getByRole("button", { name: "执行一次", exact: true }).click();
   await expect(detail).toContainText("正在执行一次问答"); fixture.complete();
-  await detail.getByRole("button", { name: "查询执行状态" }).click();
   await expect(detail).toContainText(fixture.answer.answer);
   await page.reload(); await fixture.open();
   await expect(detail).toContainText(fixture.answer.answer);
@@ -359,4 +373,109 @@ test("invalid citation positions reject the whole body and source invalidation c
   await expect(detail).toContainText("来源已失效，结果已清除");
   await expect(detail.locator("pre, blockquote, .answerText")).toHaveCount(0);
   expect(fixture.executions()).toBe(0);
+});
+
+for (const pause of ["manual", "hidden", "offline"]) test(`${pause} pause requires an explicit resume and never cancels or repeats execution`, async ({ page, context }) => {
+  const fixture = await executionFixture(page); await fixture.open();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "暂停自动跟踪" })).toBeVisible();
+  if (pause === "manual") await detail.getByRole("button", { name: "暂停自动跟踪" }).click();
+  else if (pause === "hidden") await page.evaluate(() => {
+    Object.defineProperty(document, "hidden", { configurable: true, value: true });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  else await context.setOffline(true);
+  await expect(detail.getByRole("button", { name: "继续自动跟踪" })).toBeVisible();
+  if (pause === "hidden") await page.evaluate(() => {
+    delete document.hidden; document.dispatchEvent(new Event("visibilitychange"));
+  });
+  if (pause === "offline") await context.setOffline(false);
+  await detail.getByRole("button", { name: "查询执行状态" }).click();
+  await expect(detail).toContainText("当前状态已核对，自动跟踪保持暂停");
+  await expect(detail.getByRole("button", { name: "继续自动跟踪" })).toBeEnabled();
+  fixture.complete(); const reads = fixture.reads;
+  // More than one read interval: a pause must not silently restart on focus/network recovery.
+  await page.waitForTimeout(2500);
+  expect(fixture.reads).toBe(reads);
+  await expect(detail.locator(".answerText")).toHaveCount(0);
+  await detail.getByRole("button", { name: "继续自动跟踪" }).click();
+  await expect(detail).toContainText(fixture.answer.answer);
+  const finishedReads = fixture.reads;
+  await page.waitForTimeout(2500);
+  expect(fixture.reads).toBe(finishedReads);
+  expect(fixture.executions()).toBe(1);
+  expect(fixture.calls.filter(call => call.path.endsWith("/cancel"))).toHaveLength(0);
+});
+
+test("reload keeps history private until opened and resumes a running execution with reads only", async ({ page }) => {
+  const fixture = await executionFixture(page); await fixture.open();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail).toContainText("正在自动跟踪");
+  await page.reload(); const reads = fixture.reads;
+  await panel(page).getByRole("button", { name: "刷新授权记录" }).click();
+  await expect(panel(page).getByRole("list", { name: "最近授权记录" })).toContainText("正在执行一次问答");
+  await page.waitForTimeout(2500);
+  expect(fixture.reads).toBe(reads);
+  await expect(detail).toHaveCount(0);
+  await panel(page).getByRole("button", { name: new RegExp(`${fixture.current.request_id}$`) }).click();
+  await expect(detail).toContainText("正在自动跟踪");
+  fixture.complete();
+  await expect(detail).toContainText(fixture.answer.answer);
+  expect(fixture.executions()).toBe(1);
+});
+
+for (const action of ["cancel", "close", "logout"]) test(`${action} discards a pending status read and its late answer`, async ({ page }) => {
+  const fixture = await executionFixture(page); await fixture.open();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail).toContainText("正在自动跟踪");
+  fixture.holdNextRead();
+  await expect.poll(() => typeof fixture.releaseRead).toBe("function");
+  if (action === "cancel") await detail.getByRole("button", { name: "取消该授权", exact: true }).click();
+  else if (action === "close") await detail.getByRole("button", { name: "关闭授权详情" }).click();
+  else await page.getByRole("button", { name: "退出登录", exact: true }).click();
+  await fixture.releaseRead();
+  if (action === "cancel") await expect(detail).toContainText("已取消执行，结果已清除");
+  else await expect(detail).toHaveCount(0);
+  const reads = fixture.reads; await page.waitForTimeout(2500);
+  expect(fixture.reads).toBe(reads);
+  await expect(page.getByText(fixture.answer.answer, { exact: true })).toHaveCount(0);
+  if (action === "logout") {
+    const other = await createAccount(); await login(page, other);
+    await expect(panel(page).getByRole("region", { name: "精确授权详情" })).toHaveCount(0);
+  }
+  expect(fixture.executions()).toBe(1);
+});
+
+for (const fault of [401, 404, 503, "digest", "citation"]) test(`automatic observation stops on ${fault} and only an explicit read can recover`, async ({ page }) => {
+  const fixture = await executionFixture(page); await fixture.open();
+  const detail = panel(page).getByRole("region", { name: "精确授权详情" });
+  await detail.getByRole("button", { name: "执行一次", exact: true }).click();
+  await expect(detail).toContainText("正在自动跟踪");
+  fixture.complete();
+  fixture.read = async route => {
+    if (typeof fault === "number") await route.fulfill({ status: fault, json: { error: { code: "unavailable" } } });
+    else {
+      const invalid = structuredClone(fixture.current);
+      if (fault === "digest") invalid.digest = "c".repeat(64);
+      else invalid.execution.result.citations[0].quote_start++;
+      await route.fulfill({ json: invalid });
+    }
+  };
+  await expect(panel(page).getByRole("alert")).toContainText(fault === 401 ? "登录已失效" : fault === 404 ? "未找到该请求" : fault === 503 ? "自动跟踪已停止" : "状态格式异常");
+  await expect(detail).toHaveCount(0);
+  await expect(panel(page).locator(".answerText, blockquote")).toHaveCount(0);
+  const reads = fixture.reads; await page.waitForTimeout(2500);
+  expect(fixture.reads).toBe(reads);
+  if ([401, 404].includes(fault)) {
+    await expect(panel(page).getByRole("button", { name: "查询原请求" })).toHaveCount(0);
+    if (fault === 401) await expect(panel(page).getByRole("list", { name: "最近授权记录" }).locator("li")).toHaveCount(0);
+  } else {
+    fixture.read = null;
+    await panel(page).getByRole("button", { name: "查询原请求" }).click();
+    await expect(detail).toContainText(fixture.answer.answer);
+  }
+  expect(fixture.executions()).toBe(1);
 });
